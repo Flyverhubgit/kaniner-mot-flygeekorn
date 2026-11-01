@@ -35,6 +35,8 @@ let foamOn = false;
 let foamHoles = [];            // [x, z] for hvert granat-hull (til nye spillere)
 // Underverdenen: et skjult håndtak sender alle ned til Hades' do-skål til neste runde
 let worldName = 'main';        // 'main' eller 'underworld'
+// Baner byttes hver runde: tempelet og det kjempestore barnerommet (snikskytterbane)
+let mapName = process.env.START_MAP === 'room' ? 'room' : 'temple';   // 'temple' eller 'room' (START_MAP er for testing)
 let nextFart = 0;              // når Hades promper neste gang (ms)
 const FART_EVERY = 30000;      // hvert 30. sekund
 const HANDLE = { x: -25, z: -3 };   // håndtaket i bakre hjørne av venstre hus
@@ -43,6 +45,9 @@ let intermission = false;
 
 // Startplass: kaniner på blå side (z = +19), flygeekorn på rød side (z = -19)
 function spawnFor(team) {
+  if (mapName === 'room' && worldName === 'main') {
+    return { x: Math.random() * 60 - 30, z: team === 'bunny' ? 46 : -46, yaw: team === 'bunny' ? 0 : Math.PI };
+  }
   return {
     x: worldName === 'underworld' ? Math.random() * 20 - 10 : Math.random() * 36 - 18,
     z: team === 'bunny' ? 19 : -19,
@@ -124,7 +129,7 @@ io.on('connection', socket => {
     socket.emit('welcome', {
       id: socket.id, spawn: sp, players: others, score,
       foam: { on: foamOn, holes: foamHoles },
-      world: worldName, fartIn: worldName === 'underworld' ? Math.max(0, Math.ceil((nextFart - Date.now()) / 1000)) : 0,
+      world: worldName, map: mapName, fartIn: worldName === 'underworld' ? Math.max(0, Math.ceil((nextFart - Date.now()) / 1000)) : 0,
       timeLeft: Math.max(0, Math.ceil((roundEndsAt - Date.now()) / 1000)), intermission
     });
     socket.broadcast.emit('playerJoined', publicPlayer(p));
@@ -136,7 +141,7 @@ io.on('connection', socket => {
   socket.on('state', s => {
     const p = players[socket.id];
     if (!p || !p.alive || !Array.isArray(s)) return;
-    const x = num(s[0], -30, 30), y = num(s[1], -1, 20), z = num(s[2], -22, 22);
+    const x = num(s[0], -90, 90), y = num(s[1], -1, 40), z = num(s[2], -60, 60);
     const yaw = num(s[3], -1e6, 1e6), pitch = num(s[4], -2, 2);
     if (x === null || y === null || z === null || yaw === null || pitch === null) return;
     p.x = x; p.y = y; p.z = z; p.yaw = yaw; p.pitch = pitch; p.slide = s[5] ? 1 : 0;
@@ -145,7 +150,7 @@ io.on('connection', socket => {
     p.weapon = s[8] ? 1 : 0;      // 0 = AK, 1 = snikskytter
 
     // Toppen av pyramiden (2 x 2 m, 13 m høyt) = SKUMFEST!
-    if (worldName === 'main' && !foamOn && !intermission && y >= 12.9 && Math.abs(x) <= 1.2 && Math.abs(z) <= 1.2) {
+    if (worldName === 'main' && mapName === 'temple' && !foamOn && !intermission && y >= 12.9 && Math.abs(x) <= 1.2 && Math.abs(z) <= 1.2) {
       foamOn = true;
       foamHoles = [];
       io.emit('foam', { on: true, by: p.name, team: p.team, holes: [] });
@@ -188,7 +193,7 @@ io.on('connection', socket => {
     const p = players[socket.id];
     if (!p || !p.alive || p.nades <= 0 || !d || typeof d.id !== 'string' || d.id.length > 40) return;
     if (!Array.isArray(d.p) || !Array.isArray(d.v)) return;
-    const pos = d.p.map(v => num(v, -40, 40)), vel = d.v.map(v => num(v, -40, 40));
+    const pos = d.p.map(v => num(v, -100, 100)), vel = d.v.map(v => num(v, -40, 40));
     if (pos.includes(null) || vel.includes(null)) return;
     p.nades--;
     p.pending[d.id] = Date.now();
@@ -201,7 +206,7 @@ io.on('connection', socket => {
     if (!p || !d || !p.pending[d.id]) return;
     delete p.pending[d.id];                           // hver granat kan bare smelle én gang
     if (!Array.isArray(d.p)) return;
-    const pos = d.p.map(v => num(v, -40, 40));
+    const pos = d.p.map(v => num(v, -100, 100));
     if (pos.includes(null)) return;
     io.emit('boom', { id: d.id, p: pos });
     if (foamOn && pos[1] < 3) foamHoles.push([pos[0], pos[2]]);   // hullet i skummet blir stående
@@ -216,7 +221,7 @@ io.on('connection', socket => {
   // Skjult håndtak: alle faller ned i underverdenen
   socket.on('pull', () => {
     const p = players[socket.id];
-    if (!p || !p.alive || intermission || worldName !== 'main') return;
+    if (!p || !p.alive || intermission || worldName !== 'main' || mapName !== 'temple') return;
     if (Math.hypot(p.x - HANDLE.x, p.z - HANDLE.z) > 2.5) return;
     worldName = 'underworld';
     foamOn = false;
@@ -271,6 +276,8 @@ setInterval(() => {
     setTimeout(() => {
       score = { bunny: 0, squirrel: 0 };
       if (worldName !== 'main') { worldName = 'main'; io.emit('world', { name: 'main' }); }
+      mapName = mapName === 'temple' ? 'room' : 'temple';    // ny bane hver runde
+      io.emit('map', { name: mapName });
       Object.values(players).forEach(p => { p.kills = 0; p.deaths = 0; respawn(p); });
       roundEndsAt = Date.now() + ROUND_SECONDS * 1000;
       intermission = false;

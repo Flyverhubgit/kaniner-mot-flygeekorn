@@ -1150,7 +1150,7 @@ function shoot() {
   const spread = sn && !scoped ? 0.12 : 0;
   camera.updateMatrixWorld(true);
   raycaster.setFromCamera({ x: (Math.random() - 0.5) * spread, y: (Math.random() - 0.5) * spread }, camera);
-  const hits = raycaster.intersectObject(inUnderworld ? underGroup : world, true);   // [NY] bare verden (ikke spor/fyll)
+  const hits = raycaster.intersectObject(activeWorldGroup(), true);   // [NY] bare verden (ikke spor/fyll), riktig bane
   const o = raycaster.ray.origin, d = raycaster.ray.direction;
 
   // [NY] Traff vi en fiende før veggen?

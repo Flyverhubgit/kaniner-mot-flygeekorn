@@ -2,6 +2,8 @@
 
 Blokkete flerspiller-FPS i nettleseren. Velg lag, skyt det andre laget. 5 minutter per runde.
 
+To baner som byttes hver runde: **Tempelet** (med skumfest og hemmelig håndtak) og **Kjempe-barnerommet** (stor snikskytterbane med kjempesenger, bok-trapper, alfabetklosser og lego).
+
 ## Spill hjemme (samme WiFi)
 1. Pakk ut zip-filen (høyreklikk → **Pakk ut alle**). Ikke kjør fra inne i zip-filen.
 2. Dobbeltklikk **test-locally-windows.bat**.
