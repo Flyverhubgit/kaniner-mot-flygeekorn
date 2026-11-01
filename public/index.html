@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="no">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Kaniner mot Flygeekorn</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #000; font-family: sans-serif; }
+  canvas { display: block; }
+  #crosshair { position: fixed; left: 50%; top: 50%; width: 6px; height: 6px; margin: -3px 0 0 -3px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 1px #000; pointer-events: none; z-index: 3; }
+  #hitmarker { position: fixed; left: 50%; top: 50%; width: 26px; height: 26px; margin: -13px 0 0 -13px; pointer-events: none; z-index: 3; opacity: 0; transition: opacity 0.15s; }
+  #hitmarker::before, #hitmarker::after { content: ''; position: absolute; left: 12px; top: -2px; width: 2px; height: 30px; background: #fff; }
+  #hitmarker::before { transform: rotate(45deg); }
+  #hitmarker::after { transform: rotate(-45deg); }
+  #hitmarker.kill::before, #hitmarker.kill::after { background: #ff3b30; }
+  #overlay { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; text-align: center; background: rgba(0,0,0,0.55); color: #fff; font: 18px/1.6 sans-serif; cursor: pointer; z-index: 10; padding: 20px; }
+
+  /* Lag-valg */
+  #menu { position: fixed; inset: 0; z-index: 20; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; background: linear-gradient(#5d7a93, #2b3a47); color: #fff; padding: 16px; box-sizing: border-box; overflow-y: auto; }
+  #menu h1 { margin: 0; font-size: 34px; letter-spacing: 1px; text-shadow: 0 3px 0 #000; text-align: center; }
+  #menu h1 .b { color: #ff6b5e; } #menu h1 .s { color: #a5d65a; }
+  #nameInput { font-size: 20px; padding: 8px 12px; border-radius: 8px; border: 2px solid #fff; background: rgba(0,0,0,0.3); color: #fff; text-align: center; width: 240px; }
+  #cards { display: flex; gap: 20px; flex-wrap: wrap; justify-content: center; }
+  .card { width: 240px; border-radius: 14px; background: rgba(0,0,0,0.35); border: 4px solid transparent; cursor: pointer; text-align: center; padding-bottom: 10px; transition: transform 0.1s; user-select: none; }
+  .card:hover { transform: scale(1.03); }
+  .card.selected.bunny { border-color: #d23b2f; background: rgba(210,59,47,0.25); }
+  .card.selected.squirrel { border-color: #6b8e23; background: rgba(107,142,35,0.3); }
+  .card canvas { width: 240px; height: 260px; border-radius: 10px 10px 0 0; }
+  .card .t { font-size: 22px; font-weight: bold; }
+  .card .c { font-size: 14px; opacity: 0.8; }
+  #joinBtn { font-size: 22px; font-weight: bold; padding: 12px 40px; border-radius: 10px; border: none; background: #f2c14e; color: #222; cursor: pointer; }
+  #joinBtn:disabled { opacity: 0.4; cursor: default; }
+  #status { font-size: 14px; opacity: 0.8; min-height: 18px; }
+
+  /* HUD */
+  #topbar { position: fixed; left: 50%; top: 10px; transform: translateX(-50%); color: #fff; font: bold 22px sans-serif; text-shadow: 0 0 4px #000; z-index: 4; pointer-events: none; white-space: nowrap; display: none; }
+  #topbar .b { color: #ff6b5e; } #topbar .s { color: #a5d65a; }
+  #health { position: fixed; left: 20px; bottom: 20px; color: #fff; font: bold 26px sans-serif; text-shadow: 0 0 4px #000; z-index: 4; pointer-events: none; display: none; }
+  #killfeed { position: fixed; left: 15px; top: 12px; color: #fff; font: bold 15px sans-serif; text-shadow: 0 0 3px #000; z-index: 4; pointer-events: none; }
+  #killfeed div { margin-bottom: 4px; background: rgba(0,0,0,0.35); padding: 3px 8px; border-radius: 4px; }
+  #killfeed .b { color: #ff6b5e; } #killfeed .s { color: #a5d65a; }
+  #damage { position: fixed; inset: 0; pointer-events: none; z-index: 2; box-shadow: inset 0 0 120px rgba(255,0,0,0.8); opacity: 0; }
+  #center { position: fixed; left: 50%; top: 38%; transform: translate(-50%, -50%); color: #fff; font: bold 30px sans-serif; text-shadow: 0 0 6px #000; text-align: center; z-index: 6; pointer-events: none; display: none; }
+  #scoreboard { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.75); color: #fff; padding: 16px 22px; border-radius: 10px; z-index: 7; display: none; font: 16px sans-serif; min-width: 420px; }
+  #scoreboard table { width: 100%; border-collapse: collapse; }
+  #scoreboard td, #scoreboard th { padding: 4px 8px; text-align: left; }
+  #scoreboard .me { background: rgba(255,255,255,0.15); }
+</style>
+</head>
+<body>
+<div id="crosshair"></div>
+<div id="hitmarker"></div>
+<div id="overlay"></div>
+<div id="damage"></div>
+<div id="topbar"></div>
+<div id="health"></div>
+<div id="killfeed"></div>
+<div id="center"></div>
+<div id="scoreboard"></div>
+
+<div id="menu">
+  <h1><span class="b">KANINER</span> mot <span class="s">FLYGEEKORN</span></h1>
+  <input id="nameInput" maxlength="16" placeholder="Ditt navn">
+  <div id="cards">
+    <div class="card bunny" data-team="bunny">
+      <canvas id="prevBunny" width="480" height="520"></canvas>
+      <div class="t">Kanin</div>
+      <div class="c" id="countBunny">0 spillere</div>
+    </div>
+    <div class="card squirrel" data-team="squirrel">
+      <canvas id="prevSquirrel" width="480" height="520"></canvas>
+      <div class="t">Flygeekorn</div>
+      <div class="c" id="countSquirrel">0 spillere</div>
+    </div>
+  </div>
+  <button id="joinBtn" disabled>Velg et lag</button>
+  <div id="status">Kobler til serveren...</div>
+</div>
+
+<script src="vendor/three.min.js"></script>
+<script src="/socket.io/socket.io.js"></script>
+<script src="models.js"></script>
+<script src="game.js"></script>
+</body>
+</html>
