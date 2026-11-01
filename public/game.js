@@ -303,6 +303,8 @@ window.addEventListener('keydown', e => {
   if (e.code === 'KeyC' || e.code === 'ControlLeft') slideQueued = true;
   if (e.code === 'KeyR') startReload();
   if (e.code === 'KeyG') nadeQueued = true;            // [NY] kast granat
+  if (e.code === 'Digit1') switchWeapon(akW);          // [NY] bytt våpen
+  if (e.code === 'Digit2') switchWeapon(sniperW);
   if (e.code === 'Tab' && joined) e.preventDefault(); // [NY] Tab = poengtavle
 });
 window.addEventListener('keyup', e => { keys[e.code] = false; });
@@ -316,8 +318,9 @@ document.addEventListener('mousemove', e => {
   const locked = document.pointerLockElement === renderer.domElement;
   if (!joined) return;                     // [NY] ikke snu kameraet i menyen
   if (!locked && !mouseDown) return;
-  player.yaw -= e.movementX * 0.002 * sens;
-  player.pitch -= e.movementY * 0.002 * sens;
+  const z = scoped ? 0.3 : 1;              // [NY] roligere sikting i kikkerten
+  player.yaw -= e.movementX * 0.002 * sens * z;
+  player.pitch -= e.movementY * 0.002 * sens * z;
   player.pitch = Math.max(-1.45, Math.min(1.45, player.pitch));
 });
 
@@ -331,7 +334,7 @@ function releaseAll() {
 window.addEventListener('blur', releaseAll);
 
 if (!isTouch) {
-  overlay.innerHTML = '<div><b>Klikk for å spille</b><br>WASD = gå &nbsp; Mus = sikte<br>Mellomrom = hopp &nbsp; Shift = løp<br>C = slide (mens du går) &nbsp; Esc = pause<br>Venstre museknapp = skyt &nbsp; R = lad om<br>G = kast granat &nbsp; Hold Q = dukk<br>Kanin: superhopp &nbsp; Flygeekorn: hold mellomrom i lufta = svev<br>Hold Tab = poengtavle<br>Virker ikke musen? Hold inne venstre knapp og dra, og skyt med F.</div>';
+  overlay.innerHTML = '<div><b>Klikk for å spille</b><br>WASD = gå &nbsp; Mus = sikte<br>Mellomrom = hopp &nbsp; Shift = løp<br>C = slide (mens du går) &nbsp; Esc = pause<br>Venstre museknapp = skyt &nbsp; R = lad om<br>G = kast granat &nbsp; Hold Q = dukk<br>1 / 2 / musehjul = bytt våpen &nbsp; Høyre museknapp = kikkert<br>Kanin: superhopp &nbsp; Flygeekorn: hold mellomrom i lufta = svev<br>Hold Tab = poengtavle<br>Virker ikke musen? Hold inne venstre knapp og dra, og skyt med F.</div>';
   overlay.addEventListener('click', () => {
     try {
       const p = renderer.domElement.requestPointerLock();
@@ -348,7 +351,7 @@ if (!isTouch) {
     overlay.style.display = locked ? 'none' : 'flex';
   });
 } else {
-  overlay.innerHTML = '<div><b>Trykk for å starte</b><br>Venstre tommel = gå<br>Høyre tommel = se deg rundt<br>Knappene nede til høyre = skyt, lad om, granat, hopp, slide og dukk<br>Skyt: dobbelttrykk og hold på høyre side (dra for å sikte),<br>eller hold SKYT-knappen</div>';
+  overlay.innerHTML = '<div><b>Trykk for å starte</b><br>Venstre tommel = gå<br>Høyre tommel = se deg rundt<br>Knappene nede til høyre = skyt, lad om, granat, hopp, slide og dukk<br>Skyt: dobbelttrykk og hold på høyre side (dra for å sikte),<br>eller hold SKYT-knappen<br>BYTT = snikskytter &nbsp; SIKTE = kikkert</div>';
   overlay.addEventListener('touchstart', e => { e.preventDefault(); overlay.style.display = 'none'; }, { passive: false });
 }
 
@@ -393,6 +396,17 @@ if (isTouch) {
   crouchBtn.style.cssText = 'position:fixed;right:38px;bottom:220px;width:64px;height:64px;border-radius:50%;background:rgba(255,255,255,0.3);border:2px solid rgba(255,255,255,0.6);color:#fff;font:bold 13px sans-serif;display:flex;align-items:center;justify-content:center;z-index:5;user-select:none;';
   document.body.appendChild(crouchBtn);
 
+  // [NY] Bytt våpen og kikkertsikte
+  const swapBtn = document.createElement('div');
+  swapBtn.textContent = 'BYTT';
+  swapBtn.style.cssText = 'position:fixed;right:240px;bottom:150px;width:64px;height:64px;border-radius:50%;background:rgba(255,255,255,0.3);border:2px solid rgba(255,255,255,0.6);color:#fff;font:bold 13px sans-serif;display:flex;align-items:center;justify-content:center;z-index:5;user-select:none;';
+  document.body.appendChild(swapBtn);
+  const scopeBtn = document.createElement('div');
+  scopeBtn.textContent = 'SIKTE';
+  scopeBtn.style.cssText = 'position:fixed;right:140px;bottom:240px;width:64px;height:64px;border-radius:50%;background:rgba(255,255,255,0.3);border:2px solid rgba(255,255,255,0.6);color:#fff;font:bold 13px sans-serif;display:none;align-items:center;justify-content:center;z-index:5;user-select:none;';
+  document.body.appendChild(scopeBtn);
+  window.__scopeBtn = scopeBtn;   // vises bare med snikskytter (se updateWeapon)
+
   let moveId = null, lookId = null, fireId = null, lastLookTap = 0, jumpId = null;
   const origin = { x: 0, y: 0 }, lastLook = { x: 0, y: 0 }, lastFire = { x: 0, y: 0 };
 
@@ -404,6 +418,8 @@ if (isTouch) {
       if (t.target === slideBtn) { slideQueued = true; continue; }
       // [FIKS] Dra fingeren på SKYT-knappen for å sikte mens du skyter
       if (t.target === fireBtn) { fireId = t.identifier; touchFire = true; lastFire.x = t.clientX; lastFire.y = t.clientY; continue; }
+      if (t.target === swapBtn) { switchWeapon(weapon === akW ? sniperW : akW); continue; }
+      if (t.target === scopeBtn) { if (weapon === sniperW && alive) scoped = !scoped; continue; }
       if (t.target === crouchBtn) {
         touchCrouch = !touchCrouch;
         crouchBtn.style.background = touchCrouch ? 'rgba(255,150,205,0.6)' : 'rgba(255,255,255,0.3)';
@@ -443,14 +459,14 @@ if (isTouch) {
         if (len < 0.18) { dx = 0; dy = 0; }
         touchMove.x = dx; touchMove.y = -dy;
       } else if (t.identifier === lookId) {
-        player.yaw -= (t.clientX - lastLook.x) * 0.005 * sens;
-        player.pitch -= (t.clientY - lastLook.y) * 0.005 * sens;
+        player.yaw -= (t.clientX - lastLook.x) * 0.005 * sens * (scoped ? 0.3 : 1);
+        player.pitch -= (t.clientY - lastLook.y) * 0.005 * sens * (scoped ? 0.3 : 1);
         player.pitch = Math.max(-1.45, Math.min(1.45, player.pitch));
         lastLook.x = t.clientX; lastLook.y = t.clientY;
       } else if (t.identifier === fireId) {
         // [FIKS] Sikt med samme finger som skyter
-        player.yaw -= (t.clientX - lastFire.x) * 0.005 * sens;
-        player.pitch -= (t.clientY - lastFire.y) * 0.005 * sens;
+        player.yaw -= (t.clientX - lastFire.x) * 0.005 * sens * (scoped ? 0.3 : 1);
+        player.pitch -= (t.clientY - lastFire.y) * 0.005 * sens * (scoped ? 0.3 : 1);
         player.pitch = Math.max(-1.45, Math.min(1.45, player.pitch));
         lastFire.x = t.clientX; lastFire.y = t.clientY;
       }
@@ -564,7 +580,11 @@ function updatePlayer(dt) {
 }
 
 // ---------- Våpen: blokkete AK-47 ----------
-const weapon = { mag: 100, magSize: 100, reserve: Infinity, fireDelay: 0.1, reloadTime: 2.0 };   // [NY] 100 i magasinet, uendelig reserve
+// [NY] To våpen: 1 = AK (100 i magasinet), 2 = snikskytter (5 skudd, treg men kraftig). Uendelig reserve.
+const akW = { id: 'ak', mag: 100, magSize: 100, reserve: Infinity, fireDelay: 0.1, reloadTime: 2.0 };
+const sniperW = { id: 'sniper', mag: 5, magSize: 5, reserve: Infinity, fireDelay: 1.1, reloadTime: 2.5 };
+let weapon = akW;          // våpenet du holder nå
+let scoped = false;        // ser gjennom kikkertsiktet
 let fireHeld = false, touchFire = false, fireCooldown = 0, reloading = 0, recoil = 0, flashTime = 0;
 
 // Modellen ligger "fast" på kameraet, så den følger med når du ser deg rundt
@@ -613,6 +633,34 @@ camera.layers.enable(1);  // lag 1 = treffmerker (kulene treffer dem ikke)
 // Nå ligger våpenet i lag 2 og tegnes til slutt, oppå alt annet.
 gun.traverse(o => { o.layers.set(2); o.castShadow = false; o.receiveShadow = false; });
 
+// [NY] Snikskytter-modellen i første person (gulrot eller nøtt, etter lag)
+const akParts = gun.children.filter(c => c !== flash);
+let sniperView = null;
+function buildSniperView(team) {
+  if (sniperView) gun.remove(sniperView);
+  sniperView = buildSniper(team);
+  sniperView.rotation.y = Math.PI;            // modellen ser mot +z, kameraet mot -z
+  sniperView.scale.setScalar(0.75);           // litt mindre, så den ikke fyller skjermen
+  sniperView.position.set(0, 0, -0.25);
+  sniperView.traverse(o => { o.layers.set(2); o.castShadow = false; o.receiveShadow = false; });
+  gun.add(sniperView);
+  showWeaponModel();
+}
+function showWeaponModel() {
+  const sn = weapon === sniperW;
+  akParts.forEach(c => { c.visible = !sn; });
+  if (sniperView) sniperView.visible = sn;
+  flash.position.set(0, 0.012, sn ? -0.8 : -0.56);
+}
+function switchWeapon(w) {
+  if (!joined || weapon === w) return;
+  weapon = w;
+  reloading = 0;
+  scoped = false;
+  fireCooldown = Math.max(fireCooldown, 0.35);   // litt tid til å bytte
+  showWeaponModel();
+}
+
 // ---------- Treffmerker på vegger ----------
 const impacts = [];
 const impactMat = new THREE.MeshBasicMaterial({ color: 0x1b1d1f });
@@ -642,7 +690,7 @@ function unlockAudio() {
   } catch (err) {}
 }
 ['pointerdown', 'touchstart', 'keydown'].forEach(ev => window.addEventListener(ev, unlockAudio));
-function playShot(vol) {     // [NY] vol = lydstyrke (andre spillere høres svakere på avstand)
+function playShot(vol, freq) {     // [NY] vol = lydstyrke (andre spillere høres svakere på avstand), freq = klang
   if (!audioCtx) return;
   const sr = audioCtx.sampleRate, len = Math.floor(0.12 * sr);
   const buf = audioCtx.createBuffer(1, len, sr);
@@ -652,7 +700,7 @@ function playShot(vol) {     // [NY] vol = lydstyrke (andre spillere høres svak
   src.buffer = buf;
   const filt = audioCtx.createBiquadFilter();
   filt.type = 'lowpass';
-  filt.frequency.value = 1800;
+  filt.frequency.value = freq || 1800;
   const gain = audioCtx.createGain();
   gain.gain.value = vol === undefined ? 0.35 : vol;
   src.connect(filt); filt.connect(gain); gain.connect(audioCtx.destination);
@@ -670,6 +718,8 @@ function playHit(kill) {
   o.start(); o.stop(audioCtx.currentTime + 0.3);
 }
 
+const scopeEl = document.getElementById('scope');        // [NY] kikkert-ring
+const crosshairEl = document.getElementById('crosshair');
 // ---------- Ammo-visning ----------
 const hud = document.createElement('div');
 hud.style.cssText = 'position:fixed;right:20px;top:15px;color:#fff;font:bold 22px sans-serif;text-shadow:0 0 4px #000;z-index:4;pointer-events:none;text-align:right;';
@@ -1089,14 +1139,17 @@ function muzzleWorld() {
 function shoot() {
   weapon.mag--;
   fireCooldown = weapon.fireDelay;
-  recoil = Math.min(recoil + 0.7, 1.5);
-  flashTime = 0.04;
+  const sn = weapon === sniperW;                 // [NY] snikskytter?
+  recoil = sn ? 1.5 : Math.min(recoil + 0.7, 1.5);
+  flashTime = sn ? 0.07 : 0.04;
   flash.rotation.z = Math.random() * Math.PI;
-  playShot();
+  if (sn) playShot(0.55, 650); else playShot();  // [NY] dypere og høyere smell
 
   // Skuddet går rett ut fra midten av skjermen
+  // [NY] Snikskytter uten kikkert sprer mye – bruk siktet!
+  const spread = sn && !scoped ? 0.12 : 0;
   camera.updateMatrixWorld(true);
-  raycaster.setFromCamera({ x: 0, y: 0 }, camera);
+  raycaster.setFromCamera({ x: (Math.random() - 0.5) * spread, y: (Math.random() - 0.5) * spread }, camera);
   const hits = raycaster.intersectObject(world, true);   // [NY] bare verden (ikke spor/fyll)
   const o = raycaster.ray.origin, d = raycaster.ray.direction;
 
@@ -1118,7 +1171,7 @@ function shoot() {
   const end = o.clone().addScaledVector(d, bestT);
 
   if (target) {
-    socket.emit('hit', { target, head });
+    socket.emit('hit', { target, head, weapon: weapon.id });
     addStuffing(end);
   } else if (hits.length) {
     const h = hits[0];
@@ -1126,10 +1179,10 @@ function shoot() {
     addImpact(h.point, n);
   }
   addTracer(muzzleWorld(), end);
-  socket.emit('shot', { to: [+end.x.toFixed(2), +end.y.toFixed(2), +end.z.toFixed(2)] });
+  socket.emit('shot', { to: [+end.x.toFixed(2), +end.y.toFixed(2), +end.z.toFixed(2)], w: weapon.id });
 
   // Liten rekyl i sikte
-  player.pitch = Math.min(1.45, player.pitch + 0.004);
+  player.pitch = Math.min(1.45, player.pitch + (sn ? 0.03 : 0.004));
   player.yaw += (Math.random() - 0.5) * 0.004;
 }
 
@@ -1142,6 +1195,17 @@ document.addEventListener('mousedown', e => {
   if (e.button === 0 && document.pointerLockElement === renderer.domElement) fireHeld = true;
 });
 document.addEventListener('mouseup', e => { if (e.button === 0) fireHeld = false; });
+
+// [NY] Høyre museknapp = kikkertsikte (bare snikskytter). Musehjul = bytt våpen.
+document.addEventListener('mousedown', e => {
+  if (e.button === 2 && document.pointerLockElement === renderer.domElement && weapon === sniperW && alive) scoped = true;
+});
+document.addEventListener('mouseup', e => { if (e.button === 2) scoped = false; });
+document.addEventListener('contextmenu', e => { if (joined) e.preventDefault(); });
+document.addEventListener('wheel', e => {
+  if (!joined || document.pointerLockElement !== renderer.domElement) return;
+  switchWeapon(weapon === akW ? sniperW : akW);
+});
 
 function updateWeapon(dt) {
   fireCooldown -= dt;
@@ -1165,7 +1229,20 @@ function updateWeapon(dt) {
   gun.position.set(GUN_BASE.x, GUN_BASE.y - dip * 0.15, GUN_BASE.z + recoil * 0.05);
   gun.rotation.x = recoil * 0.06 - dip * 0.4;
   gun.rotation.z = dip * 0.5;
-  gun.visible = alive && joined;             // [NY] skjul våpenet i menyen og når du er død
+  // [NY] Kikkertsikte: zoom inn, skjul våpenet, vis sikte-ringen
+  if (scoped && (weapon !== sniperW || !alive || reloading > 0)) scoped = false;
+  const fovTarget = scoped ? 22 : 75;
+  if (Math.abs(camera.fov - fovTarget) > 0.05) {
+    camera.fov += (fovTarget - camera.fov) * Math.min(1, dt * 18);
+    camera.updateProjectionMatrix();
+  }
+  scopeEl.style.display = scoped ? 'block' : 'none';
+  crosshairEl.style.display = scoped ? 'none' : 'block';
+  if (window.__scopeBtn) {
+    window.__scopeBtn.style.display = weapon === sniperW && joined ? 'flex' : 'none';
+    window.__scopeBtn.style.background = scoped ? 'rgba(255,150,205,0.6)' : 'rgba(255,255,255,0.3)';
+  }
+  gun.visible = alive && joined && !scoped;  // [NY] skjul våpenet i menyen, når du er død og i kikkerten
 
   flashTime -= dt;
   flash.visible = flashTime > 0;
@@ -1191,7 +1268,8 @@ function updateWeapon(dt) {
     if (s.life <= 0) s.mesh.visible = false;
   });
 
-  hud.textContent = (reloading > 0 ? 'LADER...' : weapon.mag + ' / ' + (weapon.reserve === Infinity ? '∞' : weapon.reserve)) +
+  const wIcon = weapon === sniperW ? (myTeam === 'bunny' ? '🥕 ' : '🌰 ') : 'AK ';   // [NY] gulrot / nøtt
+  hud.textContent = wIcon + (reloading > 0 ? 'LADER...' : weapon.mag + ' / ' + (weapon.reserve === Infinity ? '∞' : weapon.reserve)) +
     '   💣 ' + grenades;   // [NY] viser granater også
 }
 
@@ -1224,11 +1302,16 @@ function addOther(p) {
   const root = new THREE.Group();
   const body = p.team === 'bunny' ? buildBunny() : buildSquirrel();
   root.add(body);
+  // [NY] Snikskytter i hånden (vises når spilleren har byttet til den)
+  const heldSniper = buildSniper(p.team);
+  heldSniper.position.copy(body.userData.gun.position);
+  heldSniper.visible = false;
+  body.add(heldSniper);
   const tag = makeTag(p.name, p.team);
   root.add(tag);
   scene.add(root);
   others[p.id] = {
-    name: p.name, team: p.team, root, body, tag, alive: p.alive !== false, slide: 0, walk: 0,
+    name: p.name, team: p.team, root, body, tag, alive: p.alive !== false, slide: 0, walk: 0, heldSniper, weapon: 0,
     cur: { x: p.x, y: p.y, z: p.z, yaw: p.yaw },
     target: { x: p.x, y: p.y, z: p.z, yaw: p.yaw }
   };
@@ -1267,6 +1350,8 @@ function updateOthers(dt) {
     const sy = r.alive && r.crouch ? 0.5 : 1;     // kaninørene (ca. 2 m) blir 1,0 m – under skummet
     r.body.scale.y += (sy - r.body.scale.y) * Math.min(1, dt * 12);
     r.tag.visible = r.alive && !(r.crouch && foamHeightAt(r.cur.x, r.cur.z) > r.cur.y + 0.8);
+    r.heldSniper.visible = r.weapon === 1;           // [NY] riktig våpen i hånden
+    r.body.userData.gun.visible = r.weapon !== 1;
   }
 }
 
@@ -1333,7 +1418,7 @@ function updateHud(dt) {
 
 function addKillfeed(d) {
   const div = document.createElement('div');
-  div.innerHTML = teamSpan(d.killerTeam, esc(d.killerName)) + (d.weapon === 'nade' ? ' &#128163; ' : (d.head ? ' &#127919; ' : ' &#10140; ')) + teamSpan(d.victimTeam, esc(d.victimName));
+  div.innerHTML = teamSpan(d.killerTeam, esc(d.killerName)) + (d.weapon === 'nade' ? ' &#128163; ' : d.weapon === 'sniper' ? (d.killerTeam === 'bunny' ? ' &#129365;' : ' &#127792;') + (d.head ? '&#127919; ' : ' ') : (d.head ? ' &#127919; ' : ' &#10140; ')) + teamSpan(d.victimTeam, esc(d.victimName));
   killfeed.prepend(div);
   while (killfeed.children.length > 5) killfeed.lastChild.remove();
   setTimeout(() => div.remove(), 6000);
@@ -1373,6 +1458,7 @@ socket.on('welcome', d => {
   for (const id in others) removeOther(id);   // [NY] fjern gamle figurer etter ny tilkobling
   for (const id in d.players) addOther(d.players[id]);
   if (d.foam) setFoam(d.foam.on, d.foam.holes, true);   // [NY] skummet står allerede
+  buildSniperView(myTeam);       // [NY] gulrot- eller nøtte-gevær
   document.body.classList.add('playing');
   el('menu').style.display = 'none';
   topbar.style.display = 'block';
@@ -1398,6 +1484,7 @@ socket.on('snap', snap => {
     r.slide = s[6];
     r.crouch = s[7];
     r.glide = s[8];
+    r.weapon = s[9];
   }
 });
 
@@ -1408,7 +1495,8 @@ socket.on('shot', d => {
   const from = r.root.localToWorld(new THREE.Vector3(0.24, 0.9, 0.95));
   addTracer(from, new THREE.Vector3(d.to[0], d.to[1], d.to[2]));
   const dist = Math.hypot(r.cur.x - player.x, r.cur.z - player.z);
-  playShot(Math.max(0.03, 0.3 - dist * 0.006));
+  if (d.w === 'sniper') playShot(Math.max(0.06, 0.5 - dist * 0.006), 650);   // [NY] snikskytter smeller høyere
+  else playShot(Math.max(0.03, 0.3 - dist * 0.006));
 });
 
 // [NY] Granater fra andre spillere, og smell fra serveren
@@ -1460,8 +1548,9 @@ socket.on('respawn', sp => {
   placeAtSpawn(sp);
   alive = true;
   hp = 100;
-  weapon.mag = weapon.magSize;   // full ammo ved ny start
-  weapon.reserve = Infinity;
+  akW.mag = akW.magSize;         // full ammo ved ny start (begge våpen)
+  sniperW.mag = sniperW.magSize;
+  scoped = false;
   grenades = GRENADES_MAX;       // [NY] nye granater ved ny start
   reloading = 0;
 });
@@ -1504,7 +1593,7 @@ function sendState(dt) {
   sendTimer -= dt;
   if (sendTimer > 0 || !joined || !alive) return;
   sendTimer = 0.05;
-  socket.emit('state', [+player.x.toFixed(2), +player.feetY.toFixed(2), +player.z.toFixed(2), +player.yaw.toFixed(3), +player.pitch.toFixed(3), slide.active ? 1 : 0, crouching ? 1 : 0, gliding ? 1 : 0]);
+  socket.emit('state', [+player.x.toFixed(2), +player.feetY.toFixed(2), +player.z.toFixed(2), +player.yaw.toFixed(3), +player.pitch.toFixed(3), slide.active ? 1 : 0, crouching ? 1 : 0, gliding ? 1 : 0, weapon === sniperW ? 1 : 0]);
 }
 
 // ===================================================================

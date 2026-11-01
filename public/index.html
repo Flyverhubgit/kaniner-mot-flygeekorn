@@ -15,6 +15,12 @@
   /* Mobil på høykant: be om å snu telefonen */
   #rotate { position: fixed; inset: 0; z-index: 30; background: #2b3a47; color: #fff; display: none; align-items: center; justify-content: center; text-align: center; font: bold 22px sans-serif; padding: 30px; }
   @media (orientation: portrait) and (pointer: coarse) { body.playing #rotate { display: flex; } }
+  /* Kikkertsikte: svart rundt, klart hull i midten, tynne trådkors */
+  #scope { position: fixed; inset: 0; pointer-events: none; z-index: 3; display: none;
+    background: radial-gradient(circle at center, transparent 0, transparent 38vmin, rgba(0,0,0,0.92) 38.5vmin); }
+  #scope::before, #scope::after { content: ''; position: absolute; background: rgba(0,0,0,0.85); }
+  #scope::before { left: 50%; top: 12vh; bottom: 12vh; width: 2px; margin-left: -1px; }
+  #scope::after { top: 50%; left: calc(50% - 38vmin); right: calc(50% - 38vmin); height: 2px; margin-top: -1px; }
   #sensRow { font-size: 14px; display: flex; align-items: center; gap: 10px; }
   canvas { display: block; }
   #crosshair { position: fixed; left: 50%; top: 50%; width: 6px; height: 6px; margin: -3px 0 0 -3px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 1px #000; pointer-events: none; z-index: 3; }
@@ -69,6 +75,7 @@
 <div id="center"></div>
 <div id="scoreboard"></div>
 <div id="foamview"></div>
+<div id="scope"></div>
 <div id="rotate">&#128260;<br>Snu telefonen sideveis for å spille</div>
 
 <div id="menu">

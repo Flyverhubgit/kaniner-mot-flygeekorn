@@ -41,6 +41,39 @@ function buildHeldGun() {
   return g;
 }
 
+// ---------- Snikskyttergevær ----------
+// Kaninene har gulrot-gevær, flygeekornene nøtte-gevær. Front = +z.
+function buildSniper(team) {
+  const g = new THREE.Group();
+  const black = 0x151517, lens = 0x6fb7ff;
+  if (team === 'bunny') {
+    const OR = 0xe8761c, OR2 = 0xc65a0e, GREEN = 0x3f8f2a;
+    blk(g, 0.08, 0.10, 0.50, 0, 0, 0, OR);                 // gulrot-kropp
+    [-0.15, -0.03, 0.09, 0.21].forEach(z => blk(g, 0.085, 0.012, 0.02, 0, 0.03, z, OR2));   // gulrot-ringer
+    blk(g, 0.06, 0.06, 0.25, 0, 0.01, 0.37, OR);           // smalner av
+    blk(g, 0.04, 0.04, 0.20, 0, 0.01, 0.58, OR);           // løp (spissen av gulroten)
+    blk(g, 0.025, 0.025, 0.05, 0, 0.01, 0.70, OR2);
+    // Grønne gulrot-blader som kolbe
+    blk(g, 0.03, 0.10, 0.26, 0, 0.02, -0.36, GREEN);
+    blk(g, 0.03, 0.08, 0.22, -0.035, 0.05, -0.34, GREEN, [0, 0.25, 0]);
+    blk(g, 0.03, 0.08, 0.22, 0.035, 0.05, -0.34, GREEN, [0, -0.25, 0]);
+  } else {
+    const WOOD = 0x6b4423, DARK = 0x2b2b2b, NUT = 0xc89b5e, CAP = 0x5a3a1a;
+    blk(g, 0.08, 0.10, 0.50, 0, 0, 0, WOOD);               // treverk
+    blk(g, 0.04, 0.04, 0.45, 0, 0.01, 0.46, DARK);         // langt løp
+    blk(g, 0.05, 0.05, 0.05, 0, 0.01, 0.70, DARK);         // munning
+    // Kolbe formet som en nøtt (eikenøtt med hatt)
+    blk(g, 0.10, 0.13, 0.22, 0, -0.01, -0.36, NUT);
+    blk(g, 0.115, 0.06, 0.08, 0, 0.04, -0.25, CAP);
+  }
+  // Kikkertsikte (samme for begge)
+  blk(g, 0.05, 0.05, 0.22, 0, 0.09, 0.02, black);
+  blk(g, 0.045, 0.045, 0.01, 0, 0.09, 0.135, lens);
+  blk(g, 0.02, 0.04, 0.03, 0, 0.055, 0.02, black);        // feste
+  blk(g, 0.05, 0.11, 0.06, 0, -0.09, -0.08, black, [0.3, 0, 0]);   // grep
+  return g;
+}
+
 // ---------- Krigsutstyr: pannebånd og kulebelter ----------
 // Pannebånd rundt hodet med knute og to fliker bak
 function bandana(g, y, w, d, color) {
@@ -116,6 +149,7 @@ function buildBunny() {
   const gun = buildHeldGun();
   gun.position.set(0.24, 0.90, 0.48);
   g.add(gun);
+  g.userData.gun = gun;
   return g;
 }
 
@@ -167,5 +201,6 @@ function buildSquirrel() {
   const gun = buildHeldGun();
   gun.position.set(0.24, 0.88, 0.46);
   g.add(gun);
+  g.userData.gun = gun;
   return g;
 }

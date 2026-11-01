@@ -20,6 +20,8 @@ const RESPAWN_SECONDS = 3;
 const MAX_HP = 100;
 const DMG_BODY = 20;           // 5 treff i kroppen
 const DMG_HEAD = 100;          // midt i hodet = død med én kule
+const SNIPER_BODY = 60;        // snikskytter i kroppen (2 treff)
+const SNIPER_MIN_MS = 900;     // snikskytteren skyter ca. én gang i sekundet
 const MIN_HIT_MS = 80;         // våpenet skyter hvert 100. ms – litt slingringsmonn
 const TEAMS = ['bunny', 'squirrel'];
 const NADES_PER_LIFE = 3;      // granater per liv
@@ -123,6 +125,7 @@ io.on('connection', socket => {
     p.x = x; p.y = y; p.z = z; p.yaw = yaw; p.pitch = pitch; p.slide = s[5] ? 1 : 0;
     p.crouch = s[6] ? 1 : 0;
     p.glide = s[7] ? 1 : 0;
+    p.weapon = s[8] ? 1 : 0;      // 0 = AK, 1 = snikskytter
 
     // Toppen av pyramiden (2 x 2 m, 13 m høyt) = SKUMFEST!
     if (!foamOn && !intermission && y >= 12.9 && Math.abs(x) <= 1.2 && Math.abs(z) <= 1.2) {
@@ -139,7 +142,7 @@ io.on('connection', socket => {
     if (!p || !p.alive || !d || !Array.isArray(d.to)) return;
     const to = d.to.map(v => num(v, -500, 500));
     if (to.includes(null)) return;
-    socket.broadcast.emit('shot', { id: socket.id, to });
+    socket.broadcast.emit('shot', { id: socket.id, to, w: d.w === 'sniper' ? 'sniper' : 'ak' });
   });
 
   // Treff: klienten sier hvem den traff
@@ -153,7 +156,14 @@ io.on('connection', socket => {
     p.lastHit = now;
 
     const head = !!d.head;
-    applyDamage(p, t, head ? DMG_HEAD : DMG_BODY, head, 'gun');
+    if (d.weapon === 'sniper') {
+      // Snikskytter: 60 i kroppen (2 treff), 100 i hodet. Maks ett skudd i sekundet.
+      if (now - (p.lastSniper || 0) < SNIPER_MIN_MS) return;
+      p.lastSniper = now;
+      applyDamage(p, t, head ? DMG_HEAD : SNIPER_BODY, head, 'sniper');
+    } else {
+      applyDamage(p, t, head ? DMG_HEAD : DMG_BODY, head, 'gun');
+    }
   });
 
   // Granat kastet: telles ned og vises for de andre
@@ -199,7 +209,7 @@ io.on('connection', socket => {
 setInterval(() => {
   const snap = {};
   Object.values(players).forEach(p => {
-    snap[p.id] = [+p.x.toFixed(2), +p.y.toFixed(2), +p.z.toFixed(2), +p.yaw.toFixed(3), +p.pitch.toFixed(3), p.alive ? 1 : 0, p.slide, p.crouch ? 1 : 0, p.glide ? 1 : 0];
+    snap[p.id] = [+p.x.toFixed(2), +p.y.toFixed(2), +p.z.toFixed(2), +p.yaw.toFixed(3), +p.pitch.toFixed(3), p.alive ? 1 : 0, p.slide, p.crouch ? 1 : 0, p.glide ? 1 : 0, p.weapon ? 1 : 0];
   });
   io.emit('snap', snap);
 }, 50);
