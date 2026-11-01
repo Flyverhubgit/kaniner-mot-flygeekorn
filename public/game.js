@@ -292,6 +292,7 @@ window.addEventListener('keydown', e => {
   if (e.code === 'Space') jumpQueued = true;
   if (e.code === 'KeyC' || e.code === 'ControlLeft') slideQueued = true;
   if (e.code === 'KeyR') startReload();
+  if (e.code === 'KeyG') nadeQueued = true;            // [NY] kast granat
   if (e.code === 'Tab' && joined) e.preventDefault(); // [NY] Tab = poengtavle
 });
 window.addEventListener('keyup', e => { keys[e.code] = false; });
@@ -320,7 +321,7 @@ function releaseAll() {
 window.addEventListener('blur', releaseAll);
 
 if (!isTouch) {
-  overlay.innerHTML = '<div><b>Klikk for å spille</b><br>WASD = gå &nbsp; Mus = sikte<br>Mellomrom = hopp &nbsp; Shift = løp<br>C = slide (mens du går) &nbsp; Esc = pause<br>Venstre museknapp = skyt &nbsp; R = lad om<br>Hold Tab = poengtavle<br>Virker ikke musen? Hold inne venstre knapp og dra, og skyt med F.</div>';
+  overlay.innerHTML = '<div><b>Klikk for å spille</b><br>WASD = gå &nbsp; Mus = sikte<br>Mellomrom = hopp &nbsp; Shift = løp<br>C = slide (mens du går) &nbsp; Esc = pause<br>Venstre museknapp = skyt &nbsp; R = lad om<br>G = kast granat &nbsp; Hold Tab = poengtavle<br>Virker ikke musen? Hold inne venstre knapp og dra, og skyt med F.</div>';
   overlay.addEventListener('click', () => {
     try {
       const p = renderer.domElement.requestPointerLock();
@@ -337,7 +338,7 @@ if (!isTouch) {
     overlay.style.display = locked ? 'none' : 'flex';
   });
 } else {
-  overlay.innerHTML = '<div><b>Trykk for å starte</b><br>Venstre tommel = gå<br>Høyre tommel = se deg rundt<br>Knappene nede til høyre = skyt, lad om, hopp og slide</div>';
+  overlay.innerHTML = '<div><b>Trykk for å starte</b><br>Venstre tommel = gå<br>Høyre tommel = se deg rundt<br>Knappene nede til høyre = skyt, lad om, granat, hopp og slide</div>';
   overlay.addEventListener('touchstart', e => { e.preventDefault(); overlay.style.display = 'none'; }, { passive: false });
 }
 
@@ -370,6 +371,12 @@ if (isTouch) {
   reloadBtn.style.cssText = 'position:fixed;right:145px;bottom:160px;width:64px;height:64px;border-radius:50%;background:rgba(255,255,255,0.3);border:2px solid rgba(255,255,255,0.6);color:#fff;font:bold 13px sans-serif;display:flex;align-items:center;justify-content:center;z-index:5;user-select:none;';
   document.body.appendChild(reloadBtn);
 
+  // [NY] Granat-knapp
+  const nadeBtn = document.createElement('div');
+  nadeBtn.textContent = 'GRANAT';
+  nadeBtn.style.cssText = 'position:fixed;right:240px;bottom:66px;width:64px;height:64px;border-radius:50%;background:rgba(110,140,60,0.45);border:2px solid rgba(255,255,255,0.6);color:#fff;font:bold 11px sans-serif;display:flex;align-items:center;justify-content:center;z-index:5;user-select:none;';
+  document.body.appendChild(nadeBtn);
+
   let moveId = null, lookId = null, fireId = null;
   const origin = { x: 0, y: 0 }, lastLook = { x: 0, y: 0 };
 
@@ -381,6 +388,7 @@ if (isTouch) {
       if (t.target === slideBtn) { slideQueued = true; continue; }
       if (t.target === fireBtn) { fireId = t.identifier; touchFire = true; continue; }
       if (t.target === reloadBtn) { startReload(); continue; }
+      if (t.target === nadeBtn) { nadeQueued = true; continue; }
       if (t.clientX < window.innerWidth / 2) {
         if (moveId === null) {
           moveId = t.identifier;
@@ -514,7 +522,7 @@ function updatePlayer(dt) {
 }
 
 // ---------- Våpen: blokkete AK-47 ----------
-const weapon = { mag: 30, magSize: 30, reserve: 90, fireDelay: 0.1, reloadTime: 2.0 };
+const weapon = { mag: 100, magSize: 100, reserve: Infinity, fireDelay: 0.1, reloadTime: 2.0 };   // [NY] 100 i magasinet, uendelig reserve
 let fireHeld = false, touchFire = false, fireCooldown = 0, reloading = 0, recoil = 0, flashTime = 0;
 
 // Modellen ligger "fast" på kameraet, så den følger med når du ser deg rundt
@@ -666,6 +674,231 @@ function addStuffing(p) {
   }
 }
 
+// ---------- [NY] Granater ----------
+const GRENADES_MAX = 3, NADE_FUSE = 2.0, NADE_SPEED = 17, NADE_GRAVITY = 20, NADE_R = 0.1;
+let grenades = GRENADES_MAX, nadeQueued = false, nadeCooldown = 0, nadeSeq = 0, shake = 0;
+const nades = [];   // { id, mine, mesh, x, y, z, vx, vy, vz, t }
+
+// Blokkete ananas-granat: gul kropp med brune ruter, grønn topp og sikringsring
+function buildNadeMesh() {
+  const g = new THREE.Group();
+  const yellow = new THREE.MeshStandardMaterial({ color: 0xd9a62e });
+  const brown = new THREE.MeshStandardMaterial({ color: 0x8a5a14 });
+  const green = new THREE.MeshStandardMaterial({ color: 0x3f8f2a });
+  const metal = new THREE.MeshStandardMaterial({ color: 0x9a9a90 });
+  const add = (w, h, d, x, y, z, m, rx, rz) => {
+    const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m);
+    b.position.set(x, y, z);
+    if (rx) b.rotation.x = rx;
+    if (rz) b.rotation.z = rz;
+    b.castShadow = true;
+    g.add(b);
+  };
+  add(0.16, 0.20, 0.16, 0, 0, 0, yellow);                       // kropp
+  // Brune "ruter" i sjakkmønster på alle fire sider
+  for (let row = 0; row < 3; row++) {
+    for (let col = 0; col < 2; col++) {
+      const u = (col - 0.5) * 0.07 + (row % 2 ? 0.035 : 0), y = (row - 1) * 0.06;
+      if (Math.abs(u) > 0.07) continue;
+      add(0.03, 0.03, 0.01, u, y, 0.083, brown);
+      add(0.03, 0.03, 0.01, -u, y, -0.083, brown);
+      add(0.01, 0.03, 0.03, 0.083, y, u, brown);
+      add(0.01, 0.03, 0.03, -0.083, y, -u, brown);
+    }
+  }
+  // Grønn bladtopp
+  add(0.04, 0.14, 0.02, 0, 0.16, 0, green);
+  add(0.03, 0.12, 0.02, 0.04, 0.15, 0, green, 0, -0.5);
+  add(0.03, 0.12, 0.02, -0.04, 0.15, 0, green, 0, 0.5);
+  add(0.02, 0.12, 0.03, 0, 0.15, 0.04, green, 0.5, 0);
+  add(0.02, 0.12, 0.03, 0, 0.15, -0.04, green, -0.5, 0);
+  // Sikringsring (det er tross alt en granat)
+  add(0.05, 0.05, 0.01, 0.1, 0.06, 0, metal);
+  return g;
+}
+
+// Treffer granaten noe? (gulv eller en boks)
+function nadeHits(x, y, z) {
+  if (y < NADE_R) return true;
+  for (const b of colliders) {
+    if (x + NADE_R > b.minX && x - NADE_R < b.maxX && y + NADE_R > b.minY && y - NADE_R < b.maxY &&
+        z + NADE_R > b.minZ && z - NADE_R < b.maxZ) return true;
+  }
+  return false;
+}
+
+function spawnNade(id, mine, p, v) {
+  const mesh = buildNadeMesh();
+  mesh.position.set(p[0], p[1], p[2]);
+  scene.add(mesh);
+  nades.push({ id, mine, mesh, x: p[0], y: p[1], z: p[2], vx: v[0], vy: v[1], vz: v[2], t: 0 });
+}
+
+function removeNade(id) {
+  const i = nades.findIndex(n => n.id === id);
+  if (i < 0) return;
+  scene.remove(nades[i].mesh);
+  nades.splice(i, 1);
+}
+
+function throwNade() {
+  if (!joined || !alive || grenades <= 0 || nadeCooldown > 0) return;
+  grenades--;
+  nadeCooldown = 0.8;
+  camera.updateMatrixWorld(true);
+  const dir = camera.getWorldDirection(new THREE.Vector3());
+  let start = camera.position.clone().addScaledVector(dir, 0.4);
+  start.y -= 0.15;
+  if (nadeHits(start.x, start.y, start.z)) start = camera.position.clone();
+  const p = [+start.x.toFixed(2), +start.y.toFixed(2), +start.z.toFixed(2)];
+  const v = [+(dir.x * NADE_SPEED).toFixed(2), +(dir.y * NADE_SPEED + 3.5).toFixed(2), +(dir.z * NADE_SPEED).toFixed(2)];
+  const id = myId + ':' + (++nadeSeq);
+  spawnNade(id, true, p, v);
+  socket.emit('throw', { id, p, v });
+}
+
+// Flytt alle granater: tyngdekraft, sprett mot vegger og gulv
+function updateNades(dt) {
+  nadeCooldown -= dt;
+  if (nadeQueued) { throwNade(); nadeQueued = false; }
+  for (let i = nades.length - 1; i >= 0; i--) {
+    const n = nades[i];
+    n.t += dt;
+    const steps = Math.max(1, Math.ceil(Math.hypot(n.vx, n.vy, n.vz) * dt / 0.08));
+    const h = dt / steps;
+    for (let s = 0; s < steps; s++) {
+      n.vy -= NADE_GRAVITY * h;
+      let nx = n.x + n.vx * h;
+      if (nadeHits(nx, n.y, n.z)) n.vx *= -0.4; else n.x = nx;
+      let ny = n.y + n.vy * h;
+      if (nadeHits(n.x, ny, n.z)) {
+        if (n.vy < 0) { n.vy *= -0.35; n.vx *= 0.75; n.vz *= 0.75; } else n.vy *= -0.3;
+      } else n.y = ny;
+      let nz = n.z + n.vz * h;
+      if (nadeHits(n.x, n.y, nz)) n.vz *= -0.4; else n.z = nz;
+    }
+    n.mesh.position.set(n.x, n.y, n.z);
+    n.mesh.rotation.x += dt * 9;
+    n.mesh.rotation.z += dt * 5;
+
+    if (n.mine && n.t >= NADE_FUSE) {
+      socket.emit('boom', { id: n.id, p: [+n.x.toFixed(2), +n.y.toFixed(2), +n.z.toFixed(2)] });
+      removeNade(n.id);
+    } else if (!n.mine && n.t >= NADE_FUSE + 1.5) {
+      removeNade(n.id);              // smellet kom aldri – rydd opp
+    }
+  }
+
+  // Eksplosjoner: et kort lysglimt
+  booms.forEach(b => {
+    if (b.life <= 0) return;
+    b.life -= dt;
+    const k = 1 - Math.max(0, b.life) / 0.35;         // 0 -> 1
+    b.ball.scale.setScalar(0.5 + k * 8);
+    b.ball.material.opacity = Math.max(0, 0.85 - k);
+    b.ball.visible = b.life > 0;
+  });
+
+  // Bamse-fyll: flyr ut, lander, og blir liggende og vugge som bobler i 30 sek
+  const now = performance.now() / 1000;
+  stuffing.forEach(s => {
+    if (!s.mesh.visible) return;
+    s.life -= dt;
+    if (s.life <= 0) { s.mesh.visible = false; return; }
+    if (!s.resting) {
+      s.vy -= 9 * dt;
+      s.vx *= 0.985; s.vz *= 0.985;
+      const nx = s.x + s.vx * dt, ny = s.y + s.vy * dt, nz = s.z + s.vz * dt;
+      if (nadeHits(nx, s.y, s.z)) s.vx *= -0.3; else s.x = nx;
+      if (nadeHits(s.x, s.y, nz)) s.vz *= -0.3; else s.z = nz;
+      if (nadeHits(s.x, ny, s.z)) {
+        if (s.vy < 0) { s.resting = true; s.vy = 0; } else s.vy *= -0.3;
+      } else s.y = ny;
+      s.mesh.rotation.x += dt * s.spin; s.mesh.rotation.y += dt * s.spin;
+    }
+    // Myk "boble"-vugging, og krymper bort det siste sekundet
+    const wob = 1 + Math.sin(now * 2.5 + s.phase) * 0.08;
+    const fade = Math.min(1, s.life);
+    s.mesh.scale.set(s.size * wob * fade, s.size * (2 - wob) * fade, s.size * wob * fade);
+    s.mesh.position.set(s.x, s.y + (s.resting ? s.size * 0.35 : 0), s.z);
+  });
+
+  // Skjelving når et smell er nært
+  shake = Math.max(0, shake - dt * 2.5);
+  if (shake > 0 && alive && joined) {
+    camera.rotation.x += (Math.random() - 0.5) * shake * 0.08;
+    camera.rotation.y += (Math.random() - 0.5) * shake * 0.08;
+  }
+}
+
+// Pool med eksplosjoner: et kort lyst glimt
+const booms = [];
+for (let i = 0; i < 4; i++) {
+  const ball = new THREE.Mesh(new THREE.SphereGeometry(0.5, 12, 8),
+    new THREE.MeshBasicMaterial({ color: 0xfff3d6, transparent: true, opacity: 0, depthWrite: false }));
+  ball.visible = false;
+  scene.add(ball);
+  booms.push({ ball, life: 0 });
+}
+let boomIndex = 0;
+
+// Pool med bamse-fyll (400 dotter totalt, de eldste gjenbrukes)
+const STUFF_PER_BOOM = 45, STUFF_LIFE = 30;
+const stuffGeo = new THREE.BoxGeometry(1, 1, 1);
+const stuffMats = [0xffffff, 0xf6f1e6, 0xfdf8ef].map(c => new THREE.MeshStandardMaterial({ color: c, roughness: 1 }));
+const stuffing = [];
+for (let i = 0; i < 400; i++) {
+  const m = new THREE.Mesh(stuffGeo, stuffMats[i % 3]);
+  m.visible = false;
+  m.castShadow = true;
+  scene.add(m);
+  stuffing.push({ mesh: m, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, life: 0, size: 0.1, phase: 0, spin: 0, resting: false });
+}
+let stuffIndex = 0;
+
+function explode(p) {
+  const b = booms[boomIndex];
+  boomIndex = (boomIndex + 1) % booms.length;
+  b.life = 0.35;
+  b.ball.position.set(p[0], p[1], p[2]);
+  b.ball.visible = true;
+  for (let i = 0; i < STUFF_PER_BOOM; i++) {
+    const s = stuffing[stuffIndex];
+    stuffIndex = (stuffIndex + 1) % stuffing.length;
+    const a = Math.random() * Math.PI * 2, out = 2 + Math.random() * 6;
+    s.x = p[0]; s.y = Math.max(p[1], 0.15); s.z = p[2];
+    s.vx = Math.cos(a) * out; s.vz = Math.sin(a) * out; s.vy = 3 + Math.random() * 6;
+    s.size = 0.1 + Math.random() * 0.16;
+    s.phase = Math.random() * 6.3;
+    s.spin = (Math.random() - 0.5) * 12;
+    s.life = STUFF_LIFE + Math.random() * 3;
+    s.resting = false;
+    s.mesh.rotation.set(Math.random() * 3, Math.random() * 3, 0);
+    s.mesh.visible = true;
+  }
+  const dist = Math.hypot(p[0] - player.x, p[1] - (player.feetY + 1), p[2] - player.z);
+  shake = Math.max(shake, 1.2 - dist / 15);
+  playBoom(Math.max(0.05, 0.6 - dist * 0.012));
+}
+
+// Dypt smell (laget i koden, ingen lydfil)
+function playBoom(vol) {
+  if (!audioCtx) return;
+  const sr = audioCtx.sampleRate, len = Math.floor(0.8 * sr);
+  const buf = audioCtx.createBuffer(1, len, sr);
+  const data = buf.getChannelData(0);
+  for (let i = 0; i < len; i++) data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 2.5);
+  const src = audioCtx.createBufferSource();
+  src.buffer = buf;
+  const filt = audioCtx.createBiquadFilter();
+  filt.type = 'lowpass';
+  filt.frequency.value = 450;
+  const gain = audioCtx.createGain();
+  gain.gain.value = vol;
+  src.connect(filt); filt.connect(gain); gain.connect(audioCtx.destination);
+  src.start();
+}
+
 // ---------- Skyting ----------
 const raycaster = new THREE.Raycaster();
 raycaster.far = 200;
@@ -794,7 +1027,8 @@ function updateWeapon(dt) {
     if (s.life <= 0) s.mesh.visible = false;
   });
 
-  hud.textContent = reloading > 0 ? 'LADER...' : weapon.mag + ' / ' + weapon.reserve;
+  hud.textContent = (reloading > 0 ? 'LADER...' : weapon.mag + ' / ' + (weapon.reserve === Infinity ? '∞' : weapon.reserve)) +
+    '   💣 ' + grenades;   // [NY] viser granater også
 }
 
 // ===================================================================
@@ -924,7 +1158,7 @@ function updateHud(dt) {
 
 function addKillfeed(d) {
   const div = document.createElement('div');
-  div.innerHTML = teamSpan(d.killerTeam, esc(d.killerName)) + (d.head ? ' &#127919; ' : ' &#10140; ') + teamSpan(d.victimTeam, esc(d.victimName));
+  div.innerHTML = teamSpan(d.killerTeam, esc(d.killerName)) + (d.weapon === 'nade' ? ' &#128163; ' : (d.head ? ' &#127919; ' : ' &#10140; ')) + teamSpan(d.victimTeam, esc(d.victimName));
   killfeed.prepend(div);
   while (killfeed.children.length > 5) killfeed.lastChild.remove();
   setTimeout(() => div.remove(), 6000);
@@ -948,6 +1182,7 @@ socket.on('welcome', d => {
   joined = true;
   alive = true;
   hp = 100;
+  grenades = GRENADES_MAX;
   score = d.score;
   timeLeft = d.timeLeft;
   roundMsg = d.intermission ? 'Runden er over – ny runde starter snart' : '';
@@ -988,6 +1223,13 @@ socket.on('shot', d => {
   playShot(Math.max(0.03, 0.3 - dist * 0.006));
 });
 
+// [NY] Granater fra andre spillere, og smell fra serveren
+socket.on('nade', d => spawnNade(d.id, false, d.p, d.v));
+socket.on('boom', d => {
+  removeNade(d.id);
+  explode(d.p);
+});
+
 socket.on('hitConfirm', d => {
   hitmarkTime = 0.15;
   hitmarker.className = d.kill ? 'kill' : '';
@@ -1020,7 +1262,8 @@ socket.on('respawn', sp => {
   alive = true;
   hp = 100;
   weapon.mag = weapon.magSize;   // full ammo ved ny start
-  weapon.reserve = 90;
+  weapon.reserve = Infinity;
+  grenades = GRENADES_MAX;       // [NY] nye granater ved ny start
   reloading = 0;
 });
 
@@ -1119,7 +1362,7 @@ el('joinBtn').addEventListener('click', () => {
 });
 
 // [NY] Til testing i nettleseren
-window.__game = { player, others, socket, get alive() { return alive; }, get hp() { return hp; }, get score() { return score; }, shoot: () => shoot(), keys };
+window.__game = { player, others, socket, get alive() { return alive; }, get hp() { return hp; }, get score() { return score; }, shoot: () => shoot(), keys, throwNade: () => { nadeQueued = true; }, get grenades() { return grenades; }, nades, get weapon() { return weapon; }, booms, stuffing };
 
 // ---------- Tegning (to omganger: verden først, så våpenet oppå) ----------
 renderer.autoClear = false;
@@ -1153,6 +1396,7 @@ function animate(now) {
     if (alive) updatePlayer(dt);
     sendState(dt);
     updateOthers(dt);
+    updateNades(dt);            // [NY] granater og smell
     updateHud(dt);
   }
   updateWeapon(dt);

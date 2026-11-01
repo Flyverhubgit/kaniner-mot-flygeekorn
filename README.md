@@ -22,10 +22,13 @@ Blokkete flerspiller-FPS i nettleseren. Velg lag, skyt det andre laget. 5 minutt
 | WASD gå, mus sikte | venstre tommel gå |
 | venstre museknapp skyt, R lad om | høyre tommel se |
 | mellomrom hopp, Shift løp, C slide | knapper: SKYT, LADE, HOPP, SLIDE |
+| G = kast granat | knapp: GRANAT |
 | hold Tab = poengtavle | |
 
 ## Regler
 - 100 liv. Kropp 20 skade, hode 50.
-- Ny start etter 3 sek, med full ammo.
+- 100 skudd i magasinet, uendelig reserve.
+- 3 granater per liv. Smeller etter 2 sek, opptil 110 skade innenfor 6 m.
+- Ny start etter 3 sek, med full ammo og granater.
 - Ingen skade på eget lag.
 - Ingen juksebeskyttelse – spill med venner.

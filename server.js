@@ -22,6 +22,9 @@ const DMG_BODY = 20;           // 5 treff i kroppen
 const DMG_HEAD = 50;           // 2 treff i hodet
 const MIN_HIT_MS = 80;         // våpenet skyter hvert 100. ms – litt slingringsmonn
 const TEAMS = ['bunny', 'squirrel'];
+const NADES_PER_LIFE = 3;      // granater per liv
+const NADE_RADIUS = 6;         // sprengradius i meter
+const NADE_MAX_DMG = 110;      // skade midt i smellet (dreper)
 
 const players = {};
 let score = { bunny: 0, squirrel: 0 };
@@ -55,8 +58,25 @@ function num(v, lo, hi) {
   return typeof v === 'number' && isFinite(v) ? Math.max(lo, Math.min(hi, v)) : null;
 }
 
+// Skade fra skudd eller granat. weapon = 'gun' eller 'nade'
+function applyDamage(p, t, dmg, head, weapon) {
+  t.hp -= dmg;
+  io.to(p.id).emit('hitConfirm', { head, kill: t.hp <= 0 });
+  io.to(t.id).emit('damaged', { hp: Math.max(0, t.hp), fromX: p.x, fromZ: p.z });
+
+  if (t.hp <= 0) {
+    t.alive = false;
+    t.deaths++;
+    p.kills++;
+    score[p.team]++;
+    io.emit('kill', { killer: p.id, killerName: p.name, killerTeam: p.team, victim: t.id, victimName: t.name, victimTeam: t.team, head, weapon, score });
+    setTimeout(() => { if (players[t.id] && !t.alive) respawn(t); }, RESPAWN_SECONDS * 1000);
+  }
+}
+
 function respawn(p) {
   const sp = spawnFor(p.team);
+  p.nades = NADES_PER_LIFE;
   p.hp = MAX_HP;
   p.alive = true;
   p.x = sp.x; p.y = 0; p.z = sp.z; p.yaw = sp.yaw;
@@ -75,7 +95,8 @@ io.on('connection', socket => {
     const p = players[socket.id] = {
       id: socket.id, name, team,
       x: sp.x, y: 0, z: sp.z, yaw: sp.yaw, pitch: 0, slide: 0,
-      hp: MAX_HP, alive: true, kills: 0, deaths: 0, lastHit: 0
+      hp: MAX_HP, alive: true, kills: 0, deaths: 0, lastHit: 0,
+      nades: NADES_PER_LIFE, pending: {}
     };
     const others = {};
     Object.values(players).forEach(o => { if (o.id !== socket.id) others[o.id] = publicPlayer(o); });
@@ -118,18 +139,37 @@ io.on('connection', socket => {
     p.lastHit = now;
 
     const head = !!d.head;
-    t.hp -= head ? DMG_HEAD : DMG_BODY;
-    socket.emit('hitConfirm', { head, kill: t.hp <= 0 });
-    io.to(t.id).emit('damaged', { hp: Math.max(0, t.hp), fromX: p.x, fromZ: p.z });
+    applyDamage(p, t, head ? DMG_HEAD : DMG_BODY, head, 'gun');
+  });
 
-    if (t.hp <= 0) {
-      t.alive = false;
-      t.deaths++;
-      p.kills++;
-      score[p.team]++;
-      io.emit('kill', { killer: p.id, killerName: p.name, killerTeam: p.team, victim: t.id, victimName: t.name, victimTeam: t.team, head, score });
-      setTimeout(() => { if (players[t.id] && !t.alive) respawn(t); }, RESPAWN_SECONDS * 1000);
-    }
+  // Granat kastet: telles ned og vises for de andre
+  socket.on('throw', d => {
+    const p = players[socket.id];
+    if (!p || !p.alive || p.nades <= 0 || !d || typeof d.id !== 'string' || d.id.length > 40) return;
+    if (!Array.isArray(d.p) || !Array.isArray(d.v)) return;
+    const pos = d.p.map(v => num(v, -40, 40)), vel = d.v.map(v => num(v, -40, 40));
+    if (pos.includes(null) || vel.includes(null)) return;
+    p.nades--;
+    p.pending[d.id] = Date.now();
+    socket.broadcast.emit('nade', { id: d.id, p: pos, v: vel });
+  });
+
+  // Granaten smalt: skade på fiender innenfor radiusen
+  socket.on('boom', d => {
+    const p = players[socket.id];
+    if (!p || !d || !p.pending[d.id]) return;
+    const age = Date.now() - p.pending[d.id];
+    delete p.pending[d.id];
+    if (age > 60000 || !Array.isArray(d.p)) return;   // stor margin for trege maskiner (spilltid går saktere under 20 fps)
+    const pos = d.p.map(v => num(v, -40, 40));
+    if (pos.includes(null)) return;
+    io.emit('boom', { id: d.id, p: pos });
+    if (intermission) return;
+    Object.values(players).forEach(t => {
+      if (!t.alive || t.team === p.team) return;
+      const dist = Math.hypot(t.x - pos[0], t.y + 0.9 - pos[1], t.z - pos[2]);
+      if (dist < NADE_RADIUS) applyDamage(p, t, Math.round(NADE_MAX_DMG * (1 - dist / NADE_RADIUS)), false, 'nade');
+    });
   });
 
   socket.on('disconnect', () => {
