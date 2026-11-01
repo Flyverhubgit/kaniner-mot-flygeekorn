@@ -250,6 +250,9 @@ camera.rotation.order = 'YXZ';
 const SLIDE_TIME = 0.8, SLIDE_SPEED = 14, SLIDE_EYE = 1.0;
 const slide = { active: false, t: 0, dirX: 0, dirZ: 0, eye: EYE };
 let slideQueued = false;
+// [NY] Dukke-høyde: øynene under skummet (skummet er 1,2 m dypt)
+const CROUCH_EYE = 0.7;
+let crouching = false;
 
 // Treffer spilleren en vegg/boks? (lave bokser opp til STEP kan man gå opp på)
 function blocked(px, pz, fy) {
@@ -284,6 +287,10 @@ const isTouch = window.matchMedia('(pointer: coarse)').matches;
 const keys = {};
 let jumpQueued = false;
 const touchMove = { x: 0, y: 0 };
+let touchCrouch = false;   // [NY] DUKK-knappen på mobil (av/på)
+let lookFire = false;      // [NY] dobbelttrykk-og-hold på høyre side = skyt
+let sens = 1;              // [NY] sikte-følsomhet fra menyen
+try { sens = parseFloat(localStorage.getItem('kmf-sens')) || 1; } catch (err) {}
 const overlay = document.getElementById('overlay');
 
 window.addEventListener('keydown', e => {
@@ -306,8 +313,8 @@ document.addEventListener('mousemove', e => {
   const locked = document.pointerLockElement === renderer.domElement;
   if (!joined) return;                     // [NY] ikke snu kameraet i menyen
   if (!locked && !mouseDown) return;
-  player.yaw -= e.movementX * 0.002;
-  player.pitch -= e.movementY * 0.002;
+  player.yaw -= e.movementX * 0.002 * sens;
+  player.pitch -= e.movementY * 0.002 * sens;
   player.pitch = Math.max(-1.45, Math.min(1.45, player.pitch));
 });
 
@@ -321,7 +328,7 @@ function releaseAll() {
 window.addEventListener('blur', releaseAll);
 
 if (!isTouch) {
-  overlay.innerHTML = '<div><b>Klikk for å spille</b><br>WASD = gå &nbsp; Mus = sikte<br>Mellomrom = hopp &nbsp; Shift = løp<br>C = slide (mens du går) &nbsp; Esc = pause<br>Venstre museknapp = skyt &nbsp; R = lad om<br>G = kast granat &nbsp; Hold Tab = poengtavle<br>Virker ikke musen? Hold inne venstre knapp og dra, og skyt med F.</div>';
+  overlay.innerHTML = '<div><b>Klikk for å spille</b><br>WASD = gå &nbsp; Mus = sikte<br>Mellomrom = hopp &nbsp; Shift = løp<br>C = slide (mens du går) &nbsp; Esc = pause<br>Venstre museknapp = skyt &nbsp; R = lad om<br>G = kast granat &nbsp; Hold Q = dukk<br>Hold Tab = poengtavle<br>Virker ikke musen? Hold inne venstre knapp og dra, og skyt med F.</div>';
   overlay.addEventListener('click', () => {
     try {
       const p = renderer.domElement.requestPointerLock();
@@ -338,7 +345,7 @@ if (!isTouch) {
     overlay.style.display = locked ? 'none' : 'flex';
   });
 } else {
-  overlay.innerHTML = '<div><b>Trykk for å starte</b><br>Venstre tommel = gå<br>Høyre tommel = se deg rundt<br>Knappene nede til høyre = skyt, lad om, granat, hopp og slide</div>';
+  overlay.innerHTML = '<div><b>Trykk for å starte</b><br>Venstre tommel = gå<br>Høyre tommel = se deg rundt<br>Knappene nede til høyre = skyt, lad om, granat, hopp, slide og dukk<br>Skyt: dobbelttrykk og hold på høyre side (dra for å sikte),<br>eller hold SKYT-knappen</div>';
   overlay.addEventListener('touchstart', e => { e.preventDefault(); overlay.style.display = 'none'; }, { passive: false });
 }
 
@@ -377,8 +384,14 @@ if (isTouch) {
   nadeBtn.style.cssText = 'position:fixed;right:240px;bottom:66px;width:64px;height:64px;border-radius:50%;background:rgba(110,140,60,0.45);border:2px solid rgba(255,255,255,0.6);color:#fff;font:bold 11px sans-serif;display:flex;align-items:center;justify-content:center;z-index:5;user-select:none;';
   document.body.appendChild(nadeBtn);
 
-  let moveId = null, lookId = null, fireId = null;
-  const origin = { x: 0, y: 0 }, lastLook = { x: 0, y: 0 };
+  // [NY] Dukk-knapp (trykk = dukk, trykk igjen = reis deg)
+  const crouchBtn = document.createElement('div');
+  crouchBtn.textContent = 'DUKK';
+  crouchBtn.style.cssText = 'position:fixed;right:38px;bottom:220px;width:64px;height:64px;border-radius:50%;background:rgba(255,255,255,0.3);border:2px solid rgba(255,255,255,0.6);color:#fff;font:bold 13px sans-serif;display:flex;align-items:center;justify-content:center;z-index:5;user-select:none;';
+  document.body.appendChild(crouchBtn);
+
+  let moveId = null, lookId = null, fireId = null, lastLookTap = 0;
+  const origin = { x: 0, y: 0 }, lastLook = { x: 0, y: 0 }, lastFire = { x: 0, y: 0 };
 
   document.addEventListener('touchstart', e => {
     if (!joined) return;                   // [NY] la menyen virke normalt
@@ -386,7 +399,13 @@ if (isTouch) {
     for (const t of e.changedTouches) {
       if (t.target === jumpBtn) { jumpQueued = true; continue; }
       if (t.target === slideBtn) { slideQueued = true; continue; }
-      if (t.target === fireBtn) { fireId = t.identifier; touchFire = true; continue; }
+      // [FIKS] Dra fingeren på SKYT-knappen for å sikte mens du skyter
+      if (t.target === fireBtn) { fireId = t.identifier; touchFire = true; lastFire.x = t.clientX; lastFire.y = t.clientY; continue; }
+      if (t.target === crouchBtn) {
+        touchCrouch = !touchCrouch;
+        crouchBtn.style.background = touchCrouch ? 'rgba(255,150,205,0.6)' : 'rgba(255,255,255,0.3)';
+        continue;
+      }
       if (t.target === reloadBtn) { startReload(); continue; }
       if (t.target === nadeBtn) { nadeQueued = true; continue; }
       if (t.clientX < window.innerWidth / 2) {
@@ -399,6 +418,10 @@ if (isTouch) {
         }
       } else if (lookId === null) {
         lookId = t.identifier;
+        // [NY] Dobbelttrykk på høyre side = skyt så lenge fingeren ligger (og sikt ved å dra)
+        const now = performance.now();
+        if (now - lastLookTap < 320 && Math.hypot(t.clientX - lastLook.x, t.clientY - lastLook.y) < 70) lookFire = true;
+        lastLookTap = now;
         lastLook.x = t.clientX; lastLook.y = t.clientY;
       }
     }
@@ -412,13 +435,21 @@ if (isTouch) {
         let dx = (t.clientX - origin.x) / 50, dy = (t.clientY - origin.y) / 50;
         const len = Math.hypot(dx, dy);
         if (len > 1) { dx /= len; dy /= len; }
-        touchMove.x = dx; touchMove.y = -dy;
         joyKnob.style.transform = 'translate(' + dx * 35 + 'px,' + dy * 35 + 'px)';
+        // [FIKS] Liten død sone, så tommelen ikke får deg til å skli
+        if (len < 0.18) { dx = 0; dy = 0; }
+        touchMove.x = dx; touchMove.y = -dy;
       } else if (t.identifier === lookId) {
-        player.yaw -= (t.clientX - lastLook.x) * 0.005;
-        player.pitch -= (t.clientY - lastLook.y) * 0.005;
+        player.yaw -= (t.clientX - lastLook.x) * 0.005 * sens;
+        player.pitch -= (t.clientY - lastLook.y) * 0.005 * sens;
         player.pitch = Math.max(-1.45, Math.min(1.45, player.pitch));
         lastLook.x = t.clientX; lastLook.y = t.clientY;
+      } else if (t.identifier === fireId) {
+        // [FIKS] Sikt med samme finger som skyter
+        player.yaw -= (t.clientX - lastFire.x) * 0.005 * sens;
+        player.pitch -= (t.clientY - lastFire.y) * 0.005 * sens;
+        player.pitch = Math.max(-1.45, Math.min(1.45, player.pitch));
+        lastFire.x = t.clientX; lastFire.y = t.clientY;
       }
     }
   }, { passive: false });
@@ -430,7 +461,7 @@ if (isTouch) {
         joyBase.style.display = 'none';
         joyKnob.style.transform = 'none';
       }
-      if (t.identifier === lookId) lookId = null;
+      if (t.identifier === lookId) { lookId = null; lookFire = false; }
       if (t.identifier === fireId) { fireId = null; touchFire = false; }
     }
   }
@@ -454,13 +485,17 @@ function updatePlayer(dt) {
     overlay.style.display = 'none';
   }
 
-  const speed = (keys['ShiftLeft'] || keys['ShiftRight']) ? SPRINT : WALK;
+  // [NY] Dukk: hold Q (PC) eller DUKK-knappen (mobil). Halv fart, lavt kamera.
+  crouching = !!(keys['KeyQ'] || touchCrouch);
+  const speed = crouching ? WALK * 0.5 : ((keys['ShiftLeft'] || keys['ShiftRight']) ? SPRINT : WALK);
   const sin = Math.sin(player.yaw), cos = Math.cos(player.yaw);
   let dx = (-sin * fwd + cos * strafe) * speed * dt;
   let dz = (-cos * fwd - sin * strafe) * speed * dt;
 
   // Slide (C eller venstre Ctrl på PC/Mac, SLIDE-knappen på mobil)
-  if (slideQueued && !slide.active && player.onGround && (fwd !== 0 || strafe !== 0)) {
+  // [NY] Ingen slide i skummet
+  const inFoam = foamHeightAt(player.x, player.z) > player.feetY + 0.05;
+  if (slideQueued && !slide.active && player.onGround && !inFoam && (fwd !== 0 || strafe !== 0)) {
     const l = Math.hypot(dx, dz) || 1;
     slide.dirX = dx / l; slide.dirZ = dz / l;
     slide.active = true; slide.t = 0;
@@ -470,7 +505,7 @@ function updatePlayer(dt) {
   if (slide.active) {
     slide.t += dt;
     const k = 1 - slide.t / SLIDE_TIME;                   // 1 (rask) -> 0 (stopp)
-    if (k <= 0 || !player.onGround) {
+    if (k <= 0 || !player.onGround || inFoam) {
       slide.active = false;
     } else {
       dx = slide.dirX * SLIDE_SPEED * k * dt;
@@ -478,7 +513,7 @@ function updatePlayer(dt) {
     }
   }
   // Kameraet glir ned under sliden og opp igjen etterpå
-  slide.eye += ((slide.active ? SLIDE_EYE : EYE) - slide.eye) * Math.min(1, 12 * dt);
+  slide.eye += ((slide.active ? SLIDE_EYE : (crouching ? CROUCH_EYE : EYE)) - slide.eye) * Math.min(1, 12 * dt);
 
   // Flytt x og z hver for seg, så man sklir langs vegger
   if (!blocked(player.x + dx, player.z, player.feetY)) player.x += dx;
@@ -899,6 +934,124 @@ function playBoom(vol) {
   src.start();
 }
 
+// ---------- [NY] Skumfest ----------
+// Når noen når toppen av pyramiden fylles hele banen med rosa skum (1,3 m).
+// Dukk, så er du gjemt. Granater lager hull som blir stående til neste runde.
+const FOAM_H = 1.2, FOAM_HOLE_R = 3.2, FOAM_RISE = 4;   // høyde, hull-radius, sekunder å fylle opp
+let foamOn = false, foamLevel = 0, bannerMsg = '', bannerTime = 0;
+const foamHoles = [];   // [x, z] for hvert granat-hull
+
+// Skummet er ÉN myk, humpete flate over hele banen (lett å tegne, også på mobil),
+// pluss noen små bobler på toppen. Hull fra granater blir myke kratere.
+const FOAM_SEG_X = 72, FOAM_SEG_Z = 54;
+const foamGeo = new THREE.PlaneGeometry(60, 45, FOAM_SEG_X, FOAM_SEG_Z);
+foamGeo.rotateX(-Math.PI / 2);
+const foamPos = foamGeo.attributes.position;
+const foamCols = new Float32Array(foamPos.count * 3);
+const FOAM_PINKS = [0xff9ccf, 0xffb3da, 0xff8ac4, 0xffc4e1].map(c => new THREE.Color(c));
+for (let i = 0; i < foamPos.count; i++) {
+  const c = FOAM_PINKS[Math.floor(Math.random() * 4)];
+  foamCols[i * 3] = c.r; foamCols[i * 3 + 1] = c.g; foamCols[i * 3 + 2] = c.b;
+}
+foamGeo.setAttribute('color', new THREE.BufferAttribute(foamCols, 3));
+// Litt eget lys (emissive), så rosa ser rosa ut og ikke grålilla i skyggen
+const foamMesh = new THREE.Mesh(foamGeo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55, emissive: 0x5a1a3c, side: THREE.DoubleSide }));
+foamMesh.receiveShadow = true;
+foamMesh.frustumCulled = false;
+foamMesh.visible = false;
+scene.add(foamMesh);
+
+const FOAM_BUBBLES = 260;
+const foamBubbles = [];
+for (let i = 0; i < FOAM_BUBBLES; i++) {
+  foamBubbles.push({ x: (Math.random() - 0.5) * 59, z: (Math.random() - 0.5) * 44, s: 0.15 + Math.random() * 0.3, phase: Math.random() * 6.3 });
+}
+const bubbleMesh = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(0.5, 1),
+  new THREE.MeshStandardMaterial({ color: 0xffd6ec, roughness: 0.2, emissive: 0x6a3050, transparent: true, opacity: 0.8 }), FOAM_BUBBLES);
+bubbleMesh.frustumCulled = false;
+bubbleMesh.visible = false;
+scene.add(bubbleMesh);
+
+// Små faste humper i overflaten
+function foamBump(x, z) {
+  return Math.sin(x * 1.3) * Math.cos(z * 1.1) * 0.06 + Math.sin(x * 0.45 + z * 0.7) * 0.05;
+}
+// 1 = fullt skum, 0 = midt i et hull (myk kant)
+function holeFactor(x, z) {
+  let f = 1;
+  for (const h of foamHoles) {
+    const d = Math.hypot(x - h[0], z - h[1]);
+    if (d < FOAM_HOLE_R) {
+      const k = Math.max(0, (d - FOAM_HOLE_R * 0.55) / (FOAM_HOLE_R * 0.45));
+      f = Math.min(f, k * k * (3 - 2 * k));
+    }
+  }
+  return f;
+}
+
+// Hvor høyt står skummet her? (0 hvis ingen skum, eller hull)
+function foamHeightAt(x, z) {
+  if (!foamOn || Math.abs(x) > 30 || Math.abs(z) > 22.5) return 0;
+  return FOAM_H * foamLevel * holeFactor(x, z);
+}
+
+function cutHole(x, z) {
+  foamHoles.push([x, z]);
+}
+
+// Slå skummet på/av. instant = rett til full høyde (for nye spillere)
+function setFoam(on, holes, instant) {
+  foamOn = on;
+  foamLevel = on && instant ? 1 : 0;
+  foamHoles.length = 0;
+  if (on && holes) holes.forEach(h => cutHole(h[0], h[1]));
+  foamMesh.visible = on;
+  bubbleMesh.visible = on;
+}
+
+const foamDummy = new THREE.Object3D();
+let foamNormalTick = 0;
+function updateFoam(dt) {
+  if (!foamOn) return;
+  foamLevel = Math.min(1, foamLevel + dt / FOAM_RISE);
+  const t = performance.now() / 1000;
+  for (let i = 0; i < foamPos.count; i++) {
+    const x = foamPos.getX(i), z = foamPos.getZ(i);
+    const f = holeFactor(x, z);
+    const wave = foamBump(x, z) + Math.sin(t * 1.2 + x * 0.8 + z * 0.6) * 0.035;
+    // I hull synker flaten under gulvet, så den blir borte
+    foamPos.setY(i, FOAM_H * foamLevel * f + wave * f * foamLevel - (1 - f) * 0.4);
+  }
+  foamPos.needsUpdate = true;
+  if (++foamNormalTick % 2 === 0) foamGeo.computeVertexNormals();   // lys/skygge, annenhver ramme
+
+  foamBubbles.forEach((b, i) => {
+    const f = holeFactor(b.x, b.z);
+    const s = b.s * f * foamLevel * (1 + Math.sin(t * 2 + b.phase) * 0.12);
+    foamDummy.position.set(b.x, FOAM_H * foamLevel * f + foamBump(b.x, b.z) - s * 0.2, b.z);
+    foamDummy.scale.set(s + 0.0001, s + 0.0001, s + 0.0001);
+    foamDummy.updateMatrix();
+    bubbleMesh.setMatrixAt(i, foamDummy.matrix);
+  });
+  bubbleMesh.instanceMatrix.needsUpdate = true;
+}
+
+// Boblete fest-lyd (stigende "blopp")
+function playFoam() {
+  if (!audioCtx) return;
+  [0, 0.12, 0.24, 0.36, 0.5].forEach((delay, i) => {
+    const o = audioCtx.createOscillator(), gn = audioCtx.createGain();
+    o.type = 'sine';
+    const t0 = audioCtx.currentTime + delay;
+    o.frequency.setValueAtTime(300 + i * 120, t0);
+    o.frequency.exponentialRampToValueAtTime(900 + i * 150, t0 + 0.1);
+    gn.gain.setValueAtTime(0.15, t0);
+    gn.gain.exponentialRampToValueAtTime(0.001, t0 + 0.15);
+    o.connect(gn); gn.connect(audioCtx.destination);
+    o.start(t0); o.stop(t0 + 0.16);
+  });
+}
+
 // ---------- Skyting ----------
 const raycaster = new THREE.Raycaster();
 raycaster.far = 200;
@@ -946,10 +1099,14 @@ function shoot() {
     const r = others[id];
     if (!r.alive || r.team === myTeam) continue;
     const p = r.cur;
-    const tb = rayBox(o, d, p.x - 0.33, p.y, p.z - 0.33, p.x + 0.33, p.y + 1.05, p.z + 0.33);
-    const th = rayBox(o, d, p.x - 0.31, p.y + 1.05, p.z - 0.31, p.x + 0.31, p.y + 1.5, p.z + 0.31);
-    if (th !== null && th < bestT) { bestT = th; target = id; head = true; }
-    if (tb !== null && tb < bestT) { bestT = tb; target = id; head = false; }
+    // [NY] Hele figuren = kroppstreff. Bare midten av hodet = hodeskudd (dreper med én kule).
+    // Dukket = alt er lavere.
+    const top = r.crouch ? 0.78 : 1.5;
+    const h0 = r.crouch ? 0.56 : 1.12, h1 = r.crouch ? 0.74 : 1.45;
+    const tb = rayBox(o, d, p.x - 0.33, p.y, p.z - 0.33, p.x + 0.33, p.y + top, p.z + 0.33);
+    const th = rayBox(o, d, p.x - 0.2, p.y + h0, p.z - 0.2, p.x + 0.2, p.y + h1, p.z + 0.2);
+    if (th !== null && th < bestT) { bestT = tb !== null ? Math.min(tb, th) : th; target = id; head = true; }
+    else if (tb !== null && tb < bestT) { bestT = tb; target = id; head = false; }
   }
   const end = o.clone().addScaledVector(d, bestT);
 
@@ -981,7 +1138,7 @@ document.addEventListener('mouseup', e => { if (e.button === 0) fireHeld = false
 
 function updateWeapon(dt) {
   fireCooldown -= dt;
-  const wantFire = joined && alive && (fireHeld || touchFire || keys['KeyF']);   // [NY] ikke skyt i menyen eller når du er død
+  const wantFire = joined && alive && (fireHeld || touchFire || lookFire || keys['KeyF']);   // [NY] ikke skyt i menyen eller når du er død
 
   if (reloading > 0) {
     reloading -= dt;
@@ -1099,7 +1256,10 @@ function updateOthers(dt) {
     const lean = !r.alive ? -1.5 : (r.slide ? -0.6 : 0);
     r.body.rotation.x += (lean - r.body.rotation.x) * Math.min(1, dt * 10);
     r.body.position.y = r.alive ? 0 : 0.2;
-    r.tag.visible = r.alive;
+    // [NY] Dukket = mindre figur. Gjemt i skummet = ingen navneskilt.
+    const sy = r.alive && r.crouch ? 0.5 : 1;     // kaninørene (ca. 2 m) blir 1,0 m – under skummet
+    r.body.scale.y += (sy - r.body.scale.y) * Math.min(1, dt * 12);
+    r.tag.visible = r.alive && !(r.crouch && foamHeightAt(r.cur.x, r.cur.z) > r.cur.y + 0.8);
   }
 }
 
@@ -1135,9 +1295,17 @@ function updateHud(dt) {
     deathTimer = Math.max(0, deathTimer - dt);
     centerEl.style.display = 'block';
     centerEl.innerHTML = 'Du ble tatt av ' + esc(killerName) + '<br><span style="font-size:20px">Tilbake om ' + Math.ceil(deathTimer) + '...</span>';
+  } else if (bannerTime > 0) {
+    centerEl.style.display = 'block';           // [NY] skumfest-melding
+    centerEl.innerHTML = bannerMsg;
   } else {
     centerEl.style.display = 'none';
   }
+  bannerTime -= dt;
+
+  // [NY] Rosa og uklart når øynene er under skummet
+  const eyeY = player.feetY + slide.eye;
+  document.getElementById('foamview').style.display = alive && eyeY < foamHeightAt(player.x, player.z) ? 'block' : 'none';
 
   // Poengtavle (hold Tab)
   if (keys['Tab']) {
@@ -1166,10 +1334,18 @@ function addKillfeed(d) {
 
 // ---------- Meldinger fra serveren ----------
 const statusEl = el('status');
-socket.on('connect', () => { statusEl.textContent = 'Tilkoblet. Velg lag og trykk Bli med!'; });
+let lastJoin = null;   // [NY] husker navn og lag, så vi kan bli med igjen automatisk
+socket.on('connect', () => {
+  statusEl.textContent = 'Tilkoblet. Velg lag og trykk Bli med!';
+  // [NY] Mistet nettet et øyeblikk (vanlig på mobil)? Bli med igjen av deg selv.
+  if (joined && lastJoin) {
+    roundMsg = '';
+    socket.emit('join', lastJoin);
+  }
+});
 socket.on('disconnect', () => {
   statusEl.textContent = 'Mistet kontakten med serveren...';
-  if (joined) { roundMsg = 'Mistet kontakten med serveren<br><span style="font-size:20px">Last inn siden på nytt</span>'; }
+  if (joined) { roundMsg = 'Mistet kontakten med serveren<br><span style="font-size:20px">Prøver å koble til igjen...</span>'; }
 });
 
 socket.on('lobby', c => {
@@ -1187,7 +1363,10 @@ socket.on('welcome', d => {
   timeLeft = d.timeLeft;
   roundMsg = d.intermission ? 'Runden er over – ny runde starter snart' : '';
   placeAtSpawn(d.spawn);
+  for (const id in others) removeOther(id);   // [NY] fjern gamle figurer etter ny tilkobling
   for (const id in d.players) addOther(d.players[id]);
+  if (d.foam) setFoam(d.foam.on, d.foam.holes, true);   // [NY] skummet står allerede
+  document.body.classList.add('playing');
   el('menu').style.display = 'none';
   topbar.style.display = 'block';
   healthEl.style.display = 'block';
@@ -1210,6 +1389,7 @@ socket.on('snap', snap => {
     }
     r.alive = !!s[5];
     r.slide = s[6];
+    r.crouch = s[7];
   }
 });
 
@@ -1228,6 +1408,17 @@ socket.on('nade', d => spawnNade(d.id, false, d.p, d.v));
 socket.on('boom', d => {
   removeNade(d.id);
   explode(d.p);
+  if (foamOn && d.p[1] < 3) cutHole(d.p[0], d.p[2]);   // [NY] granaten blåser bort skummet
+});
+
+// [NY] Skumfest på/av
+socket.on('foam', d => {
+  setFoam(d.on, d.holes, false);
+  if (d.on) {
+    bannerMsg = '&#129991; SKUMFEST! &#129991;<br><span style="font-size:20px">' + teamSpan(d.team, esc(d.by)) + ' nådde toppen av pyramiden!<br>Dukk (' + (isTouch ? 'DUKK-knappen' : 'hold Q') + ') for å gjemme deg i skummet</span>';
+    bannerTime = 4.5;
+    playFoam();
+  }
 });
 
 socket.on('hitConfirm', d => {
@@ -1305,7 +1496,7 @@ function sendState(dt) {
   sendTimer -= dt;
   if (sendTimer > 0 || !joined || !alive) return;
   sendTimer = 0.05;
-  socket.emit('state', [+player.x.toFixed(2), +player.feetY.toFixed(2), +player.z.toFixed(2), +player.yaw.toFixed(3), +player.pitch.toFixed(3), slide.active ? 1 : 0]);
+  socket.emit('state', [+player.x.toFixed(2), +player.feetY.toFixed(2), +player.z.toFixed(2), +player.yaw.toFixed(3), +player.pitch.toFixed(3), slide.active ? 1 : 0, crouching ? 1 : 0]);
 }
 
 // ===================================================================
@@ -1313,6 +1504,16 @@ function sendState(dt) {
 // ===================================================================
 let chosenTeam = null;
 const nameInput = el('nameInput');
+
+// [NY] Sikte-følsomhet (lagres til neste gang)
+const sensInput = el('sens');
+sensInput.value = sens;
+el('sensVal').textContent = sens.toFixed(1);
+sensInput.addEventListener('input', () => {
+  sens = parseFloat(sensInput.value);
+  el('sensVal').textContent = sens.toFixed(1);
+  try { localStorage.setItem('kmf-sens', sens); } catch (err) {}
+});
 try { nameInput.value = localStorage.getItem('kmf-name') || ''; } catch (err) {}
 
 function makePreview(canvasId, build) {
@@ -1351,7 +1552,8 @@ el('joinBtn').addEventListener('click', () => {
   try { localStorage.setItem('kmf-name', name); } catch (err) {}
   myTeam = chosenTeam;
   unlockAudio();
-  socket.emit('join', { name, team: chosenTeam });
+  lastJoin = { name, team: chosenTeam };
+  socket.emit('join', lastJoin);
   nameInput.blur();
   if (!isTouch) {
     try {
@@ -1362,7 +1564,9 @@ el('joinBtn').addEventListener('click', () => {
 });
 
 // [NY] Til testing i nettleseren
-window.__game = { player, others, socket, get alive() { return alive; }, get hp() { return hp; }, get score() { return score; }, shoot: () => shoot(), keys, throwNade: () => { nadeQueued = true; }, get grenades() { return grenades; }, nades, get weapon() { return weapon; }, booms, stuffing };
+window.__game = { player, others, socket, get alive() { return alive; }, get hp() { return hp; }, get score() { return score; }, shoot: () => shoot(), keys, throwNade: () => { nadeQueued = true; }, get grenades() { return grenades; }, nades, get weapon() { return weapon; }, booms, stuffing,
+  get foamOn() { return foamOn; }, get foamLevel() { return foamLevel; }, foamHoles, foamHeightAt: (x, z) => foamHeightAt(x, z),
+  setCrouch: v => { touchCrouch = v; }, get crouching() { return crouching; } };
 
 // ---------- Tegning (to omganger: verden først, så våpenet oppå) ----------
 renderer.autoClear = false;
@@ -1397,6 +1601,7 @@ function animate(now) {
     sendState(dt);
     updateOthers(dt);
     updateNades(dt);            // [NY] granater og smell
+    updateFoam(dt);             // [NY] skumfest
     updateHud(dt);
   }
   updateWeapon(dt);

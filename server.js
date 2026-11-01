@@ -14,12 +14,12 @@ const io = new Server(server);
 const PORT = process.env.PORT || 3000;
 
 // ---------- Regler ----------
-const ROUND_SECONDS = 300;     // 5 minutter per runde
+const ROUND_SECONDS = +process.env.ROUND_SECONDS || 300;     // 5 minutter per runde (kan endres for testing)
 const BREAK_SECONDS = 8;       // pause mellom runder
 const RESPAWN_SECONDS = 3;
 const MAX_HP = 100;
 const DMG_BODY = 20;           // 5 treff i kroppen
-const DMG_HEAD = 50;           // 2 treff i hodet
+const DMG_HEAD = 100;          // midt i hodet = død med én kule
 const MIN_HIT_MS = 80;         // våpenet skyter hvert 100. ms – litt slingringsmonn
 const TEAMS = ['bunny', 'squirrel'];
 const NADES_PER_LIFE = 3;      // granater per liv
@@ -28,6 +28,9 @@ const NADE_MAX_DMG = 110;      // skade midt i smellet (dreper)
 
 const players = {};
 let score = { bunny: 0, squirrel: 0 };
+// Skumfest: starter når noen står på toppen av pyramiden, varer til neste runde
+let foamOn = false;
+let foamHoles = [];            // [x, z] for hvert granat-hull (til nye spillere)
 let roundEndsAt = Date.now() + ROUND_SECONDS * 1000;
 let intermission = false;
 
@@ -102,6 +105,7 @@ io.on('connection', socket => {
     Object.values(players).forEach(o => { if (o.id !== socket.id) others[o.id] = publicPlayer(o); });
     socket.emit('welcome', {
       id: socket.id, spawn: sp, players: others, score,
+      foam: { on: foamOn, holes: foamHoles },
       timeLeft: Math.max(0, Math.ceil((roundEndsAt - Date.now()) / 1000)), intermission
     });
     socket.broadcast.emit('playerJoined', publicPlayer(p));
@@ -117,6 +121,15 @@ io.on('connection', socket => {
     const yaw = num(s[3], -1e6, 1e6), pitch = num(s[4], -2, 2);
     if (x === null || y === null || z === null || yaw === null || pitch === null) return;
     p.x = x; p.y = y; p.z = z; p.yaw = yaw; p.pitch = pitch; p.slide = s[5] ? 1 : 0;
+    p.crouch = s[6] ? 1 : 0;
+
+    // Toppen av pyramiden (2 x 2 m, 13 m høyt) = SKUMFEST!
+    if (!foamOn && !intermission && y >= 12.9 && Math.abs(x) <= 1.2 && Math.abs(z) <= 1.2) {
+      foamOn = true;
+      foamHoles = [];
+      io.emit('foam', { on: true, by: p.name, team: p.team, holes: [] });
+      console.log('Skumfest startet av ' + p.name);
+    }
   });
 
   // Skudd (bare for syn og lyd hos de andre)
@@ -158,12 +171,12 @@ io.on('connection', socket => {
   socket.on('boom', d => {
     const p = players[socket.id];
     if (!p || !d || !p.pending[d.id]) return;
-    const age = Date.now() - p.pending[d.id];
-    delete p.pending[d.id];
-    if (age > 60000 || !Array.isArray(d.p)) return;   // stor margin for trege maskiner (spilltid går saktere under 20 fps)
+    delete p.pending[d.id];                           // hver granat kan bare smelle én gang
+    if (!Array.isArray(d.p)) return;
     const pos = d.p.map(v => num(v, -40, 40));
     if (pos.includes(null)) return;
     io.emit('boom', { id: d.id, p: pos });
+    if (foamOn && pos[1] < 3) foamHoles.push([pos[0], pos[2]]);   // hullet i skummet blir stående
     if (intermission) return;
     Object.values(players).forEach(t => {
       if (!t.alive || t.team === p.team) return;
@@ -185,7 +198,7 @@ io.on('connection', socket => {
 setInterval(() => {
   const snap = {};
   Object.values(players).forEach(p => {
-    snap[p.id] = [+p.x.toFixed(2), +p.y.toFixed(2), +p.z.toFixed(2), +p.yaw.toFixed(3), +p.pitch.toFixed(3), p.alive ? 1 : 0, p.slide];
+    snap[p.id] = [+p.x.toFixed(2), +p.y.toFixed(2), +p.z.toFixed(2), +p.yaw.toFixed(3), +p.pitch.toFixed(3), p.alive ? 1 : 0, p.slide, p.crouch ? 1 : 0];
   });
   io.emit('snap', snap);
 }, 50);
@@ -202,6 +215,9 @@ setInterval(() => {
       Object.values(players).forEach(p => { p.kills = 0; p.deaths = 0; respawn(p); });
       roundEndsAt = Date.now() + ROUND_SECONDS * 1000;
       intermission = false;
+      foamOn = false;              // skummet forsvinner ved ny runde
+      foamHoles = [];
+      io.emit('foam', { on: false });
       io.emit('roundStart', { score });
     }, BREAK_SECONDS * 1000);
   }

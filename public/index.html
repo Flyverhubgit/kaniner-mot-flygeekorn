@@ -6,6 +6,16 @@
 <title>Kaniner mot Flygeekorn</title>
 <style>
   html, body { margin: 0; height: 100%; overflow: hidden; background: #000; font-family: sans-serif; }
+  /* Mobil: ingen zoom, rulling eller tekstmarkering når man trykker fort */
+  body { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; overscroll-behavior: none; }
+  body.playing { touch-action: none; }
+  #nameInput { -webkit-user-select: text; user-select: text; }
+  /* Under skummet: rosa og uklart */
+  #foamview { position: fixed; inset: 0; pointer-events: none; z-index: 2; background: rgba(255,150,205,0.6); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); display: none; }
+  /* Mobil på høykant: be om å snu telefonen */
+  #rotate { position: fixed; inset: 0; z-index: 30; background: #2b3a47; color: #fff; display: none; align-items: center; justify-content: center; text-align: center; font: bold 22px sans-serif; padding: 30px; }
+  @media (orientation: portrait) and (pointer: coarse) { body.playing #rotate { display: flex; } }
+  #sensRow { font-size: 14px; display: flex; align-items: center; gap: 10px; }
   canvas { display: block; }
   #crosshair { position: fixed; left: 50%; top: 50%; width: 6px; height: 6px; margin: -3px 0 0 -3px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 1px #000; pointer-events: none; z-index: 3; }
   #hitmarker { position: fixed; left: 50%; top: 50%; width: 26px; height: 26px; margin: -13px 0 0 -13px; pointer-events: none; z-index: 3; opacity: 0; transition: opacity 0.15s; }
@@ -57,6 +67,8 @@
 <div id="killfeed"></div>
 <div id="center"></div>
 <div id="scoreboard"></div>
+<div id="foamview"></div>
+<div id="rotate">&#128260;<br>Snu telefonen sideveis for å spille</div>
 
 <div id="menu">
   <h1><span class="b">KANINER</span> mot <span class="s">FLYGEEKORN</span></h1>
@@ -73,6 +85,7 @@
       <div class="c" id="countSquirrel">0 spillere</div>
     </div>
   </div>
+  <div id="sensRow">Sikte-følsomhet <input id="sens" type="range" min="0.3" max="2.5" step="0.1" value="1"> <span id="sensVal">1.0</span></div>
   <button id="joinBtn" disabled>Velg et lag</button>
   <div id="status">Kobler til serveren...</div>
 </div>

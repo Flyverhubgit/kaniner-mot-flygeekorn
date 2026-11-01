@@ -23,10 +23,13 @@ Blokkete flerspiller-FPS i nettleseren. Velg lag, skyt det andre laget. 5 minutt
 | venstre museknapp skyt, R lad om | høyre tommel se |
 | mellomrom hopp, Shift løp, C slide | knapper: SKYT, LADE, HOPP, SLIDE |
 | G = kast granat | knapp: GRANAT |
+| hold Q = dukk | knapp: DUKK (av/på) |
+| | skyt: dobbelttrykk og hold på høyre side, dra for å sikte |
 | hold Tab = poengtavle | |
 
 ## Regler
-- 100 liv. Kropp 20 skade, hode 50.
+- 100 liv. Kropp 20 skade (5 treff). Midt i hodet = død med én kule.
+- Skumfest: stå på toppen av pyramiden, så fylles banen med rosa skum til neste runde. Dukk (hold Q / DUKK-knappen) for å gjemme deg. Granater blåser hull i skummet.
 - 100 skudd i magasinet, uendelig reserve.
 - 3 granater per liv. Smeller etter 2 sek, opptil 110 skade innenfor 6 m.
 - Ny start etter 3 sek, med full ammo og granater.
