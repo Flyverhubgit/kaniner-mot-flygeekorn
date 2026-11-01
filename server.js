@@ -122,6 +122,7 @@ io.on('connection', socket => {
     if (x === null || y === null || z === null || yaw === null || pitch === null) return;
     p.x = x; p.y = y; p.z = z; p.yaw = yaw; p.pitch = pitch; p.slide = s[5] ? 1 : 0;
     p.crouch = s[6] ? 1 : 0;
+    p.glide = s[7] ? 1 : 0;
 
     // Toppen av pyramiden (2 x 2 m, 13 m høyt) = SKUMFEST!
     if (!foamOn && !intermission && y >= 12.9 && Math.abs(x) <= 1.2 && Math.abs(z) <= 1.2) {
@@ -198,7 +199,7 @@ io.on('connection', socket => {
 setInterval(() => {
   const snap = {};
   Object.values(players).forEach(p => {
-    snap[p.id] = [+p.x.toFixed(2), +p.y.toFixed(2), +p.z.toFixed(2), +p.yaw.toFixed(3), +p.pitch.toFixed(3), p.alive ? 1 : 0, p.slide, p.crouch ? 1 : 0];
+    snap[p.id] = [+p.x.toFixed(2), +p.y.toFixed(2), +p.z.toFixed(2), +p.yaw.toFixed(3), +p.pitch.toFixed(3), p.alive ? 1 : 0, p.slide, p.crouch ? 1 : 0, p.glide ? 1 : 0];
   });
   io.emit('snap', snap);
 }, 50);

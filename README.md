@@ -30,6 +30,7 @@ Blokkete flerspiller-FPS i nettleseren. Velg lag, skyt det andre laget. 5 minutt
 ## Regler
 - 100 liv. Kropp 20 skade (5 treff). Midt i hodet = død med én kule.
 - Skumfest: stå på toppen av pyramiden, så fylles banen med rosa skum til neste runde. Dukk (hold Q / DUKK-knappen) for å gjemme deg. Granater blåser hull i skummet.
+- Dyrekrefter: Kaninen hopper dobbelt så høyt. Flygeekornet svever når du holder inne hopp i lufta.
 - 100 skudd i magasinet, uendelig reserve.
 - 3 granater per liv. Smeller etter 2 sek, opptil 110 skade innenfor 6 m.
 - Ny start etter 3 sek, med full ammo og granater.

@@ -253,6 +253,9 @@ let slideQueued = false;
 // [NY] Dukke-høyde: øynene under skummet (skummet er 1,2 m dypt)
 const CROUCH_EYE = 0.7;
 let crouching = false;
+// [NY] Dyrekrefter: kaninen hopper superhøyt, flygeekornet svever (hold hopp i lufta)
+const BUNNY_JUMP = 13, GLIDE_FALL = 1.8, GLIDE_SPEED = 9.5;
+let gliding = false, touchJumpHeld = false;
 
 // Treffer spilleren en vegg/boks? (lave bokser opp til STEP kan man gå opp på)
 function blocked(px, pz, fy) {
@@ -328,7 +331,7 @@ function releaseAll() {
 window.addEventListener('blur', releaseAll);
 
 if (!isTouch) {
-  overlay.innerHTML = '<div><b>Klikk for å spille</b><br>WASD = gå &nbsp; Mus = sikte<br>Mellomrom = hopp &nbsp; Shift = løp<br>C = slide (mens du går) &nbsp; Esc = pause<br>Venstre museknapp = skyt &nbsp; R = lad om<br>G = kast granat &nbsp; Hold Q = dukk<br>Hold Tab = poengtavle<br>Virker ikke musen? Hold inne venstre knapp og dra, og skyt med F.</div>';
+  overlay.innerHTML = '<div><b>Klikk for å spille</b><br>WASD = gå &nbsp; Mus = sikte<br>Mellomrom = hopp &nbsp; Shift = løp<br>C = slide (mens du går) &nbsp; Esc = pause<br>Venstre museknapp = skyt &nbsp; R = lad om<br>G = kast granat &nbsp; Hold Q = dukk<br>Kanin: superhopp &nbsp; Flygeekorn: hold mellomrom i lufta = svev<br>Hold Tab = poengtavle<br>Virker ikke musen? Hold inne venstre knapp og dra, og skyt med F.</div>';
   overlay.addEventListener('click', () => {
     try {
       const p = renderer.domElement.requestPointerLock();
@@ -390,14 +393,14 @@ if (isTouch) {
   crouchBtn.style.cssText = 'position:fixed;right:38px;bottom:220px;width:64px;height:64px;border-radius:50%;background:rgba(255,255,255,0.3);border:2px solid rgba(255,255,255,0.6);color:#fff;font:bold 13px sans-serif;display:flex;align-items:center;justify-content:center;z-index:5;user-select:none;';
   document.body.appendChild(crouchBtn);
 
-  let moveId = null, lookId = null, fireId = null, lastLookTap = 0;
+  let moveId = null, lookId = null, fireId = null, lastLookTap = 0, jumpId = null;
   const origin = { x: 0, y: 0 }, lastLook = { x: 0, y: 0 }, lastFire = { x: 0, y: 0 };
 
   document.addEventListener('touchstart', e => {
     if (!joined) return;                   // [NY] la menyen virke normalt
     e.preventDefault();
     for (const t of e.changedTouches) {
-      if (t.target === jumpBtn) { jumpQueued = true; continue; }
+      if (t.target === jumpBtn) { jumpQueued = true; touchJumpHeld = true; jumpId = t.identifier; continue; }   // [NY] hold = sveve
       if (t.target === slideBtn) { slideQueued = true; continue; }
       // [FIKS] Dra fingeren på SKYT-knappen for å sikte mens du skyter
       if (t.target === fireBtn) { fireId = t.identifier; touchFire = true; lastFire.x = t.clientX; lastFire.y = t.clientY; continue; }
@@ -462,6 +465,7 @@ if (isTouch) {
         joyKnob.style.transform = 'none';
       }
       if (t.identifier === lookId) { lookId = null; lookFire = false; }
+      if (t.identifier === jumpId) { jumpId = null; touchJumpHeld = false; }
       if (t.identifier === fireId) { fireId = null; touchFire = false; }
     }
   }
@@ -487,7 +491,7 @@ function updatePlayer(dt) {
 
   // [NY] Dukk: hold Q (PC) eller DUKK-knappen (mobil). Halv fart, lavt kamera.
   crouching = !!(keys['KeyQ'] || touchCrouch);
-  const speed = crouching ? WALK * 0.5 : ((keys['ShiftLeft'] || keys['ShiftRight']) ? SPRINT : WALK);
+  const speed = gliding ? GLIDE_SPEED : (crouching ? WALK * 0.5 : ((keys['ShiftLeft'] || keys['ShiftRight']) ? SPRINT : WALK));
   const sin = Math.sin(player.yaw), cos = Math.cos(player.yaw);
   let dx = (-sin * fwd + cos * strafe) * speed * dt;
   let dz = (-cos * fwd - sin * strafe) * speed * dt;
@@ -520,12 +524,15 @@ function updatePlayer(dt) {
   if (!blocked(player.x, player.z + dz, player.feetY)) player.z += dz;
 
   // Hopp
-  if (jumpQueued && player.onGround) { player.vy = JUMP; player.onGround = false; }
+  if (jumpQueued && player.onGround) { player.vy = myTeam === 'bunny' ? BUNNY_JUMP : JUMP; player.onGround = false; }   // [NY] kaninen hopper høyere
   jumpQueued = false;
 
   // Tyngdekraft og høyde
   const oldFeet = player.feetY;
   player.vy -= GRAVITY * dt;
+  // [NY] Flygeekornet svever sakte ned mens du holder inne hopp i lufta
+  gliding = myTeam === 'squirrel' && !player.onGround && player.vy < 0 && !!(keys['Space'] || touchJumpHeld);
+  if (gliding) player.vy = Math.max(player.vy, -GLIDE_FALL);
   let newFeet = oldFeet + player.vy * dt;
 
   // Hodet treffer tak (f.eks. tunnelen)
@@ -1253,7 +1260,7 @@ function updateOthers(dt) {
     r.root.rotation.y = r.cur.yaw + Math.PI;          // modellen ser mot +z, kameraet mot -z
 
     // Død = ligger på ryggen. Slide = lener seg bakover.
-    const lean = !r.alive ? -1.5 : (r.slide ? -0.6 : 0);
+    const lean = !r.alive ? -1.5 : (r.slide ? -0.6 : (r.glide ? 0.6 : 0));   // [NY] svev = lener seg fremover
     r.body.rotation.x += (lean - r.body.rotation.x) * Math.min(1, dt * 10);
     r.body.position.y = r.alive ? 0 : 0.2;
     // [NY] Dukket = mindre figur. Gjemt i skummet = ingen navneskilt.
@@ -1390,6 +1397,7 @@ socket.on('snap', snap => {
     r.alive = !!s[5];
     r.slide = s[6];
     r.crouch = s[7];
+    r.glide = s[8];
   }
 });
 
@@ -1496,7 +1504,7 @@ function sendState(dt) {
   sendTimer -= dt;
   if (sendTimer > 0 || !joined || !alive) return;
   sendTimer = 0.05;
-  socket.emit('state', [+player.x.toFixed(2), +player.feetY.toFixed(2), +player.z.toFixed(2), +player.yaw.toFixed(3), +player.pitch.toFixed(3), slide.active ? 1 : 0, crouching ? 1 : 0]);
+  socket.emit('state', [+player.x.toFixed(2), +player.feetY.toFixed(2), +player.z.toFixed(2), +player.yaw.toFixed(3), +player.pitch.toFixed(3), slide.active ? 1 : 0, crouching ? 1 : 0, gliding ? 1 : 0]);
 }
 
 // ===================================================================
