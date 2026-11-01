@@ -36,6 +36,7 @@ Blokkete flerspiller-FPS i nettleseren. Velg lag, skyt det andre laget. 5 minutt
 - Våpen 1: AK, 100 skudd i magasinet. Våpen 2: snikskytter (kaniner: gulrot, flygeekorn: nøtt), 5 skudd, 60 i kroppen, 100 i hodet. Bruk kikkerten – uten den sprer skuddene mye.
 - Uendelig reserve-ammo.
 - 3 granater per liv. Smeller etter 2 sek, opptil 110 skade innenfor 6 m.
+- HEMMELIG: Et lite gyllent håndtak henger i et av husene. Dra i det (E / TREKK) og alle faller ned i Hades' do! Alle blir zombier, lava deler lagene (lava = død), og Hades promper hvert 30. sekund. Gjem deg bak noe når bølgen kommer, ellers blir du fordampet. Tilbake til vanlig bane ved neste runde.
 - Ny start etter 3 sek, med full ammo og granater.
 - Ingen skade på eget lag.
 - Ingen juksebeskyttelse – spill med venner.

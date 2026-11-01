@@ -33,13 +33,18 @@ let score = { bunny: 0, squirrel: 0 };
 // Skumfest: starter når noen står på toppen av pyramiden, varer til neste runde
 let foamOn = false;
 let foamHoles = [];            // [x, z] for hvert granat-hull (til nye spillere)
+// Underverdenen: et skjult håndtak sender alle ned til Hades' do-skål til neste runde
+let worldName = 'main';        // 'main' eller 'underworld'
+let nextFart = 0;              // når Hades promper neste gang (ms)
+const FART_EVERY = 30000;      // hvert 30. sekund
+const HANDLE = { x: -25, z: -3 };   // håndtaket i bakre hjørne av venstre hus
 let roundEndsAt = Date.now() + ROUND_SECONDS * 1000;
 let intermission = false;
 
 // Startplass: kaniner på blå side (z = +19), flygeekorn på rød side (z = -19)
 function spawnFor(team) {
   return {
-    x: Math.random() * 36 - 18,
+    x: worldName === 'underworld' ? Math.random() * 20 - 10 : Math.random() * 36 - 18,
     z: team === 'bunny' ? 19 : -19,
     yaw: team === 'bunny' ? 0 : Math.PI
   };
@@ -79,6 +84,17 @@ function applyDamage(p, t, dmg, head, weapon) {
   }
 }
 
+// Død uten skytter: lava eller Hades' promp. Gir ikke poeng til noen.
+function killByWorld(t, who, weapon) {
+  if (!t.alive) return;
+  t.hp = 0;
+  t.alive = false;
+  t.deaths++;
+  io.to(t.id).emit('damaged', { hp: 0, fromX: t.x, fromZ: t.z });
+  io.emit('kill', { killer: null, killerName: who, killerTeam: 'none', victim: t.id, victimName: t.name, victimTeam: t.team, head: false, weapon, score });
+  setTimeout(() => { if (players[t.id] && !t.alive) respawn(t); }, RESPAWN_SECONDS * 1000);
+}
+
 function respawn(p) {
   const sp = spawnFor(p.team);
   p.nades = NADES_PER_LIFE;
@@ -108,6 +124,7 @@ io.on('connection', socket => {
     socket.emit('welcome', {
       id: socket.id, spawn: sp, players: others, score,
       foam: { on: foamOn, holes: foamHoles },
+      world: worldName, fartIn: worldName === 'underworld' ? Math.max(0, Math.ceil((nextFart - Date.now()) / 1000)) : 0,
       timeLeft: Math.max(0, Math.ceil((roundEndsAt - Date.now()) / 1000)), intermission
     });
     socket.broadcast.emit('playerJoined', publicPlayer(p));
@@ -128,7 +145,7 @@ io.on('connection', socket => {
     p.weapon = s[8] ? 1 : 0;      // 0 = AK, 1 = snikskytter
 
     // Toppen av pyramiden (2 x 2 m, 13 m høyt) = SKUMFEST!
-    if (!foamOn && !intermission && y >= 12.9 && Math.abs(x) <= 1.2 && Math.abs(z) <= 1.2) {
+    if (worldName === 'main' && !foamOn && !intermission && y >= 12.9 && Math.abs(x) <= 1.2 && Math.abs(z) <= 1.2) {
       foamOn = true;
       foamHoles = [];
       io.emit('foam', { on: true, by: p.name, team: p.team, holes: [] });
@@ -196,6 +213,36 @@ io.on('connection', socket => {
     });
   });
 
+  // Skjult håndtak: alle faller ned i underverdenen
+  socket.on('pull', () => {
+    const p = players[socket.id];
+    if (!p || !p.alive || intermission || worldName !== 'main') return;
+    if (Math.hypot(p.x - HANDLE.x, p.z - HANDLE.z) > 2.5) return;
+    worldName = 'underworld';
+    foamOn = false;
+    foamHoles = [];
+    io.emit('foam', { on: false });
+    nextFart = Date.now() + FART_EVERY;
+    io.emit('world', { name: 'underworld', by: p.name, team: p.team });
+    console.log(p.name + ' dro i håndtaket – underverdenen!');
+    // Alle havner på sin side av do-skålen etter fallet
+    setTimeout(() => Object.values(players).forEach(o => respawn(o)), 1500);
+  });
+
+  // Gikk i lavaen
+  socket.on('lava', () => {
+    const p = players[socket.id];
+    if (!p || worldName !== 'underworld' || intermission) return;
+    killByWorld(p, 'Lava', 'lava');
+  });
+
+  // Ikke gjemt da promp-bølgen kom
+  socket.on('vaporized', () => {
+    const p = players[socket.id];
+    if (!p || worldName !== 'underworld' || intermission) return;
+    killByWorld(p, 'HADES', 'fart');
+  });
+
   socket.on('disconnect', () => {
     if (!players[socket.id]) return;
     console.log(players[socket.id].name + ' forlot spillet');
@@ -223,6 +270,7 @@ setInterval(() => {
     io.emit('roundOver', { winner, score, board: board() });
     setTimeout(() => {
       score = { bunny: 0, squirrel: 0 };
+      if (worldName !== 'main') { worldName = 'main'; io.emit('world', { name: 'main' }); }
       Object.values(players).forEach(p => { p.kills = 0; p.deaths = 0; respawn(p); });
       roundEndsAt = Date.now() + ROUND_SECONDS * 1000;
       intermission = false;
@@ -234,8 +282,14 @@ setInterval(() => {
   }
   io.emit('tick', {
     timeLeft: intermission ? 0 : Math.max(0, Math.ceil((roundEndsAt - now) / 1000)),
-    score, intermission, board: board()
+    score, intermission, board: board(),
+    fartIn: worldName === 'underworld' && !intermission ? Math.max(0, Math.ceil((nextFart - now) / 1000)) : -1
   });
+  // Hades promper!
+  if (worldName === 'underworld' && !intermission && now >= nextFart) {
+    io.emit('fart', {});
+    nextFart = now + FART_EVERY;
+  }
 }, 1000);
 
 server.listen(PORT, () => {

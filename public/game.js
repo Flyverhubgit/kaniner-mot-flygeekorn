@@ -1150,7 +1150,7 @@ function shoot() {
   const spread = sn && !scoped ? 0.12 : 0;
   camera.updateMatrixWorld(true);
   raycaster.setFromCamera({ x: (Math.random() - 0.5) * spread, y: (Math.random() - 0.5) * spread }, camera);
-  const hits = raycaster.intersectObject(world, true);   // [NY] bare verden (ikke spor/fyll)
+  const hits = raycaster.intersectObject(inUnderworld ? underGroup : world, true);   // [NY] bare verden (ikke spor/fyll)
   const o = raycaster.ray.origin, d = raycaster.ray.direction;
 
   // [NY] Traff vi en fiende før veggen?
@@ -1364,7 +1364,7 @@ let score = { bunny: 0, squirrel: 0 }, timeLeft = 300, lastBoard = [];
 let deathTimer = 0, killerName = '', roundMsg = '', damageFlash = 0, hitmarkTime = 0;
 
 function teamSpan(team, text) {
-  return '<span class="' + (team === 'bunny' ? 'b' : 's') + '">' + text + '</span>';
+  return '<span class="' + (team === 'bunny' ? 'b' : team === 'none' ? 'n' : 's') + '">' + text + '</span>';
 }
 function esc(s) {
   return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -1418,7 +1418,7 @@ function updateHud(dt) {
 
 function addKillfeed(d) {
   const div = document.createElement('div');
-  div.innerHTML = teamSpan(d.killerTeam, esc(d.killerName)) + (d.weapon === 'nade' ? ' &#128163; ' : d.weapon === 'sniper' ? (d.killerTeam === 'bunny' ? ' &#129365;' : ' &#127792;') + (d.head ? '&#127919; ' : ' ') : (d.head ? ' &#127919; ' : ' &#10140; ')) + teamSpan(d.victimTeam, esc(d.victimName));
+  div.innerHTML = teamSpan(d.killerTeam, esc(d.killerName)) + (d.weapon === 'nade' ? ' &#128163; ' : d.weapon === 'lava' ? ' &#127755; ' : d.weapon === 'fart' ? ' &#128168; ' : d.weapon === 'sniper' ? (d.killerTeam === 'bunny' ? ' &#129365;' : ' &#127792;') + (d.head ? '&#127919; ' : ' ') : (d.head ? ' &#127919; ' : ' &#10140; ')) + teamSpan(d.victimTeam, esc(d.victimName));
   killfeed.prepend(div);
   while (killfeed.children.length > 5) killfeed.lastChild.remove();
   setTimeout(() => div.remove(), 6000);
@@ -1699,6 +1699,7 @@ function animate(now) {
     updateOthers(dt);
     updateNades(dt);            // [NY] granater og smell
     updateFoam(dt);             // [NY] skumfest
+    updateUnderworld(dt);       // [NY] underverdenen (underworld.js)
     updateHud(dt);
   }
   updateWeapon(dt);
