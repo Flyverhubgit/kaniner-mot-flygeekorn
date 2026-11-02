@@ -21,6 +21,16 @@
   #scope::before, #scope::after { content: ''; position: absolute; background: rgba(0,0,0,0.85); }
   #scope::before { left: 50%; top: 12vh; bottom: 12vh; width: 2px; margin-left: -1px; }
   #scope::after { top: 50%; left: calc(50% - 38vmin); right: calc(50% - 38vmin); height: 2px; margin-top: -1px; }
+  /* Drap på rad: stort banner øverst */
+  #streak { position: fixed; left: 50%; top: 22%; transform: translate(-50%, -50%) scale(1); color: #ffe14a; font: 900 40px sans-serif; text-shadow: 0 0 10px #000, 0 3px 0 #b33; z-index: 6; pointer-events: none; text-align: center; opacity: 0; transition: opacity 0.3s, transform 0.3s; white-space: nowrap; }
+  #streak.show { opacity: 1; transform: translate(-50%, -50%) scale(1.1); }
+  #streak small { display: block; font-size: 20px; color: #fff; }
+  /* Treff-retning: rød kile ved kanten av skjermen som peker mot den som skjøt */
+  #hitdir { position: fixed; left: 50%; top: 50%; width: 0; height: 0; z-index: 3; pointer-events: none; opacity: 0; }
+  #hitdir div { position: absolute; left: -40px; top: -42vmin; width: 80px; height: 26px; background: radial-gradient(ellipse at center bottom, rgba(255,40,40,0.95), rgba(255,40,40,0) 70%); border-radius: 50% 50% 0 0; }
+  /* Lag som trenger spillere */
+  .card .need { display: none; font-size: 13px; font-weight: bold; color: #222; background: #f2c14e; border-radius: 10px; padding: 2px 8px; margin: 4px auto 0; width: fit-content; }
+  .card.needs .need { display: block; }
   /* QR-kode for å dele spillet */
   #qrBox { display: flex; align-items: center; gap: 12px; background: rgba(0,0,0,0.3); padding: 10px 14px; border-radius: 12px; font-size: 14px; }
   #qrImg { width: 110px; height: 110px; background: #fff; border-radius: 6px; image-rendering: pixelated; }
@@ -96,6 +106,8 @@
 <div id="scoreboard"></div>
 <div id="foamview"></div>
 <div id="scope"></div>
+<div id="streak"></div>
+<div id="hitdir"><div></div></div>
 <div id="rotate">&#128260;<br>Snu telefonen sideveis for å spille</div>
 
 <div id="menu">
@@ -107,12 +119,14 @@
       <div class="t">Kanin</div>
       <div class="p">&#9889; Superhopp</div>
       <div class="c" id="countBunny">0 spillere</div>
+      <div class="need">&#128227; Trenger spillere!</div>
     </div>
     <div class="card squirrel" data-team="squirrel">
       <canvas id="prevSquirrel" width="480" height="520"></canvas>
       <div class="t">Flygeekorn</div>
       <div class="p">&#127786; Svever (hold hopp i lufta)</div>
       <div class="c" id="countSquirrel">0 spillere</div>
+      <div class="need">&#128227; Trenger spillere!</div>
     </div>
   </div>
   <div id="sensRow">Sikte-følsomhet <input id="sens" type="range" min="0.3" max="2.5" step="0.1" value="1"> <span id="sensVal">1.0</span></div>

@@ -39,6 +39,9 @@ To baner som byttes hver runde: **Tempelet** (med skumfest og hemmelig håndtak)
 - Uendelig reserve-ammo.
 - 3 granater per liv. Smeller etter 2 sek, opptil 110 skade innenfor 6 m.
 - HEMMELIG: Et lite gyllent håndtak henger i venstre hus i tempelet. Dra i det (E / TREKK) og alle faller ned i lava-doen! Alle blir zombier, lava deler lagene (lava = død), to broer går over, og granatene er uendelige. Dra i det gylne skyll-håndtaket på deres side for å skylle alle opp igjen (ellers: tilbake ved neste runde).
+- Drap på rad: 3 = KILLINGSPREE!, 5 = USTOPPELIG!, 10 = LEGENDARISK!
+- Skjold i 2 sek etter ny start (blå boble) – forsvinner hvis du skyter.
+- Rød kile ved kanten av skjermen viser hvor du blir skutt fra.
 - Ny start etter 3 sek, med full ammo og granater.
 - Ingen skade på eget lag.
 - Ingen juksebeskyttelse – spill med venner.

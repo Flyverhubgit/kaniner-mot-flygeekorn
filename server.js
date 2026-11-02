@@ -25,6 +25,7 @@ const SNIPER_MIN_MS = 900;     // snikskytteren skyter ca. én gang i sekundet
 const MIN_HIT_MS = 80;         // våpenet skyter hvert 100. ms – litt slingringsmonn
 const TEAMS = ['bunny', 'squirrel'];
 const NADES_PER_LIFE = 3;      // granater per liv
+const SPAWN_PROTECT_MS = 2000; // usårbar i 2 sek etter ny start
 const NADE_RADIUS = 6;         // sprengradius i meter
 const NADE_MAX_DMG = 110;      // skade midt i smellet (dreper)
 
@@ -74,6 +75,7 @@ function num(v, lo, hi) {
 
 // Skade fra skudd eller granat. weapon = 'gun' eller 'nade'
 function applyDamage(p, t, dmg, head, weapon) {
+  if (Date.now() < (t.protectedUntil || 0)) return;   // nettopp startet på nytt: beskyttet
   t.hp -= dmg;
   io.to(p.id).emit('hitConfirm', { head, kill: t.hp <= 0 });
   io.to(t.id).emit('damaged', { hp: Math.max(0, t.hp), fromX: p.x, fromZ: p.z });
@@ -81,8 +83,14 @@ function applyDamage(p, t, dmg, head, weapon) {
   if (t.hp <= 0) {
     t.alive = false;
     t.deaths++;
+    t.streak = 0;
     p.kills++;
     score[p.team]++;
+    // Drap på rad: KILLINGSPREE (3), USTOPPELIG (5), LEGENDARISK (10), så hver 5.
+    p.streak = (p.streak || 0) + 1;
+    if (p.streak === 3 || p.streak === 5 || p.streak === 10 || (p.streak > 10 && p.streak % 5 === 0)) {
+      io.emit('streak', { name: p.name, team: p.team, n: p.streak });
+    }
     io.emit('kill', { killer: p.id, killerName: p.name, killerTeam: p.team, victim: t.id, victimName: t.name, victimTeam: t.team, head, weapon, score });
     setTimeout(() => { if (players[t.id] && !t.alive) respawn(t); }, RESPAWN_SECONDS * 1000);
   }
@@ -94,6 +102,7 @@ function killByWorld(t, who, weapon) {
   t.hp = 0;
   t.alive = false;
   t.deaths++;
+  t.streak = 0;
   io.to(t.id).emit('damaged', { hp: 0, fromX: t.x, fromZ: t.z });
   io.emit('kill', { killer: null, killerName: who, killerTeam: 'none', victim: t.id, victimName: t.name, victimTeam: t.team, head: false, weapon, score });
   setTimeout(() => { if (players[t.id] && !t.alive) respawn(t); }, RESPAWN_SECONDS * 1000);
@@ -102,6 +111,7 @@ function killByWorld(t, who, weapon) {
 function respawn(p) {
   const sp = spawnFor(p.team);
   p.nades = NADES_PER_LIFE;
+  p.protectedUntil = Date.now() + SPAWN_PROTECT_MS;
   p.hp = MAX_HP;
   p.alive = true;
   p.x = sp.x; p.y = 0; p.z = sp.z; p.yaw = sp.yaw;
@@ -121,7 +131,8 @@ io.on('connection', socket => {
       id: socket.id, name, team,
       x: sp.x, y: 0, z: sp.z, yaw: sp.yaw, pitch: 0, slide: 0,
       hp: MAX_HP, alive: true, kills: 0, deaths: 0, lastHit: 0,
-      nades: NADES_PER_LIFE, pending: {}
+      nades: NADES_PER_LIFE, pending: {},
+      streak: 0, protectedUntil: Date.now() + SPAWN_PROTECT_MS
     };
     const others = {};
     Object.values(players).forEach(o => { if (o.id !== socket.id) others[o.id] = publicPlayer(o); });
@@ -163,6 +174,7 @@ io.on('connection', socket => {
     if (!p || !p.alive || !d || !Array.isArray(d.to)) return;
     const to = d.to.map(v => num(v, -500, 500));
     if (to.includes(null)) return;
+    p.protectedUntil = 0;                 // skyter du, er beskyttelsen over
     socket.broadcast.emit('shot', { id: socket.id, to, w: d.w === 'sniper' ? 'sniper' : 'ak' });
   });
 
@@ -196,6 +208,7 @@ io.on('connection', socket => {
     const pos = d.p.map(v => num(v, -100, 100)), vel = d.v.map(v => num(v, -40, 40));
     if (pos.includes(null) || vel.includes(null)) return;
     if (worldName !== 'underworld') p.nades--;
+    p.protectedUntil = 0;
     p.pending[d.id] = Date.now();
     socket.broadcast.emit('nade', { id: d.id, p: pos, v: vel });
   });
@@ -264,7 +277,7 @@ io.on('connection', socket => {
 setInterval(() => {
   const snap = {};
   Object.values(players).forEach(p => {
-    snap[p.id] = [+p.x.toFixed(2), +p.y.toFixed(2), +p.z.toFixed(2), +p.yaw.toFixed(3), +p.pitch.toFixed(3), p.alive ? 1 : 0, p.slide, p.crouch ? 1 : 0, p.glide ? 1 : 0, p.weapon ? 1 : 0];
+    snap[p.id] = [+p.x.toFixed(2), +p.y.toFixed(2), +p.z.toFixed(2), +p.yaw.toFixed(3), +p.pitch.toFixed(3), p.alive ? 1 : 0, p.slide, p.crouch ? 1 : 0, p.glide ? 1 : 0, p.weapon ? 1 : 0, Date.now() < (p.protectedUntil || 0) ? 1 : 0];
   });
   io.emit('snap', snap);
 }, 50);
@@ -281,7 +294,7 @@ setInterval(() => {
       if (worldName !== 'main') { worldName = 'main'; io.emit('world', { name: 'main' }); }
       mapName = mapName === 'temple' ? 'room' : 'temple';    // ny bane hver runde
       io.emit('map', { name: mapName });
-      Object.values(players).forEach(p => { p.kills = 0; p.deaths = 0; respawn(p); });
+      Object.values(players).forEach(p => { p.kills = 0; p.deaths = 0; p.streak = 0; respawn(p); });
       roundEndsAt = Date.now() + ROUND_SECONDS * 1000;
       intermission = false;
       foamOn = false;              // skummet forsvinner ved ny runde

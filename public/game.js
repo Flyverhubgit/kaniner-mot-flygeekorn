@@ -847,6 +847,7 @@ function removeNade(id) {
 function throwNade() {
   if (!joined || !alive || (!underNow() && grenades <= 0) || nadeCooldown > 0) return;
   if (!underNow()) grenades--;            // [NY] uendelig med granater i underverdenen
+  myProtectUntil = 0;
   nadeCooldown = 0.8;
   camera.updateMatrixWorld(true);
   const dir = camera.getWorldDirection(new THREE.Vector3());
@@ -1185,6 +1186,7 @@ function muzzleWorld() {
 function shoot() {
   weapon.mag--;
   fireCooldown = weapon.fireDelay;
+  myProtectUntil = 0;                             // [NY] skyter du, er skjoldet borte
   const sn = weapon === sniperW;                 // [NY] snikskytter?
   recoil = sn ? 1.5 : Math.min(recoil + 0.7, 1.5);
   flashTime = sn ? 0.07 : 0.04;
@@ -1354,11 +1356,18 @@ function addOther(p) {
   heldSniper.position.copy(body.userData.gun.position);
   heldSniper.visible = false;
   body.add(heldSniper);
+  // [NY] Blå skjold-boble når spilleren nettopp har startet på nytt (kan ikke skades)
+  const shield = new THREE.Mesh(new THREE.SphereGeometry(1.15, 16, 12),
+    new THREE.MeshBasicMaterial({ color: 0x6fc3ff, transparent: true, opacity: 0.3, depthWrite: false }));
+  shield.position.y = 0.9;
+  shield.visible = false;
+  shield.raycast = () => {};
+  root.add(shield);
   const tag = makeTag(p.name, p.team);
   root.add(tag);
   scene.add(root);
   others[p.id] = {
-    name: p.name, team: p.team, root, body, tag, alive: p.alive !== false, slide: 0, walk: 0, heldSniper, weapon: 0,
+    name: p.name, team: p.team, root, body, tag, alive: p.alive !== false, slide: 0, walk: 0, heldSniper, weapon: 0, shield, prot: 0,
     cur: { x: p.x, y: p.y, z: p.z, yaw: p.yaw },
     target: { x: p.x, y: p.y, z: p.z, yaw: p.yaw }
   };
@@ -1398,6 +1407,8 @@ function updateOthers(dt) {
     r.body.scale.y += (sy - r.body.scale.y) * Math.min(1, dt * 12);
     r.tag.visible = r.alive && !(r.crouch && foamHeightAt(r.cur.x, r.cur.z) > r.cur.y + 0.8);
     r.heldSniper.visible = r.weapon === 1;           // [NY] riktig våpen i hånden
+    r.shield.visible = r.alive && r.prot === 1;      // [NY] skjold-boble
+    if (r.shield.visible) r.shield.material.opacity = 0.22 + Math.sin(performance.now() / 120) * 0.08;
     r.body.userData.gun.visible = r.weapon !== 1;
   }
 }
@@ -1409,6 +1420,9 @@ const damageEl = el('damage'), centerEl = el('center'), scoreboardEl = el('score
 const hitmarker = el('hitmarker');
 let score = { bunny: 0, squirrel: 0 }, timeLeft = 300, lastBoard = [];
 let deathTimer = 0, killerName = '', roundMsg = '', damageFlash = 0, hitmarkTime = 0;
+let hitdirTime = 0, myProtectUntil = 0;   // [NY] treff-retning og egen skjold-tid
+const hitdirEl = el('hitdir'), streakEl = el('streak');
+let streakTimer = null;
 
 function teamSpan(team, text) {
   return '<span class="' + (team === 'bunny' ? 'b' : team === 'none' ? 'n' : 's') + '">' + text + '</span>';
@@ -1420,9 +1434,12 @@ function esc(s) {
 function updateHud(dt) {
   const m = Math.floor(timeLeft / 60), s = String(timeLeft % 60).padStart(2, '0');
   topbar.innerHTML = teamSpan('bunny', 'Kaniner ' + score.bunny) + ' &nbsp; ' + m + ':' + s + ' &nbsp; ' + teamSpan('squirrel', score.squirrel + ' Flygeekorn');
-  healthEl.innerHTML = '&#9829; ' + Math.max(0, hp) + ' &nbsp; <span style="font-size:16px;opacity:.8">' + (myTeam === 'bunny' ? 'Du er Kanin' : 'Du er Flygeekorn') + '</span>';
+  healthEl.innerHTML = '&#9829; ' + Math.max(0, hp) + (performance.now() < myProtectUntil ? ' &#128737;&#65039;' : '') +
+    ' &nbsp; <span style="font-size:16px;opacity:.8">' + (myTeam === 'bunny' ? 'Du er Kanin' : 'Du er Flygeekorn') + '</span>';
 
   damageFlash = Math.max(0, damageFlash - dt * 2);
+  hitdirTime = Math.max(0, hitdirTime - dt);
+  hitdirEl.style.opacity = Math.min(1, hitdirTime);
   damageEl.style.opacity = damageFlash;
   hitmarkTime -= dt;
   hitmarker.style.opacity = hitmarkTime > 0 ? 1 : 0;
@@ -1488,6 +1505,9 @@ socket.on('disconnect', () => {
 });
 
 socket.on('lobby', c => {
+  // [NY] Laget med færrest spillere får "Trenger spillere!"
+  document.querySelector('.card.bunny').classList.toggle('needs', c.bunny < c.squirrel);
+  document.querySelector('.card.squirrel').classList.toggle('needs', c.squirrel < c.bunny);
   el('countBunny').textContent = c.bunny + (c.bunny === 1 ? ' spiller' : ' spillere');
   el('countSquirrel').textContent = c.squirrel + (c.squirrel === 1 ? ' spiller' : ' spillere');
 });
@@ -1502,6 +1522,7 @@ socket.on('welcome', d => {
   timeLeft = d.timeLeft;
   roundMsg = d.intermission ? 'Runden er over – ny runde starter snart' : '';
   placeAtSpawn(d.spawn);
+  myProtectUntil = performance.now() + 2000;   // [NY] skjold når du blir med
   for (const id in others) removeOther(id);   // [NY] fjern gamle figurer etter ny tilkobling
   for (const id in d.players) addOther(d.players[id]);
   if (d.foam) setFoam(d.foam.on, d.foam.holes, true);   // [NY] skummet står allerede
@@ -1532,6 +1553,7 @@ socket.on('snap', snap => {
     r.crouch = s[7];
     r.glide = s[8];
     r.weapon = s[9];
+    r.prot = s[10];                                 // [NY] beskyttet etter ny start
   }
 });
 
@@ -1573,6 +1595,13 @@ socket.on('hitConfirm', d => {
 socket.on('damaged', d => {
   hp = d.hp;
   damageFlash = 0.8;
+  // [NY] Rød kile som peker mot den som skjøt
+  const dx = d.fromX - player.x, dz = d.fromZ - player.z;
+  if (Math.hypot(dx, dz) > 0.5) {
+    const ang = Math.atan2(-Math.sin(player.yaw), -Math.cos(player.yaw)) - Math.atan2(dx, dz);
+    hitdirEl.style.transform = 'rotate(' + (ang * 180 / Math.PI).toFixed(1) + 'deg)';
+    hitdirTime = 1.2;
+  }
 });
 
 socket.on('kill', d => {
@@ -1591,10 +1620,35 @@ socket.on('kill', d => {
 
 socket.on('alive', d => { if (others[d.id]) others[d.id].alive = true; });
 
+// [NY] Drap på rad – stort banner for alle
+socket.on('streak', d => {
+  const title = d.n >= 10 ? 'LEGENDARISK! &#128081;' : d.n >= 5 ? 'USTOPPELIG! &#128165;' : 'KILLINGSPREE! &#128293;';
+  streakEl.innerHTML = title + '<small>' + teamSpan(d.team, esc(d.name)) + ' – ' + d.n + ' drap på rad</small>';
+  streakEl.classList.add('show');
+  clearTimeout(streakTimer);
+  streakTimer = setTimeout(() => streakEl.classList.remove('show'), 3000);
+  playStreak(d.n);
+});
+function playStreak(n) {
+  if (!audioCtx) return;
+  const notes = n >= 10 ? [523, 659, 784, 1047, 1319] : n >= 5 ? [523, 659, 784, 1047] : [523, 659, 784];
+  notes.forEach((f, i) => {
+    const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+    const t0 = audioCtx.currentTime + i * 0.11;
+    o.type = 'square';
+    o.frequency.value = f;
+    g.gain.setValueAtTime(0.07, t0);
+    g.gain.exponentialRampToValueAtTime(0.001, t0 + 0.2);
+    o.connect(g); g.connect(audioCtx.destination);
+    o.start(t0); o.stop(t0 + 0.22);
+  });
+}
+
 socket.on('respawn', sp => {
   placeAtSpawn(sp);
   alive = true;
   hp = 100;
+  myProtectUntil = performance.now() + 2000;   // [NY] skjold i 2 sek
   akW.mag = akW.magSize;         // full ammo ved ny start (begge våpen)
   sniperW.mag = sniperW.magSize;
   scoped = false;
