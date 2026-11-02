@@ -26,6 +26,8 @@ const SNIPER_MIN_MS = 900;     // snikskytteren skyter ca. én gang i sekundet
 const MIN_HIT_MS = 80;         // våpenet skyter hvert 100. ms – litt slingringsmonn
 const TEAMS = ['bunny', 'squirrel'];
 const NADES_PER_LIFE = 3;      // granater per liv
+const ROCKETS_PER_LIFE = 2;    // bazooka-raketter per liv
+const ROCKET_RADIUS = 4.5, ROCKET_MAX_DMG = 120, ROCKET_BLOCKS = 3.5;
 const SPAWN_PROTECT_MS = 2000; // usårbar i 2 sek etter ny start
 const NADE_RADIUS = 6;         // sprengradius i meter
 const NADE_MAX_DMG = 110;      // skade midt i smellet (dreper)
@@ -152,6 +154,7 @@ function killByWorld(t, who, weapon) {
 function respawn(p) {
   const sp = spawnFor(p.team);
   p.nades = NADES_PER_LIFE;
+  p.rockets = ROCKETS_PER_LIFE;
   p.protectedUntil = Date.now() + SPAWN_PROTECT_MS;
   p.hp = MAX_HP;
   p.alive = true;
@@ -172,7 +175,7 @@ io.on('connection', socket => {
       id: socket.id, name, team,
       x: sp.x, y: 0, z: sp.z, yaw: sp.yaw, pitch: 0, slide: 0,
       hp: MAX_HP, alive: true, kills: 0, deaths: 0, lastHit: 0,
-      nades: NADES_PER_LIFE, pending: {},
+      nades: NADES_PER_LIFE, rockets: ROCKETS_PER_LIFE, pending: {},
       streak: 0, protectedUntil: Date.now() + SPAWN_PROTECT_MS
     };
     const others = {};
@@ -198,7 +201,7 @@ io.on('connection', socket => {
     p.x = x; p.y = y; p.z = z; p.yaw = yaw; p.pitch = pitch; p.slide = s[5] ? 1 : 0;
     p.crouch = s[6] ? 1 : 0;
     p.glide = s[7] ? 1 : 0;
-    p.weapon = s[8] ? 1 : 0;      // 0 = AK, 1 = snikskytter
+    p.weapon = s[8] === 2 ? 2 : s[8] ? 1 : 0;      // 0 = AK, 1 = snikskytter, 2 = bazooka
 
     // Toppen av pyramiden (2 x 2 m, 13 m høyt) = SKUMFEST!
     if (worldName === 'main' && mapName === 'temple' && !foamOn && !intermission && y >= 12.9 && Math.abs(x) <= 1.2 && Math.abs(z) <= 1.2) {
@@ -299,6 +302,36 @@ io.on('connection', socket => {
     setTimeout(() => Object.values(players).forEach(o => respawn(o)), 800);
   });
 
+  // Bazooka: rakett skutt (vises for de andre)
+  socket.on('rocketFire', d => {
+    const p = players[socket.id];
+    if (!p || !p.alive || p.rockets <= 0 || !d || typeof d.id !== 'string' || d.id.length > 40) return;
+    if (!Array.isArray(d.p) || !Array.isArray(d.v)) return;
+    const pos = d.p.map(v => num(v, -100, 100)), vel = d.v.map(v => num(v, -40, 40));
+    if (pos.includes(null) || vel.includes(null)) return;
+    p.rockets--;
+    p.pending[d.id] = Date.now();
+    p.protectedUntil = 0;
+    socket.broadcast.emit('rocket', { id: d.id, team: p.team, p: pos, v: vel });
+  });
+  // Raketten smalt: stort smell, skade på fiender, store hull i klossene
+  socket.on('rocketBoom', d => {
+    const p = players[socket.id];
+    if (!p || !d || !p.pending[d.id]) return;
+    delete p.pending[d.id];
+    if (!Array.isArray(d.p)) return;
+    const pos = d.p.map(v => num(v, -100, 100));
+    if (pos.includes(null)) return;
+    io.emit('boom', { id: d.id, p: pos, big: 1.6 });
+    if (mapName === 'castle' && worldName === 'main') blastCells(pos[0], pos[1], pos[2], ROCKET_BLOCKS);
+    if (intermission) return;
+    Object.values(players).forEach(t => {
+      if (!t.alive || t.team === p.team) return;
+      const dist = Math.hypot(t.x - pos[0], t.y + 0.9 - pos[1], t.z - pos[2]);
+      if (dist < ROCKET_RADIUS) applyDamage(p, t, Math.round(ROCKET_MAX_DMG * (1 - dist / ROCKET_RADIUS)), false, 'rocket');
+    });
+  });
+
   // Kule traff en kloss på klosseslottet
   socket.on('blockHit', d => {
     const p = players[socket.id];
@@ -335,7 +368,7 @@ io.on('connection', socket => {
 setInterval(() => {
   const snap = {};
   Object.values(players).forEach(p => {
-    snap[p.id] = [+p.x.toFixed(2), +p.y.toFixed(2), +p.z.toFixed(2), +p.yaw.toFixed(3), +p.pitch.toFixed(3), p.alive ? 1 : 0, p.slide, p.crouch ? 1 : 0, p.glide ? 1 : 0, p.weapon ? 1 : 0, Date.now() < (p.protectedUntil || 0) ? 1 : 0];
+    snap[p.id] = [+p.x.toFixed(2), +p.y.toFixed(2), +p.z.toFixed(2), +p.yaw.toFixed(3), +p.pitch.toFixed(3), p.alive ? 1 : 0, p.slide, p.crouch ? 1 : 0, p.glide ? 1 : 0, p.weapon || 0, Date.now() < (p.protectedUntil || 0) ? 1 : 0];
   });
   io.emit('snap', snap);
 }, 50);

@@ -318,6 +318,7 @@ window.addEventListener('keydown', e => {
   if (e.code === 'KeyG') nadeQueued = true;            // [NY] kast granat
   if (e.code === 'Digit1') switchWeapon(akW);          // [NY] bytt våpen
   if (e.code === 'Digit2') switchWeapon(sniperW);
+  if (e.code === 'Digit3') switchWeapon(bazW);       // [NY] bazooka
   if (e.code === 'Tab' && joined) e.preventDefault(); // [NY] Tab = poengtavle
 });
 window.addEventListener('keyup', e => { keys[e.code] = false; });
@@ -347,7 +348,7 @@ function releaseAll() {
 window.addEventListener('blur', releaseAll);
 
 if (!isTouch) {
-  overlay.innerHTML = '<div><b>Klikk for å spille</b><br>WASD = gå &nbsp; Mus = sikte<br>Mellomrom = hopp &nbsp; Shift = løp<br>C = slide (mens du går) &nbsp; Esc = pause<br>Venstre museknapp = skyt &nbsp; R = lad om<br>G = kast granat &nbsp; Hold Q = dukk<br>1 / 2 / musehjul = bytt våpen &nbsp; Høyre museknapp = kikkert<br>&#129991; Tips: klatre til toppen av pyramiden (den rosa boblen) = SKUMFEST!<br>Kanin: superhopp &nbsp; Flygeekorn: hold mellomrom i lufta = svev<br>Hold Tab = poengtavle<br>Virker ikke musen? Hold inne venstre knapp og dra, og skyt med F.</div>';
+  overlay.innerHTML = '<div><b>Klikk for å spille</b><br>WASD = gå &nbsp; Mus = sikte<br>Mellomrom = hopp &nbsp; Shift = løp<br>C = slide (mens du går) &nbsp; Esc = pause<br>Venstre museknapp = skyt &nbsp; R = lad om<br>G = kast granat &nbsp; Hold Q = dukk<br>1 / 2 / 3 / musehjul = bytt våpen (3 = bazooka) &nbsp; Høyre museknapp = kikkert<br>&#129991; Tips: klatre til toppen av pyramiden (den rosa boblen) = SKUMFEST!<br>Kanin: superhopp &nbsp; Flygeekorn: hold mellomrom i lufta = svev<br>Hold Tab = poengtavle<br>Virker ikke musen? Hold inne venstre knapp og dra, og skyt med F.</div>';
   overlay.addEventListener('click', () => {
     try {
       const p = renderer.domElement.requestPointerLock();
@@ -431,7 +432,7 @@ if (isTouch) {
       if (t.target === slideBtn) { slideQueued = true; continue; }
       // [FIKS] Dra fingeren på SKYT-knappen for å sikte mens du skyter
       if (t.target === fireBtn) { fireId = t.identifier; touchFire = true; lastFire.x = t.clientX; lastFire.y = t.clientY; continue; }
-      if (t.target === swapBtn) { switchWeapon(weapon === akW ? sniperW : akW); continue; }
+      if (t.target === swapBtn) { switchWeapon(nextWeapon()); continue; }
       if (t.target === scopeBtn) { if (weapon === sniperW && alive) scoped = !scoped; continue; }
       if (t.target === crouchBtn) {
         touchCrouch = !touchCrouch;
@@ -602,6 +603,10 @@ function updatePlayer(dt) {
 // [NY] To våpen: 1 = AK (100 i magasinet), 2 = snikskytter (5 skudd, treg men kraftig). Uendelig reserve.
 const akW = { id: 'ak', mag: 100, magSize: 100, reserve: Infinity, fireDelay: 0.1, reloadTime: 2.0 };
 const sniperW = { id: 'sniper', mag: 5, magSize: 5, reserve: Infinity, fireDelay: 1.1, reloadTime: 2.5 };
+// [NY] Våpen 3: bazooka (gulrot / eikenøtt). 2 raketter per liv: 1 i røret + 1 i reserve.
+const bazW = { id: 'bazooka', mag: 1, magSize: 1, reserve: 1, fireDelay: 0.8, reloadTime: 2.5 };
+const WEAPON_ORDER = [akW, sniperW, bazW];
+function nextWeapon() { return WEAPON_ORDER[(WEAPON_ORDER.indexOf(weapon) + 1) % WEAPON_ORDER.length]; }
 let weapon = akW;          // våpenet du holder nå
 let scoped = false;        // ser gjennom kikkertsiktet
 let fireHeld = false, touchFire = false, fireCooldown = 0, reloading = 0, recoil = 0, flashTime = 0;
@@ -665,11 +670,23 @@ function buildSniperView(team) {
   gun.add(sniperView);
   showWeaponModel();
 }
+let bazView = null;
+function buildBazView(team) {
+  if (bazView) gun.remove(bazView);
+  bazView = buildBazooka(team);
+  bazView.rotation.y = Math.PI;
+  bazView.scale.setScalar(0.6);               // mindre, så bladene ikke fyller skjermen
+  bazView.position.set(0.03, 0.05, -0.3);
+  bazView.traverse(o => { o.layers.set(2); o.castShadow = false; o.receiveShadow = false; });
+  gun.add(bazView);
+  showWeaponModel();
+}
 function showWeaponModel() {
-  const sn = weapon === sniperW;
-  akParts.forEach(c => { c.visible = !sn; });
+  const sn = weapon === sniperW, bz = weapon === bazW;
+  akParts.forEach(c => { c.visible = !sn && !bz; });
   if (sniperView) sniperView.visible = sn;
-  flash.position.set(0, 0.012, sn ? -0.8 : -0.56);
+  if (bazView) bazView.visible = bz;
+  flash.position.set(0, bz ? 0.06 : 0.012, sn ? -0.8 : bz ? -0.65 : -0.56);
 }
 function switchWeapon(w) {
   if (!joined || weapon === w) return;
@@ -910,7 +927,7 @@ function updateNades(dt) {
     if (b.life <= 0) return;
     b.life -= dt;
     const k = 1 - Math.max(0, b.life) / 0.35;         // 0 -> 1
-    b.ball.scale.setScalar(0.5 + k * 8);
+    b.ball.scale.setScalar((0.5 + k * 8) * (b.big || 1));
     b.ball.material.opacity = Math.max(0, 0.85 - k);
     b.ball.visible = b.life > 0;
   });
@@ -972,10 +989,11 @@ for (let i = 0; i < 400; i++) {
 }
 let stuffIndex = 0;
 
-function explode(p) {
+function explode(p, big) {
   const b = booms[boomIndex];
   boomIndex = (boomIndex + 1) % booms.length;
   b.life = 0.35;
+  b.big = big || 1;                                  // [NY] større smell for bazooka/morter
   b.ball.position.set(p[0], p[1], p[2]);
   b.ball.visible = true;
   for (let i = 0; i < STUFF_PER_BOOM; i++) {
@@ -1012,6 +1030,116 @@ function playBoom(vol) {
   const gain = audioCtx.createGain();
   gain.gain.value = vol;
   src.connect(filt); filt.connect(gain); gain.connect(audioCtx.destination);
+  src.start();
+}
+
+// ---------- [NY] Bazooka-raketter (gulrot / eikenøtt) ----------
+// Flyr rett frem ganske sakte (så man kan se den komme), med røykspor.
+// Smeller når den treffer bakken, en vegg, en kloss eller en fiende.
+const ROCKET_SPEED = 26, ROCKET_LIFE = 6;
+const rockets = [];   // { id, mine, mesh, pos, vel, t, smokeT }
+const smoke = [];
+for (let i = 0; i < 80; i++) {
+  const m = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 0.3),
+    new THREE.MeshBasicMaterial({ color: 0xdddddd, transparent: true, opacity: 0, depthWrite: false }));
+  m.visible = false;
+  m.raycast = () => {};
+  scene.add(m);
+  smoke.push({ m, life: 0 });
+}
+let smokeIndex = 0;
+function puffSmoke(p) {
+  const s = smoke[smokeIndex];
+  smokeIndex = (smokeIndex + 1) % smoke.length;
+  s.m.position.copy(p);
+  s.m.scale.setScalar(1);
+  s.m.rotation.set(Math.random() * 3, Math.random() * 3, 0);
+  s.life = 0.8;
+  s.m.visible = true;
+}
+function spawnRocket(id, team, mine, p, v) {
+  const mesh = buildRocket(team);
+  mesh.traverse(o => { o.raycast = () => {}; });
+  const pos = new THREE.Vector3(p[0], p[1], p[2]), vel = new THREE.Vector3(v[0], v[1], v[2]);
+  mesh.position.copy(pos);
+  mesh.lookAt(pos.clone().add(vel));
+  scene.add(mesh);
+  rockets.push({ id, mine, mesh, pos, vel, t: 0, smokeT: 0 });
+}
+function removeRocket(id) {
+  const i = rockets.findIndex(r => r.id === id);
+  if (i < 0) return;
+  scene.remove(rockets[i].mesh);
+  rockets.splice(i, 1);
+}
+function fireRocket() {
+  if (weapon.mag <= 0) return;
+  weapon.mag--;
+  fireCooldown = weapon.fireDelay;
+  recoil = 1.5;
+  flashTime = 0.1;
+  myProtectUntil = 0;
+  camera.updateMatrixWorld(true);
+  const dir = camera.getWorldDirection(new THREE.Vector3());
+  const start = muzzleWorld();
+  if (nadeHits(start.x, start.y, start.z)) start.copy(camera.position);
+  const id = myId + ':r' + (++nadeSeq);
+  const p = [+start.x.toFixed(2), +start.y.toFixed(2), +start.z.toFixed(2)];
+  const v = [+(dir.x * ROCKET_SPEED).toFixed(2), +(dir.y * ROCKET_SPEED).toFixed(2), +(dir.z * ROCKET_SPEED).toFixed(2)];
+  spawnRocket(id, myTeam, true, p, v);
+  socket.emit('rocketFire', { id, p, v });
+  playWhoosh();
+  player.pitch = Math.min(1.45, player.pitch + 0.05);   // kraftig rekyl
+}
+function updateRockets(dt) {
+  for (let i = rockets.length - 1; i >= 0; i--) {
+    const r = rockets[i];
+    r.t += dt;
+    let hit = r.t >= ROCKET_LIFE;
+    const steps = Math.max(1, Math.ceil(r.vel.length() * dt / 0.25));
+    for (let k = 0; k < steps && !hit; k++) {
+      r.pos.addScaledVector(r.vel, dt / steps);
+      if (nadeHits(r.pos.x, r.pos.y, r.pos.z)) hit = true;
+      // Treffer en fiende?
+      for (const id in others) {
+        const o = others[id];
+        if (!o.alive || o.team === myTeam) continue;
+        if (Math.hypot(r.pos.x - o.cur.x, r.pos.y - (o.cur.y + 0.9), r.pos.z - o.cur.z) < 0.9) { hit = true; break; }
+      }
+    }
+    r.mesh.position.copy(r.pos);
+    r.mesh.rotateZ(dt * 8);                       // snurrer litt
+    r.smokeT -= dt;
+    if (r.smokeT <= 0) { r.smokeT = 0.03; puffSmoke(r.pos); }
+    if (hit && r.mine) {
+      socket.emit('rocketBoom', { id: r.id, p: [+r.pos.x.toFixed(2), +r.pos.y.toFixed(2), +r.pos.z.toFixed(2)] });
+      removeRocket(r.id);
+    } else if (!r.mine && r.t > ROCKET_LIFE + 2) {
+      removeRocket(r.id);                          // smellet kom aldri – rydd opp
+    } else if (hit && !r.mine) {
+      r.vel.set(0, 0, 0);                          // vent på smellet fra serveren
+    }
+  }
+  smoke.forEach(sm => {
+    if (!sm.m.visible) return;
+    sm.life -= dt;
+    sm.m.scale.setScalar(1 + (0.8 - sm.life) * 3);
+    sm.m.material.opacity = Math.max(0, sm.life) * 0.6;
+    sm.m.position.y += dt * 0.6;
+    if (sm.life <= 0) sm.m.visible = false;
+  });
+}
+function playWhoosh() {
+  if (!audioCtx) return;
+  const sr = audioCtx.sampleRate, len = Math.floor(0.6 * sr);
+  const buf = audioCtx.createBuffer(1, len, sr), data = buf.getChannelData(0);
+  for (let i = 0; i < len; i++) data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 1.5);
+  const src = audioCtx.createBufferSource(); src.buffer = buf;
+  const f = audioCtx.createBiquadFilter(); f.type = 'bandpass';
+  f.frequency.setValueAtTime(400, audioCtx.currentTime);
+  f.frequency.exponentialRampToValueAtTime(2500, audioCtx.currentTime + 0.5);
+  const g = audioCtx.createGain(); g.gain.value = 0.4;
+  src.connect(f); f.connect(g); g.connect(audioCtx.destination);
   src.start();
 }
 
@@ -1196,6 +1324,7 @@ function muzzleWorld() {
 }
 
 function shoot() {
+  if (weapon === bazW) { fireRocket(); return; }   // [NY] bazooka skyter en rakett i stedet for en kule
   weapon.mag--;
   fireCooldown = weapon.fireDelay;
   myProtectUntil = 0;                             // [NY] skyter du, er skjoldet borte
@@ -1268,7 +1397,7 @@ document.addEventListener('mouseup', e => { if (e.button === 2) scoped = false; 
 document.addEventListener('contextmenu', e => { if (joined) e.preventDefault(); });
 document.addEventListener('wheel', e => {
   if (!joined || document.pointerLockElement !== renderer.domElement) return;
-  switchWeapon(weapon === akW ? sniperW : akW);
+  switchWeapon(nextWeapon());
 });
 
 function updateWeapon(dt) {
@@ -1333,7 +1462,7 @@ function updateWeapon(dt) {
     if (s.life <= 0) s.mesh.visible = false;
   });
 
-  const wIcon = weapon === sniperW ? (myTeam === 'bunny' ? '🥕 ' : '🌰 ') : 'AK ';   // [NY] gulrot / nøtt
+  const wIcon = weapon === sniperW ? (myTeam === 'bunny' ? '🥕 ' : '🌰 ') : weapon === bazW ? '🚀 ' : 'AK ';   // [NY] gulrot / nøtt / bazooka
   hud.textContent = wIcon + (reloading > 0 ? 'LADER...' : weapon.mag + ' / ' + (weapon.reserve === Infinity ? '∞' : weapon.reserve)) +
     '   💣 ' + (underNow() ? '∞' : grenades);   // [NY] viser granater også (uendelig i underverdenen)
 }
@@ -1372,6 +1501,11 @@ function addOther(p) {
   heldSniper.position.copy(body.userData.gun.position);
   heldSniper.visible = false;
   body.add(heldSniper);
+  const heldBaz = buildBazooka(p.team);           // [NY] bazooka i hånden
+  heldBaz.position.copy(body.userData.gun.position);
+  heldBaz.position.y += 0.08;
+  heldBaz.visible = false;
+  body.add(heldBaz);
   // [NY] Blå skjold-boble når spilleren nettopp har startet på nytt (kan ikke skades)
   const shield = new THREE.Mesh(new THREE.SphereGeometry(1.15, 16, 12),
     new THREE.MeshBasicMaterial({ color: 0x6fc3ff, transparent: true, opacity: 0.3, depthWrite: false }));
@@ -1383,7 +1517,7 @@ function addOther(p) {
   root.add(tag);
   scene.add(root);
   others[p.id] = {
-    name: p.name, team: p.team, root, body, tag, alive: p.alive !== false, slide: 0, walk: 0, heldSniper, weapon: 0, shield, prot: 0,
+    name: p.name, team: p.team, root, body, tag, alive: p.alive !== false, slide: 0, walk: 0, heldSniper, heldBaz, weapon: 0, shield, prot: 0,
     cur: { x: p.x, y: p.y, z: p.z, yaw: p.yaw },
     target: { x: p.x, y: p.y, z: p.z, yaw: p.yaw }
   };
@@ -1423,9 +1557,10 @@ function updateOthers(dt) {
     r.body.scale.y += (sy - r.body.scale.y) * Math.min(1, dt * 12);
     r.tag.visible = r.alive && !(r.crouch && foamHeightAt(r.cur.x, r.cur.z) > r.cur.y + 0.8);
     r.heldSniper.visible = r.weapon === 1;           // [NY] riktig våpen i hånden
+    r.heldBaz.visible = r.weapon === 2;
     r.shield.visible = r.alive && r.prot === 1;      // [NY] skjold-boble
     if (r.shield.visible) r.shield.material.opacity = 0.22 + Math.sin(performance.now() / 120) * 0.08;
-    r.body.userData.gun.visible = r.weapon !== 1;
+    r.body.userData.gun.visible = r.weapon !== 1 && r.weapon !== 2;
   }
 }
 
@@ -1498,7 +1633,7 @@ function updateHud(dt) {
 
 function addKillfeed(d) {
   const div = document.createElement('div');
-  div.innerHTML = teamSpan(d.killerTeam, esc(d.killerName)) + (d.weapon === 'nade' ? ' &#128163; ' : d.weapon === 'lava' ? ' &#127755; ' : d.weapon === 'fart' ? ' &#128168; ' : d.weapon === 'sniper' ? (d.killerTeam === 'bunny' ? ' &#129365;' : ' &#127792;') + (d.head ? '&#127919; ' : ' ') : (d.head ? ' &#127919; ' : ' &#10140; ')) + teamSpan(d.victimTeam, esc(d.victimName));
+  div.innerHTML = teamSpan(d.killerTeam, esc(d.killerName)) + (d.weapon === 'nade' ? ' &#128163; ' : d.weapon === 'lava' ? ' &#127755; ' : d.weapon === 'fart' ? ' &#128168; ' : d.weapon === 'rocket' ? ' &#128640; ' : d.weapon === 'sniper' ? (d.killerTeam === 'bunny' ? ' &#129365;' : ' &#127792;') + (d.head ? '&#127919; ' : ' ') : (d.head ? ' &#127919; ' : ' &#10140; ')) + teamSpan(d.victimTeam, esc(d.victimName));
   killfeed.prepend(div);
   while (killfeed.children.length > 5) killfeed.lastChild.remove();
   setTimeout(() => div.remove(), 6000);
@@ -1543,6 +1678,7 @@ socket.on('welcome', d => {
   for (const id in d.players) addOther(d.players[id]);
   if (d.foam) setFoam(d.foam.on, d.foam.holes, true);   // [NY] skummet står allerede
   buildSniperView(myTeam);       // [NY] gulrot- eller nøtte-gevær
+  buildBazView(myTeam);          // [NY] gulrot-bazooka eller nøtte-kanon
   document.body.classList.add('playing');
   el('menu').style.display = 'none';
   topbar.style.display = 'block';
@@ -1586,9 +1722,11 @@ socket.on('shot', d => {
 
 // [NY] Granater fra andre spillere, og smell fra serveren
 socket.on('nade', d => spawnNade(d.id, false, d.p, d.v));
+socket.on('rocket', d => { spawnRocket(d.id, d.team, false, d.p, d.v); });   // [NY] andres raketter
 socket.on('boom', d => {
   removeNade(d.id);
-  explode(d.p);
+  removeRocket(d.id);                                 // [NY] rakett
+  explode(d.p, d.big);
   if (foamOn && d.p[1] < 3) cutHole(d.p[0], d.p[2]);   // [NY] granaten blåser bort skummet
 });
 
@@ -1667,6 +1805,7 @@ socket.on('respawn', sp => {
   myProtectUntil = performance.now() + 2000;   // [NY] skjold i 2 sek
   akW.mag = akW.magSize;         // full ammo ved ny start (begge våpen)
   sniperW.mag = sniperW.magSize;
+  bazW.mag = 1; bazW.reserve = 1;   // [NY] 2 raketter per liv
   scoped = false;
   grenades = GRENADES_MAX;       // [NY] nye granater ved ny start
   reloading = 0;
@@ -1710,7 +1849,7 @@ function sendState(dt) {
   sendTimer -= dt;
   if (sendTimer > 0 || !joined || !alive) return;
   sendTimer = 0.05;
-  socket.emit('state', [+player.x.toFixed(2), +player.feetY.toFixed(2), +player.z.toFixed(2), +player.yaw.toFixed(3), +player.pitch.toFixed(3), slide.active ? 1 : 0, crouching ? 1 : 0, gliding ? 1 : 0, weapon === sniperW ? 1 : 0]);
+  socket.emit('state', [+player.x.toFixed(2), +player.feetY.toFixed(2), +player.z.toFixed(2), +player.yaw.toFixed(3), +player.pitch.toFixed(3), slide.active ? 1 : 0, crouching ? 1 : 0, gliding ? 1 : 0, weapon === sniperW ? 1 : weapon === bazW ? 2 : 0]);
 }
 
 // ===================================================================
@@ -1827,6 +1966,7 @@ function animate(now) {
     sendState(dt);
     updateOthers(dt);
     updateNades(dt);            // [NY] granater og smell
+    updateRockets(dt);          // [NY] bazooka-raketter
     updateFoam(dt);             // [NY] skumfest
     updateFoamBeacon();         // [NY] rosa boble over pyramiden
     if (typeof updateCastle === 'function') updateCastle(dt);   // [NY] flyvende kloss-biter

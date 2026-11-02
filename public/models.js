@@ -74,6 +74,49 @@ function buildSniper(team) {
   return g;
 }
 
+// ---------- Bazooka ----------
+// Kaninene: gulrot-bazooka (oransje rør med grønne blader bak).
+// Flygeekornene: nøtte-kanon (brunt trerør med eikenøtt-hatt foran). Front = +z.
+function buildBazooka(team) {
+  const g = new THREE.Group();
+  const black = 0x151517;
+  if (team === 'bunny') {
+    const OR = 0xe8761c, OR2 = 0xc65a0e, GREEN = 0x3f8f2a;
+    blk(g, 0.16, 0.16, 0.95, 0, 0, 0.1, OR);                 // rør
+    [-0.2, 0.05, 0.3].forEach(z => blk(g, 0.17, 0.02, 0.03, 0, 0.07, z, OR2));   // gulrot-ringer
+    blk(g, 0.19, 0.19, 0.06, 0, 0, 0.59, OR2);               // munning
+    blk(g, 0.04, 0.16, 0.22, -0.04, 0.05, -0.47, GREEN, [0.3, 0.3, 0]);
+    blk(g, 0.04, 0.16, 0.22, 0.04, 0.05, -0.47, GREEN, [0.3, -0.3, 0]);
+    blk(g, 0.04, 0.2, 0.2, 0, 0.08, -0.46, GREEN, [0.5, 0, 0]);
+  } else {
+    const WOOD = 0x6b4423, CAP = 0x5a3a1a, NUT = 0xc89b5e;
+    blk(g, 0.17, 0.17, 0.95, 0, 0, 0.1, WOOD);               // trerør
+    blk(g, 0.22, 0.22, 0.12, 0, 0, 0.56, CAP);               // eikenøtt-hatt foran
+    blk(g, 0.19, 0.19, 0.1, 0, 0, -0.4, NUT);                // lys bakende
+    [-0.15, 0.2].forEach(z => blk(g, 0.18, 0.18, 0.03, 0, 0, z, CAP));
+  }
+  blk(g, 0.05, 0.12, 0.06, 0, -0.13, 0.05, black, [0.2, 0, 0]);   // grep
+  blk(g, 0.05, 0.1, 0.06, 0, -0.12, 0.3, black, [0.2, 0, 0]);     // fremre grep
+  blk(g, 0.04, 0.06, 0.12, -0.1, 0.1, 0.15, black);               // sikte
+  return g;
+}
+// Prosjektilet: en gulrot eller en eikenøtt. Front = +z.
+function buildRocket(team) {
+  const g = new THREE.Group();
+  if (team === 'bunny') {
+    blk(g, 0.13, 0.13, 0.32, 0, 0, 0, 0xe8761c);
+    blk(g, 0.08, 0.08, 0.14, 0, 0, 0.22, 0xe8761c);
+    blk(g, 0.04, 0.04, 0.06, 0, 0, 0.31, 0xc65a0e);
+    blk(g, 0.03, 0.14, 0.12, 0, 0.04, -0.2, 0x3f8f2a, [0.4, 0, 0]);
+    blk(g, 0.14, 0.03, 0.12, 0, 0.0, -0.2, 0x3f8f2a);
+  } else {
+    blk(g, 0.22, 0.24, 0.22, 0, 0, 0.02, 0xc89b5e);
+    blk(g, 0.26, 0.1, 0.26, 0, 0.12, 0, 0x5a3a1a);
+    blk(g, 0.04, 0.08, 0.04, 0, 0.2, 0, 0x5a3a1a);
+  }
+  return g;
+}
+
 // ---------- Krigsutstyr: pannebånd og kulebelter ----------
 // Pannebånd rundt hodet med knute og to fliker bak
 function bandana(g, y, w, d, color) {

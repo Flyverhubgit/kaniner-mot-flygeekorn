@@ -24,7 +24,7 @@ Tre baner som byttes hver runde: **Tempelet** (med skumfest og hemmelig håndtak
 | WASD gå, mus sikte | venstre tommel gå |
 | venstre museknapp skyt, R lad om | høyre tommel se |
 | mellomrom hopp, Shift løp, C slide | knapper: SKYT, LADE, HOPP, SLIDE |
-| 1 / 2 / musehjul = bytt våpen | knapp: BYTT |
+| 1 / 2 / 3 / musehjul = bytt våpen (3 = bazooka) | knapp: BYTT |
 | høyre museknapp = kikkertsikte | knapp: SIKTE |
 | G = kast granat | knapp: GRANAT |
 | hold Q = dukk | knapp: DUKK (av/på) |
@@ -36,7 +36,8 @@ Tre baner som byttes hver runde: **Tempelet** (med skumfest og hemmelig håndtak
 - Skumfest: stå på toppen av pyramiden, så fylles banen med rosa skum til neste runde. Dukk (hold Q / DUKK-knappen) for å gjemme deg. Granater blåser hull i skummet.
 - Dyrekrefter: Kaninen hopper dobbelt så høyt. Flygeekornet svever når du holder inne hopp i lufta.
 - Våpen 1: AK, 100 skudd i magasinet. Våpen 2: snikskytter (kaniner: gulrot, flygeekorn: nøtt), 5 skudd, 60 i kroppen, 100 i hodet. Bruk kikkerten – uten den sprer skuddene mye.
-- Uendelig reserve-ammo.
+- Våpen 3: bazooka (kaniner: gulrot-bazooka, flygeekorn: nøtte-kanon). 2 raketter per liv, stort smell, sprenger store hull i klosseslottet.
+- Uendelig reserve-ammo (AK og snikskytter).
 - 3 granater per liv. Smeller etter 2 sek, opptil 110 skade innenfor 6 m.
 - HEMMELIG: Et lite gyllent håndtak henger i venstre hus i tempelet. Dra i det (E / TREKK) og alle faller ned i lava-doen! Alle blir zombier, lava deler lagene (lava = død), to broer går over, og granatene er uendelige. Dra i det gylne skyll-håndtaket på deres side for å skylle alle opp igjen (ellers: tilbake ved neste runde).
 - Drap på rad: 3 = KILLINGSPREE!, 5 = USTOPPELIG!, 10 = LEGENDARISK!
