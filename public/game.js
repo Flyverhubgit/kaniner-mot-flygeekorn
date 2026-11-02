@@ -1330,6 +1330,7 @@ function muzzleWorld() {
 }
 
 function shoot() {
+  if (typeof inMortar !== 'undefined' && inMortar) { fireMortar(); return; }   // [NY] står i morteren
   if (weapon === bazW) { fireRocket(); return; }   // [NY] bazooka skyter en rakett i stedet for en kule
   weapon.mag--;
   fireCooldown = weapon.fireDelay;
@@ -1419,7 +1420,8 @@ function updateWeapon(dt) {
       weapon.reserve -= take;
     }
   } else if (wantFire && fireCooldown <= 0) {
-    if (weapon.mag > 0) shoot(); else startReload();
+    if (typeof inMortar !== 'undefined' && inMortar) fireMortar();   // [NY] morteren uansett hvilket våpen du har
+    else if (weapon.mag > 0) shoot(); else startReload();
   }
 
   // Animasjon: rekyl, og våpenet dukker ned under omlading
@@ -1442,7 +1444,7 @@ function updateWeapon(dt) {
     window.__scopeBtn.style.display = weapon === sniperW && joined ? 'flex' : 'none';
     window.__scopeBtn.style.background = scoped ? 'rgba(255,150,205,0.6)' : 'rgba(255,255,255,0.3)';
   }
-  gun.visible = alive && joined && !scoped;  // [NY] skjul våpenet i menyen, når du er død og i kikkerten
+  gun.visible = alive && joined && !scoped && !(typeof inMortar !== 'undefined' && inMortar);  // [NY] skjul våpenet i menyen, når du er død, i kikkerten og i morteren
 
   flashTime -= dt;
   flash.visible = flashTime > 0;
@@ -1639,7 +1641,7 @@ function updateHud(dt) {
 
 function addKillfeed(d) {
   const div = document.createElement('div');
-  div.innerHTML = teamSpan(d.killerTeam, esc(d.killerName)) + (d.weapon === 'nade' ? ' &#128163; ' : d.weapon === 'lava' ? ' &#127755; ' : d.weapon === 'fart' ? ' &#128168; ' : d.weapon === 'rocket' ? ' &#128640; ' : d.weapon === 'sniper' ? (d.killerTeam === 'bunny' ? ' &#129365;' : ' &#127792;') + (d.head ? '&#127919; ' : ' ') : (d.head ? ' &#127919; ' : ' &#10140; ')) + teamSpan(d.victimTeam, esc(d.victimName));
+  div.innerHTML = teamSpan(d.killerTeam, esc(d.killerName)) + (d.weapon === 'nade' ? ' &#128163; ' : d.weapon === 'lava' ? ' &#127755; ' : d.weapon === 'fart' ? ' &#128168; ' : d.weapon === 'rocket' ? ' &#128640; ' : d.weapon === 'mortar' ? ' &#128163;&#128163; ' : d.weapon === 'sniper' ? (d.killerTeam === 'bunny' ? ' &#129365;' : ' &#127792;') + (d.head ? '&#127919; ' : ' ') : (d.head ? ' &#127919; ' : ' &#10140; ')) + teamSpan(d.victimTeam, esc(d.victimName));
   killfeed.prepend(div);
   while (killfeed.children.length > 5) killfeed.lastChild.remove();
   setTimeout(() => div.remove(), 6000);
@@ -1976,6 +1978,7 @@ function animate(now) {
     updateFoam(dt);             // [NY] skumfest
     updateFoamBeacon();         // [NY] rosa boble over pyramiden
     if (typeof updateCastle === 'function') updateCastle(dt);   // [NY] flyvende kloss-biter
+    if (typeof updateMortar === 'function') updateMortar(dt);   // [NY] morterer
     updateUnderworld(dt);       // [NY] underverdenen (underworld.js)
     updateHud(dt);
   }

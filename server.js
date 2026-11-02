@@ -75,6 +75,20 @@ function blastCells(x, y, z, r) {
   destroyCells(list);
 }
 const BLOCK_DMG = { ak: 1, sniper: 4 };            // kloss-skade per skudd
+
+// Morterer: én i hver slottsgård. Skuddet flyr i 3 sek, så BOOM. 5 sek mellom hvert skudd.
+const MORTARS = { bunny: { x: 0, y: 2, z: 34 }, squirrel: { x: 0, y: 2, z: -34 } };
+const MORTAR_FLIGHT = 3000, MORTAR_COOLDOWN = 5000;
+const MORTAR_BLOCKS = 5, MORTAR_RADIUS = 6, MORTAR_MAX_DMG = 150;
+const mortarReadyAt = { bunny: 0, squirrel: 0 };
+let mortarSeq = 0;
+// Høyeste klosstopp på et punkt (der granaten lander)
+function groundTop(x, z) {
+  const ix = Math.floor(x), iz = Math.floor(z);
+  if (ix < CM.X0 || ix >= CM.X0 + CM.NX || iz < CM.Z0 || iz >= CM.Z0 + CM.NZ) return 0;
+  for (let y = CM.NY - 1; y >= 0; y--) if (castleGrid[CM.idx(ix, y, iz)]) return y + 1;
+  return 0;
+}
 const HANDLE = { x: -25, z: -3 };   // håndtaket i bakre hjørne av venstre hus
 const UNDER_HANDLES = [{ x: 0, z: 24 }, { x: 0, z: -24 }];   // skyll-håndtak i underverdenen (ett per lag)
 let roundEndsAt = Date.now() + ROUND_SECONDS * 1000;
@@ -330,6 +344,35 @@ io.on('connection', socket => {
       const dist = Math.hypot(t.x - pos[0], t.y + 0.9 - pos[1], t.z - pos[2]);
       if (dist < ROCKET_RADIUS) applyDamage(p, t, Math.round(ROCKET_MAX_DMG * (1 - dist / ROCKET_RADIUS)), false, 'rocket');
     });
+  });
+
+  // Morter avfyrt: alle ser granaten fly, og 3 sek senere smeller den
+  socket.on('mortarFire', d => {
+    const p = players[socket.id];
+    if (!p || !p.alive || intermission || mapName !== 'castle' || worldName !== 'main' || !d || !Array.isArray(d.to)) return;
+    const m = MORTARS[p.team];
+    if (Math.hypot(p.x - m.x, p.z - m.z) > 3) return;            // må stå ved morteren
+    const now = Date.now();
+    if (now < mortarReadyAt[p.team]) return;                      // lader fortsatt
+    const tx = num(d.to[0], -78, 78), tz = num(d.to[1], -48, 48);
+    if (tx === null || tz === null) return;
+    mortarReadyAt[p.team] = now + MORTAR_COOLDOWN;
+    p.protectedUntil = 0;
+    const ty = groundTop(tx, tz);
+    const id = 'm' + (++mortarSeq);
+    io.emit('mortarShell', { id, team: p.team, from: [m.x, m.y + 1.2, m.z], to: [tx, ty, tz], flight: MORTAR_FLIGHT, cooldown: MORTAR_COOLDOWN });
+    setTimeout(() => {
+      if (mapName !== 'castle' || worldName !== 'main') return;
+      const y = groundTop(tx, tz);                                // kan ha endret seg mens den fløy
+      io.emit('boom', { id, p: [tx, y + 0.3, tz], big: 2.4 });
+      blastCells(tx, y + 0.3, tz, MORTAR_BLOCKS);
+      if (intermission) return;
+      Object.values(players).forEach(t => {
+        if (!t.alive || t.team === p.team) return;
+        const dist = Math.hypot(t.x - tx, t.y + 0.9 - (y + 0.3), t.z - tz);
+        if (dist < MORTAR_RADIUS) applyDamage(p, t, Math.round(MORTAR_MAX_DMG * (1 - dist / MORTAR_RADIUS)), false, 'mortar');
+      });
+    }, MORTAR_FLIGHT);
   });
 
   // Kule traff en kloss på klosseslottet

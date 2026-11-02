@@ -38,6 +38,7 @@ Tre baner som byttes hver runde: **Tempelet** (med skumfest og hemmelig håndtak
 - Våpen 1: AK, 100 skudd i magasinet. Våpen 2: snikskytter (kaniner: gulrot, flygeekorn: nøtt), 5 skudd, 60 i kroppen, 100 i hodet. Bruk kikkerten – uten den sprer skuddene mye.
 - Våpen 3: bazooka (kaniner: gulrot-bazooka, flygeekorn: nøtte-kanon). 2 raketter per liv, stort smell, sprenger store hull i klosseslottet.
 - Uendelig reserve-ammo (AK og snikskytter).
+- Klosseslottet: hvert lag har en MORTER i slottsgården. Gå bort og trykk E (mobil: MORTER). Se opp = lenger, ned = kortere, den røde ringen viser hvor den lander. Skyt! Granaten flyr i 3 sek (fienden ser en oransje varselring), så smeller den og river et stort hull. 5 sek mellom hvert skudd.
 - 3 granater per liv. Smeller etter 2 sek, opptil 110 skade innenfor 6 m.
 - HEMMELIG: Et lite gyllent håndtak henger i venstre hus i tempelet. Dra i det (E / TREKK) og alle faller ned i lava-doen! Alle blir zombier, lava deler lagene (lava = død), to broer går over, og granatene er uendelige. Dra i det gylne skyll-håndtaket på deres side for å skylle alle opp igjen (ellers: tilbake ved neste runde).
 - Drap på rad: 3 = KILLINGSPREE!, 5 = USTOPPELIG!, 10 = LEGENDARISK!
