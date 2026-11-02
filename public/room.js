@@ -100,38 +100,46 @@ rSym(9, 0.6, 2.5, 2, 1.2, 1.2, 0xe9c99a, false);           // spissen
 
 // ---------- Bytte bane ----------
 function activeWorldGroup() {
-  return inUnderworld ? underGroup : (currentMap === 'room' ? roomGroup : world);
+  if (inUnderworld) return underGroup;
+  if (currentMap === 'castle') return castleGroup;
+  return currentMap === 'room' ? roomGroup : world;
 }
 function applyMap() {
   if (inUnderworld) return;               // underverdenen bestemmer selv
-  const room = currentMap === 'room';
-  world.visible = !room;
+  const room = currentMap === 'room', castle = currentMap === 'castle';
+  world.visible = !room && !castle;
   roomGroup.visible = room;
+  if (typeof castleGroup !== 'undefined') castleGroup.visible = castle;   // [NY] klosseslottet
   colliders.length = 0;
-  (room ? roomColliders : mainColliders).forEach(c => colliders.push(c));
-  const sky = room ? 0xfdf0dc : 0x87a7c4;
+  (room ? roomColliders : castle ? castleColliders : mainColliders).forEach(c => colliders.push(c));
+  const big = room || castle;
+  const sky = room ? 0xfdf0dc : castle ? 0x9fd0ff : 0x87a7c4;
   scene.background.setHex(sky);
   scene.fog.color.setHex(sky);
-  scene.fog.near = room ? 140 : 70;
-  scene.fog.far = room ? 340 : 150;
+  scene.fog.near = big ? 140 : 70;
+  scene.fog.far = big ? 340 : 150;
   renderer.setClearColor(sky);
-  camera.far = room ? 400 : 200;
+  camera.far = big ? 400 : 200;
   camera.updateProjectionMatrix();
-  const S = room ? 95 : 40;               // skygger må dekke hele det store rommet
+  const S = big ? 95 : 40;                // skygger må dekke hele det store kartet
   sun.shadow.camera.left = -S; sun.shadow.camera.right = S;
   sun.shadow.camera.top = S; sun.shadow.camera.bottom = -S;
   sun.shadow.camera.updateProjectionMatrix();
-  if (room) setFoam(false);
+  sun.shadow.bias = big ? -0.0015 : 0;      // [FIKS] ingen skygge-striper på store kart
+  sun.shadow.normalBias = big ? 0.06 : 0;
+  if (big) setFoam(false);
 }
 
+function mapFromName(n) { return n === 'room' || n === 'castle' ? n : 'temple'; }
 socket.on('map', d => {
-  currentMap = d.name === 'room' ? 'room' : 'temple';
+  currentMap = mapFromName(d.name);
   applyMap();
-  bannerMsg = '&#127918; Ny bane: ' + (currentMap === 'room' ? 'KJEMPE-BARNEROMMET &#129528;<br><span style="font-size:20px">Stor bane – bruk snikskytteren (2)!</span>' : 'TEMPELET &#127963;');
+  bannerMsg = '&#127918; Ny bane: ' + (currentMap === 'room' ? 'KJEMPE-BARNEROMMET &#129528;<br><span style="font-size:20px">Stor bane – bruk snikskytteren (2)!</span>'
+    : currentMap === 'castle' ? 'KLOSSESLOTTET &#127984;<br><span style="font-size:20px">Alt kan skytes i stykker!</span>' : 'TEMPELET &#127963;');
   bannerTime = 4;
 });
 socket.on('welcome', d => {
-  currentMap = d.map === 'room' ? 'room' : 'temple';
+  currentMap = mapFromName(d.map);
   applyMap();
 });
 // Når underverdenen er over, skal riktig bane vises igjen

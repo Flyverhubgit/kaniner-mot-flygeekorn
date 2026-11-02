@@ -271,7 +271,13 @@ function blocked(px, pz, fy) {
     if (px + RADIUS > b.minX && px - RADIUS < b.maxX &&
         pz + RADIUS > b.minZ && pz - RADIUS < b.maxZ) return true;
   }
+  if (castleOn() && castleBlocked(px, pz, fy)) return true;   // [NY] klossene i klosseslottet
   return false;
+}
+
+// [NY] Er vi på klosseslottet? (castle.js lastes etter denne filen)
+function castleOn() {
+  return typeof currentMap !== 'undefined' && currentMap === 'castle' && !underNow() && typeof castleBlocked === 'function';
 }
 
 // Høyden på bakken (eller trinnet) under spilleren
@@ -282,6 +288,7 @@ function groundAt(px, pz, fy) {
     if (px + RADIUS > b.minX && px - RADIUS < b.maxX &&
         pz + RADIUS > b.minZ && pz - RADIUS < b.maxZ && b.maxY > g) g = b.maxY;
   }
+  if (castleOn()) g = Math.max(g, castleGround(px, pz, fy));   // [NY] stå på klosser
   return g;
 }
 
@@ -570,6 +577,10 @@ function updatePlayer(dt) {
         player.vy = 0;
       }
     }
+    if (castleOn()) {                            // [NY] hodet i en kloss
+      const c = castleCeiling(player.x, player.z, oldHead, newHead);
+      if (c !== null) { newFeet = c - HEIGHT; player.vy = 0; }
+    }
   }
 
   // Bakke / trinn
@@ -823,6 +834,7 @@ function buildNadeMesh() {
 // Treffer granaten noe? (gulv eller en boks)
 function nadeHits(x, y, z) {
   if (y < NADE_R) return true;
+  if (castleOn() && castlePointSolid(x, y, z)) return true;   // [NY] klosser
   for (const b of colliders) {
     if (x + NADE_R > b.minX && x - NADE_R < b.maxX && y + NADE_R > b.minY && y - NADE_R < b.maxY &&
         z + NADE_R > b.minZ && z - NADE_R < b.maxZ) return true;
@@ -1200,9 +1212,10 @@ function shoot() {
   raycaster.setFromCamera({ x: (Math.random() - 0.5) * spread, y: (Math.random() - 0.5) * spread }, camera);
   const hits = raycaster.intersectObject(activeWorldGroup(), true);   // [NY] bare verden (ikke spor/fyll), riktig bane
   const o = raycaster.ray.origin, d = raycaster.ray.direction;
+  const vox = castleOn() ? castleRay(o, d, 200) : null;   // [NY] første kloss kula treffer
 
   // [NY] Traff vi en fiende før veggen?
-  let bestT = hits.length ? hits[0].distance : 200, target = null, head = false;
+  let bestT = Math.min(hits.length ? hits[0].distance : 200, vox ? vox.dist : 200), target = null, head = false;
   for (const id in others) {
     const r = others[id];
     if (!r.alive || r.team === myTeam) continue;
@@ -1221,6 +1234,9 @@ function shoot() {
   if (target) {
     socket.emit('hit', { target, head, weapon: weapon.id });
     addStuffing(end);
+  } else if (vox && (!hits.length || vox.dist <= hits[0].distance)) {
+    addImpact(end, vox.normal);                                   // [NY] treff i en kloss: si fra til serveren
+    socket.emit('blockHit', { i: vox.i, w: weapon.id });
   } else if (hits.length) {
     const h = hits[0];
     const n = h.face ? h.face.normal.clone().transformDirection(h.object.matrixWorld) : new THREE.Vector3(0, 1, 0);
@@ -1678,7 +1694,7 @@ socket.on('roundStart', d => {
 });
 
 function placeAtSpawn(sp) {
-  player.x = sp.x; player.z = sp.z; player.feetY = 0; player.vy = 0;
+  player.x = sp.x; player.z = sp.z; player.feetY = sp.y || 0; player.vy = 0;   // [NY] y: start oppe på slottshaugen
   player.yaw = sp.yaw; player.pitch = 0;
   slide.active = false;
   jumpQueued = false; slideQueued = false;
@@ -1813,6 +1829,7 @@ function animate(now) {
     updateNades(dt);            // [NY] granater og smell
     updateFoam(dt);             // [NY] skumfest
     updateFoamBeacon();         // [NY] rosa boble over pyramiden
+    if (typeof updateCastle === 'function') updateCastle(dt);   // [NY] flyvende kloss-biter
     updateUnderworld(dt);       // [NY] underverdenen (underworld.js)
     updateHud(dt);
   }

@@ -6,6 +6,7 @@ const path = require('path');
 const http = require('http');
 const express = require('express');
 const { Server } = require('socket.io');
+const CM = require('./public/castlemap.js');   // klosseslottet: samme kart som nettleseren bygger
 
 const app = express();
 app.use(express.static(path.join(__dirname, 'public')));
@@ -37,7 +38,41 @@ let foamHoles = [];            // [x, z] for hvert granat-hull (til nye spillere
 // Underverdenen: et skjult håndtak sender alle ned til lava-arenaen til neste runde
 let worldName = 'main';        // 'main' eller 'underworld'
 // Baner byttes hver runde: tempelet og det kjempestore barnerommet (snikskytterbane)
-let mapName = process.env.START_MAP === 'room' ? 'room' : 'temple';   // 'temple' eller 'room' (START_MAP er for testing)
+const MAPS = ['temple', 'room', 'castle'];       // rekkefølgen banene byttes i
+let mapName = MAPS.includes(process.env.START_MAP) ? process.env.START_MAP : 'temple';   // (START_MAP er for testing)
+
+// Klosseslottet: hvilke klosser finnes og hvor mye liv de har igjen
+const castlePristine = CM.build();
+const castleGrid = castlePristine.slice();
+const castleHp = new Uint8Array(castleGrid.length);
+let castleGone = [];                               // ødelagte klosser (sendes til nye spillere)
+function resetCastle() {
+  castleGrid.set(castlePristine);
+  for (let i = 0; i < castleGrid.length; i++) castleHp[i] = castleGrid[i] ? CM.INFO[castleGrid[i]].hp : 0;
+  castleGone = [];
+}
+resetCastle();
+// Fjern klosser og si fra til alle
+function destroyCells(list) {
+  const gone = [];
+  list.forEach(i => {
+    const t = castleGrid[i];
+    if (!t || CM.INFO[t].hp === 0) return;        // tom, eller bakke som ikke kan ødelegges
+    castleGrid[i] = 0;
+    gone.push(i);
+  });
+  if (gone.length) { castleGone.push(...gone); io.emit('blocks', { gone }); }
+}
+// Alle klosser innenfor en radius (granat, bazooka, morter)
+function blastCells(x, y, z, r) {
+  const list = [];
+  for (let iy = Math.max(0, Math.floor(y - r)); iy <= Math.min(CM.NY - 1, Math.floor(y + r)); iy++)
+    for (let ix = Math.max(CM.X0, Math.floor(x - r)); ix <= Math.min(CM.X0 + CM.NX - 1, Math.floor(x + r)); ix++)
+      for (let iz = Math.max(CM.Z0, Math.floor(z - r)); iz <= Math.min(CM.Z0 + CM.NZ - 1, Math.floor(z + r)); iz++)
+        if (Math.hypot(ix + 0.5 - x, iy + 0.5 - y, iz + 0.5 - z) <= r) list.push(CM.idx(ix, iy, iz));
+  destroyCells(list);
+}
+const BLOCK_DMG = { ak: 1, sniper: 4 };            // kloss-skade per skudd
 const HANDLE = { x: -25, z: -3 };   // håndtaket i bakre hjørne av venstre hus
 const UNDER_HANDLES = [{ x: 0, z: 24 }, { x: 0, z: -24 }];   // skyll-håndtak i underverdenen (ett per lag)
 let roundEndsAt = Date.now() + ROUND_SECONDS * 1000;
@@ -45,6 +80,12 @@ let intermission = false;
 
 // Startplass: kaniner på blå side (z = +19), flygeekorn på rød side (z = -19)
 function spawnFor(team) {
+  if (mapName === 'castle' && worldName === 'main') {
+    // I slottsgården, foran hovedhuset, oppe på haugen (y = 2)
+    const side = Math.random() < 0.5 ? -1 : 1;
+    const x = side * (3 + Math.random() * 10);
+    return team === 'bunny' ? { x, y: 2, z: 32.5, yaw: 0 } : { x: -x, y: 2, z: -32.5, yaw: Math.PI };
+  }
   if (mapName === 'room' && worldName === 'main') {
     return { x: Math.random() * 60 - 30, z: team === 'bunny' ? 46 : -46, yaw: team === 'bunny' ? 0 : Math.PI };
   }
@@ -139,7 +180,7 @@ io.on('connection', socket => {
     socket.emit('welcome', {
       id: socket.id, spawn: sp, players: others, score,
       foam: { on: foamOn, holes: foamHoles },
-      world: worldName, map: mapName,
+      world: worldName, map: mapName, blocksGone: mapName === 'castle' ? castleGone : undefined,
       timeLeft: Math.max(0, Math.ceil((roundEndsAt - Date.now()) / 1000)), intermission
     });
     socket.broadcast.emit('playerJoined', publicPlayer(p));
@@ -222,6 +263,7 @@ io.on('connection', socket => {
     const pos = d.p.map(v => num(v, -100, 100));
     if (pos.includes(null)) return;
     io.emit('boom', { id: d.id, p: pos });
+    if (mapName === 'castle' && worldName === 'main') blastCells(pos[0], pos[1], pos[2], 3);   // granaten sprenger klosser
     if (foamOn && pos[1] < 3) foamHoles.push([pos[0], pos[2]]);   // hullet i skummet blir stående
     if (intermission) return;
     Object.values(players).forEach(t => {
@@ -255,6 +297,22 @@ io.on('connection', socket => {
     io.emit('world', { name: 'main', by: p.name, team: p.team, flush: true });
     console.log(p.name + ' skylte alle opp igjen');
     setTimeout(() => Object.values(players).forEach(o => respawn(o)), 800);
+  });
+
+  // Kule traff en kloss på klosseslottet
+  socket.on('blockHit', d => {
+    const p = players[socket.id];
+    if (!p || !p.alive || !d || mapName !== 'castle' || worldName !== 'main') return;
+    const i = d.i;
+    if (!Number.isInteger(i) || i < 0 || i >= castleGrid.length) return;
+    const t = castleGrid[i];
+    if (!t || CM.INFO[t].hp === 0) return;
+    const now = Date.now(), sniper = d.w === 'sniper';
+    if (now - (sniper ? (p.lastBlockSniper || 0) : (p.lastBlockHit || 0)) < (sniper ? SNIPER_MIN_MS : MIN_HIT_MS)) return;
+    if (sniper) p.lastBlockSniper = now; else p.lastBlockHit = now;
+    const dmg = BLOCK_DMG[sniper ? 'sniper' : 'ak'];
+    castleHp[i] = Math.max(0, castleHp[i] - dmg);
+    if (castleHp[i] === 0) destroyCells([i]);
   });
 
   // Gikk i lavaen
@@ -292,7 +350,8 @@ setInterval(() => {
     setTimeout(() => {
       score = { bunny: 0, squirrel: 0 };
       if (worldName !== 'main') { worldName = 'main'; io.emit('world', { name: 'main' }); }
-      mapName = mapName === 'temple' ? 'room' : 'temple';    // ny bane hver runde
+      mapName = MAPS[(MAPS.indexOf(mapName) + 1) % MAPS.length];    // ny bane hver runde
+      if (mapName === 'castle') resetCastle();                       // nytt, helt slott
       io.emit('map', { name: mapName });
       Object.values(players).forEach(p => { p.kills = 0; p.deaths = 0; p.streak = 0; respawn(p); });
       roundEndsAt = Date.now() + ROUND_SECONDS * 1000;
