@@ -21,6 +21,10 @@
   #scope::before, #scope::after { content: ''; position: absolute; background: rgba(0,0,0,0.85); }
   #scope::before { left: 50%; top: 12vh; bottom: 12vh; width: 2px; margin-left: -1px; }
   #scope::after { top: 50%; left: calc(50% - 38vmin); right: calc(50% - 38vmin); height: 2px; margin-top: -1px; }
+  /* QR-kode for å dele spillet */
+  #qrBox { display: flex; align-items: center; gap: 12px; background: rgba(0,0,0,0.3); padding: 10px 14px; border-radius: 12px; font-size: 14px; }
+  #qrImg { width: 110px; height: 110px; background: #fff; border-radius: 6px; image-rendering: pixelated; }
+  #qrLink { font-size: 12px; opacity: 0.8; word-break: break-all; }
   #sensRow { font-size: 14px; display: flex; align-items: center; gap: 10px; }
   canvas { display: block; }
   #crosshair { position: fixed; left: 50%; top: 50%; width: 6px; height: 6px; margin: -3px 0 0 -3px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 1px #000; pointer-events: none; z-index: 3; }
@@ -33,6 +37,11 @@
 
   /* Lag-valg */
   #menu { position: fixed; inset: 0; z-index: 20; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; background: linear-gradient(#5d7a93, #2b3a47); color: #fff; padding: 16px; box-sizing: border-box; overflow-y: auto; }
+  /* [FIKS] Sentrert innhold som er høyere enn skjermen ble kuttet øverst (kunne ikke rulles til).
+     Nå: start øverst, med automatisk luft over og under, så det er sentrert når det er plass. */
+  #menu { justify-content: flex-start; }
+  #menu > :first-child { margin-top: auto; }
+  #menu > :last-child { margin-bottom: auto; }
   #menu h1 { margin: 0; font-size: 34px; letter-spacing: 1px; text-shadow: 0 3px 0 #000; text-align: center; }
   #menu h1 .b { color: #ff6b5e; } #menu h1 .s { color: #a5d65a; }
   #nameInput { font-size: 20px; padding: 8px 12px; border-radius: 8px; border: 2px solid #fff; background: rgba(0,0,0,0.3); color: #fff; text-align: center; width: 240px; }
@@ -62,6 +71,17 @@
   #scoreboard table { width: 100%; border-collapse: collapse; }
   #scoreboard td, #scoreboard th { padding: 4px 8px; text-align: left; }
   #scoreboard .me { background: rgba(255,255,255,0.15); }
+  /* Lav skjerm (mobil på tvers): mindre kort og tettere */
+  @media (max-height: 520px) {
+    #menu { gap: 8px; padding: 8px; }
+    #menu h1 { font-size: 24px; }
+    #nameInput { font-size: 16px; padding: 5px 10px; }
+    .card { width: 170px; padding-bottom: 6px; }
+    .card canvas { width: 170px; height: 184px; }
+    .card .t { font-size: 18px; }
+    #joinBtn { font-size: 18px; padding: 8px 30px; }
+    #qrImg { width: 80px; height: 80px; }
+  }
 </style>
 </head>
 <body>
@@ -98,9 +118,14 @@
   <div id="sensRow">Sikte-følsomhet <input id="sens" type="range" min="0.3" max="2.5" step="0.1" value="1"> <span id="sensVal">1.0</span></div>
   <button id="joinBtn" disabled>Velg et lag</button>
   <div id="status">Kobler til serveren...</div>
+  <div id="qrBox">
+    <img id="qrImg" alt="QR-kode til spillet">
+    <div><b>Inviter venner!</b><br>Skann koden med mobilen<br><span id="qrLink"></span></div>
+  </div>
 </div>
 
 <script src="vendor/three.min.js"></script>
+<script src="vendor/qrcode.js"></script>
 <script src="/socket.io/socket.io.js"></script>
 <script src="models.js"></script>
 <script src="game.js"></script>

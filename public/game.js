@@ -334,7 +334,7 @@ function releaseAll() {
 window.addEventListener('blur', releaseAll);
 
 if (!isTouch) {
-  overlay.innerHTML = '<div><b>Klikk for å spille</b><br>WASD = gå &nbsp; Mus = sikte<br>Mellomrom = hopp &nbsp; Shift = løp<br>C = slide (mens du går) &nbsp; Esc = pause<br>Venstre museknapp = skyt &nbsp; R = lad om<br>G = kast granat &nbsp; Hold Q = dukk<br>1 / 2 / musehjul = bytt våpen &nbsp; Høyre museknapp = kikkert<br>Kanin: superhopp &nbsp; Flygeekorn: hold mellomrom i lufta = svev<br>Hold Tab = poengtavle<br>Virker ikke musen? Hold inne venstre knapp og dra, og skyt med F.</div>';
+  overlay.innerHTML = '<div><b>Klikk for å spille</b><br>WASD = gå &nbsp; Mus = sikte<br>Mellomrom = hopp &nbsp; Shift = løp<br>C = slide (mens du går) &nbsp; Esc = pause<br>Venstre museknapp = skyt &nbsp; R = lad om<br>G = kast granat &nbsp; Hold Q = dukk<br>1 / 2 / musehjul = bytt våpen &nbsp; Høyre museknapp = kikkert<br>&#129991; Tips: klatre til toppen av pyramiden (den rosa boblen) = SKUMFEST!<br>Kanin: superhopp &nbsp; Flygeekorn: hold mellomrom i lufta = svev<br>Hold Tab = poengtavle<br>Virker ikke musen? Hold inne venstre knapp og dra, og skyt med F.</div>';
   overlay.addEventListener('click', () => {
     try {
       const p = renderer.domElement.requestPointerLock();
@@ -351,7 +351,7 @@ if (!isTouch) {
     overlay.style.display = locked ? 'none' : 'flex';
   });
 } else {
-  overlay.innerHTML = '<div><b>Trykk for å starte</b><br>Venstre tommel = gå<br>Høyre tommel = se deg rundt<br>Knappene nede til høyre = skyt, lad om, granat, hopp, slide og dukk<br>Skyt: dobbelttrykk og hold på høyre side (dra for å sikte),<br>eller hold SKYT-knappen<br>BYTT = snikskytter &nbsp; SIKTE = kikkert</div>';
+  overlay.innerHTML = '<div><b>Trykk for å starte</b><br>Venstre tommel = gå<br>Høyre tommel = se deg rundt<br>Knappene nede til høyre = skyt, lad om, granat, hopp, slide og dukk<br>Skyt: dobbelttrykk og hold på høyre side (dra for å sikte),<br>eller hold SKYT-knappen<br>BYTT = snikskytter &nbsp; SIKTE = kikkert<br>&#129991; Tips: toppen av pyramiden = SKUMFEST!</div>';
   overlay.addEventListener('touchstart', e => { e.preventDefault(); overlay.style.display = 'none'; }, { passive: false });
 }
 
@@ -438,8 +438,10 @@ if (isTouch) {
       } else if (lookId === null) {
         lookId = t.identifier;
         // [NY] Dobbelttrykk på høyre side = skyt så lenge fingeren ligger (og sikt ved å dra)
-        const now = performance.now();
-        if (now - lastLookTap < 320 && Math.hypot(t.clientX - lastLook.x, t.clientY - lastLook.y) < 70) lookFire = true;
+        // [FIKS] Bruk tidspunktet fingeren faktisk traff (e.timeStamp), ikke når spillet rakk å se det,
+        // og vær snill: 0,45 sek og 100 piksler mellom trykkene er nok.
+        const now = e.timeStamp;
+        if (now - lastLookTap < 450 && Math.hypot(t.clientX - lastLook.x, t.clientY - lastLook.y) < 100) lookFire = true;
         lastLookTap = now;
         lastLook.x = t.clientX; lastLook.y = t.clientY;
       }
@@ -1093,6 +1095,41 @@ function updateFoam(dt) {
   bubbleMesh.instanceMatrix.needsUpdate = true;
 }
 
+// [NY] Vis spillerne hvor skumfesten startes: rosa knapp på toppen av pyramiden,
+// en stor svevende boble over den, og et skilt. Forsvinner mens skummet står.
+const foamBeacon = new THREE.Group();
+const foamButton = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.2, 1.4),
+  new THREE.MeshStandardMaterial({ color: 0xff8ac4, emissive: 0xc02070 }));
+foamButton.position.set(0, 13.1, 0);
+foamBeacon.add(foamButton);
+const foamBubble = new THREE.Mesh(new THREE.IcosahedronGeometry(1.3, 2),
+  new THREE.MeshStandardMaterial({ color: 0xffb3da, emissive: 0xd0408a, transparent: true, opacity: 0.75, roughness: 0.2 }));
+foamBubble.position.set(0, 17, 0);
+foamBeacon.add(foamBubble);
+(function () {
+  const c = document.createElement('canvas');
+  c.width = 512; c.height = 96;
+  const ctx = c.getContext('2d');
+  ctx.font = 'bold 44px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.lineWidth = 8; ctx.strokeStyle = '#000';
+  ctx.strokeText('STÅ HER = SKUMFEST!', 256, 62);
+  ctx.fillStyle = '#ff9ccf';
+  ctx.fillText('STÅ HER = SKUMFEST!', 256, 62);
+  const sign = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), transparent: true }));
+  sign.scale.set(14, 2.6, 1);
+  sign.position.set(0, 20, 0);
+  foamBeacon.add(sign);
+})();
+foamBeacon.traverse(o => { o.raycast = () => {}; });   // kulene går gjennom
+world.add(foamBeacon);
+function updateFoamBeacon() {
+  foamBeacon.visible = !foamOn;
+  const t = performance.now() / 1000;
+  foamBubble.position.y = 17 + Math.sin(t * 1.5) * 0.4;
+  foamBubble.rotation.y = t * 0.5;
+}
+
 // Boblete fest-lyd (stigende "blopp")
 function playFoam() {
   if (!audioCtx) return;
@@ -1238,6 +1275,7 @@ function updateWeapon(dt) {
   }
   scopeEl.style.display = scoped ? 'block' : 'none';
   crosshairEl.style.display = scoped ? 'none' : 'block';
+  crosshairEl.style.background = lookFire || touchFire ? '#ff3b30' : '#fff';   // [NY] rødt sikte = du skyter
   if (window.__scopeBtn) {
     window.__scopeBtn.style.display = weapon === sniperW && joined ? 'flex' : 'none';
     window.__scopeBtn.style.background = scoped ? 'rgba(255,150,205,0.6)' : 'rgba(255,255,255,0.3)';
@@ -1602,6 +1640,18 @@ function sendState(dt) {
 let chosenTeam = null;
 const nameInput = el('nameInput');
 
+// [NY] QR-kode med lenken til spillet, så venner kan skanne og bli med
+try {
+  const link = location.origin + '/';
+  const qr = qrcode(0, 'M');
+  qr.addData(link);
+  qr.make();
+  el('qrImg').src = qr.createDataURL(4, 2);
+  el('qrLink').textContent = link.replace(/^https?:\/\//, '');
+} catch (err) {
+  el('qrBox').style.display = 'none';
+}
+
 // [NY] Sikte-følsomhet (lagres til neste gang)
 const sensInput = el('sens');
 sensInput.value = sens;
@@ -1699,6 +1749,7 @@ function animate(now) {
     updateOthers(dt);
     updateNades(dt);            // [NY] granater og smell
     updateFoam(dt);             // [NY] skumfest
+    updateFoamBeacon();         // [NY] rosa boble over pyramiden
     updateUnderworld(dt);       // [NY] underverdenen (underworld.js)
     updateHud(dt);
   }
