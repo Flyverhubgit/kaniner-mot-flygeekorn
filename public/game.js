@@ -232,6 +232,12 @@ addStairs(4.5, 8, -1, 0, 6, 4, 2);       // langs 1. avsats til y = 7
 addStairs(-0.5, 6, -1, 0, 4, 7, 2);      // 2. avsats til y = 9
 addStairs(-0.5, 4, 1, 0, 4, 9, 2);       // 3. avsats til y = 11
 addStairs(2.5, 2, -1, 0, 4, 11, 2);      // 4. avsats til toppen (y = 13)
+// [NY] Samme trapp speilet på flygeekornenes side, så det er rettferdig
+addStairs(-5.5, -16.5, 0, 1, 8, 0, 2);
+addStairs(-4.5, -8, 1, 0, 6, 4, 2);
+addStairs(0.5, -6, 1, 0, 4, 7, 2);
+addStairs(0.5, -4, -1, 0, 4, 9, 2);
+addStairs(-2.5, -2, 1, 0, 4, 11, 2);
 
 // ---------- Tilpass vindu ----------
 window.addEventListener('resize', () => {
