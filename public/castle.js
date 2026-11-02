@@ -202,4 +202,5 @@ socket.on('welcome', d => {
   if (d.map === 'castle') { resetCastle(); if (d.blocksGone) removeCells(d.blocksGone, true); }
 });
 
+window.__castleDebrisHide = () => debris.forEach(d => { d.m.visible = false; d.life = 0; });
 window.__castle = { grid, pristineGrid, castleRay, castleBlocked, castleGround, removeCells, resetCastle, CM };

@@ -1001,6 +1001,8 @@ function explode(p, big) {
     stuffIndex = (stuffIndex + 1) % stuffing.length;
     const a = Math.random() * Math.PI * 2, out = 2 + Math.random() * 6;
     s.x = p[0]; s.y = Math.max(p[1], 0.15); s.z = p[2];
+    // [FIKS] Starter fyllet inni en vegg/kloss? Løft det opp til det er fritt, så det ikke henger fast i lufta.
+    for (let k = 0; k < 12 && nadeHits(s.x, s.y, s.z); k++) s.y += 0.5;
     s.vx = Math.cos(a) * out; s.vz = Math.sin(a) * out; s.vy = 3 + Math.random() * 6;
     s.size = 0.1 + Math.random() * 0.16;
     s.phase = Math.random() * 6.3;
@@ -1099,7 +1101,11 @@ function updateRockets(dt) {
     const steps = Math.max(1, Math.ceil(r.vel.length() * dt / 0.25));
     for (let k = 0; k < steps && !hit; k++) {
       r.pos.addScaledVector(r.vel, dt / steps);
-      if (nadeHits(r.pos.x, r.pos.y, r.pos.z)) hit = true;
+      if (nadeHits(r.pos.x, r.pos.y, r.pos.z)) {
+        hit = true;
+        // [FIKS] Smell litt FORAN veggen, ikke inni den (ellers ble bamse-fyllet sittende fast i lufta)
+        for (let b = 0; b < 6 && nadeHits(r.pos.x, r.pos.y, r.pos.z); b++) r.pos.addScaledVector(r.vel, -0.1 / r.vel.length());
+      }
       // Treffer en fiende?
       for (const id in others) {
         const o = others[id];
