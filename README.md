@@ -2,7 +2,7 @@
 
 Blokkete flerspiller-FPS i nettleseren. Velg lag, skyt det andre laget. 5 minutter per runde.
 
-Tre baner som byttes hver runde: **Tempelet** (med skumfest og hemmelig håndtak), **Kjempe-barnerommet** (stor snikskytterbane med kjempesenger, bok-trapper, alfabetklosser og lego) og **Klosseslottet** (to slott, landsby og trær – ALT kan skytes og sprenges i stykker!).
+Tre baner. Etter hver runde **stemmer** alle på neste bane (12 sekunder, trykk 1/2/3 eller trykk på knappen). Flest stemmer vinner, uavgjort = den som kommer først i rekkefølgen, ingen stemmer = vanlig rekkefølge. Banene: **Tempelet** (med skumfest og hemmelig håndtak), **Kjempe-barnerommet** (stor snikskytterbane med kjempesenger, bok-trapper, alfabetklosser og lego) og **Klosseslottet** (to slott, landsby og trær – ALT kan skytes og sprenges i stykker!).
 
 ## Spill hjemme (samme WiFi)
 1. Pakk ut zip-filen (høyreklikk → **Pakk ut alle**). Ikke kjør fra inne i zip-filen.

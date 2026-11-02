@@ -1832,7 +1832,7 @@ socket.on('roundOver', d => {
   const title = d.winner === 'draw' ? 'Uavgjort!' : (d.winner === 'bunny' ? teamSpan('bunny', 'Kaninene vant!') : teamSpan('squirrel', 'Flygeekornene vant!'));
   roundMsg = title + '<br><span style="font-size:22px">' + score.bunny + ' – ' + score.squirrel +
     (top && top.kills > 0 ? '<br>Beste spiller: ' + esc(top.name) + ' (' + top.kills + ' drap)' : '') +
-    '<br>Ny runde om 8 sekunder...</span>';
+    '<br>Ny runde om ' + (d.voteSeconds || 8) + ' sekunder...</span>';
 });
 
 socket.on('roundStart', d => {

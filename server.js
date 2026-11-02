@@ -16,7 +16,7 @@ const PORT = process.env.PORT || 3000;
 
 // ---------- Regler ----------
 const ROUND_SECONDS = +process.env.ROUND_SECONDS || 300;     // 5 minutter per runde (kan endres for testing)
-const BREAK_SECONDS = 8;       // pause mellom runder
+const BREAK_SECONDS = 12;      // pause mellom runder (tid til å stemme på neste bane)
 const RESPAWN_SECONDS = 3;
 const MAX_HP = 100;
 const DMG_BODY = 20;           // 5 treff i kroppen
@@ -42,6 +42,20 @@ let worldName = 'main';        // 'main' eller 'underworld'
 // Baner byttes hver runde: tempelet og det kjempestore barnerommet (snikskytterbane)
 const MAPS = ['temple', 'room', 'castle'];       // rekkefølgen banene byttes i
 let mapName = MAPS.includes(process.env.START_MAP) ? process.env.START_MAP : 'temple';   // (START_MAP er for testing)
+let votes = {};                                    // socket-id -> banen spilleren stemte på (i pausen)
+function voteCounts() {
+  const c = { temple: 0, room: 0, castle: 0 };
+  Object.values(votes).forEach(m => { if (c[m] !== undefined) c[m]++; });
+  return c;
+}
+// Neste bane: flest stemmer vinner. Likt: den som kommer først i vanlig rekkefølge. Ingen stemmer: vanlig rekkefølge.
+function nextMap() {
+  const c = voteCounts(), cur = MAPS.indexOf(mapName);
+  const max = Math.max(c.temple, c.room, c.castle);
+  if (max === 0) return MAPS[(cur + 1) % MAPS.length];
+  for (let k = 1; k <= MAPS.length; k++) { const m = MAPS[(cur + k) % MAPS.length]; if (c[m] === max) return m; }
+  return MAPS[(cur + 1) % MAPS.length];
+}
 
 // Klosseslottet: hvilke klosser finnes og hvor mye liv de har igjen
 const castlePristine = CM.build();
@@ -398,7 +412,15 @@ io.on('connection', socket => {
     killByWorld(p, 'Lava', 'lava');
   });
 
+  // Stemme på neste bane (bare i pausen etter en runde)
+  socket.on('vote', d => {
+    if (!intermission || !players[socket.id] || !d || !MAPS.includes(d.map)) return;
+    votes[socket.id] = d.map;
+    io.emit('votes', voteCounts());
+  });
+
   socket.on('disconnect', () => {
+    if (votes[socket.id]) { delete votes[socket.id]; io.emit('votes', voteCounts()); }
     if (!players[socket.id]) return;
     console.log(players[socket.id].name + ' forlot spillet');
     delete players[socket.id];
@@ -422,11 +444,13 @@ setInterval(() => {
   if (!intermission && now >= roundEndsAt) {
     intermission = true;
     const winner = score.bunny === score.squirrel ? 'draw' : (score.bunny > score.squirrel ? 'bunny' : 'squirrel');
-    io.emit('roundOver', { winner, score, board: board() });
+    votes = {};
+    io.emit('roundOver', { winner, score, board: board(), maps: MAPS, votes: voteCounts(), voteSeconds: BREAK_SECONDS });
     setTimeout(() => {
       score = { bunny: 0, squirrel: 0 };
       if (worldName !== 'main') { worldName = 'main'; io.emit('world', { name: 'main' }); }
-      mapName = MAPS[(MAPS.indexOf(mapName) + 1) % MAPS.length];    // ny bane hver runde
+      mapName = nextMap();                                           // ny bane: flest stemmer, ellers vanlig rekkefølge
+      votes = {};
       if (mapName === 'castle') resetCastle();                       // nytt, helt slott
       io.emit('map', { name: mapName });
       Object.values(players).forEach(p => { p.kills = 0; p.deaths = 0; p.streak = 0; respawn(p); });
