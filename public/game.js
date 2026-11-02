@@ -774,6 +774,9 @@ function addStuffing(p) {
   }
 }
 
+// [NY] Er vi i underverdenen? (underworld.js lastes etter denne filen, så sjekk forsiktig)
+function underNow() { return typeof inUnderworld !== 'undefined' && inUnderworld; }
+
 // ---------- [NY] Granater ----------
 const GRENADES_MAX = 3, NADE_FUSE = 2.0, NADE_SPEED = 17, NADE_GRAVITY = 20, NADE_R = 0.1;
 let grenades = GRENADES_MAX, nadeQueued = false, nadeCooldown = 0, nadeSeq = 0, shake = 0;
@@ -842,8 +845,8 @@ function removeNade(id) {
 }
 
 function throwNade() {
-  if (!joined || !alive || grenades <= 0 || nadeCooldown > 0) return;
-  grenades--;
+  if (!joined || !alive || (!underNow() && grenades <= 0) || nadeCooldown > 0) return;
+  if (!underNow()) grenades--;            // [NY] uendelig med granater i underverdenen
   nadeCooldown = 0.8;
   camera.updateMatrixWorld(true);
   const dir = camera.getWorldDirection(new THREE.Vector3());
@@ -1314,7 +1317,7 @@ function updateWeapon(dt) {
 
   const wIcon = weapon === sniperW ? (myTeam === 'bunny' ? '🥕 ' : '🌰 ') : 'AK ';   // [NY] gulrot / nøtt
   hud.textContent = wIcon + (reloading > 0 ? 'LADER...' : weapon.mag + ' / ' + (weapon.reserve === Infinity ? '∞' : weapon.reserve)) +
-    '   💣 ' + grenades;   // [NY] viser granater også
+    '   💣 ' + (underNow() ? '∞' : grenades);   // [NY] viser granater også (uendelig i underverdenen)
 }
 
 // ===================================================================

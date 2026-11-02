@@ -1,8 +1,7 @@
 // ===================================================================
 //  [NY] UNDERVERDENEN – Hades' do-skål
 //  Et skjult håndtak i venstre hus sender alle ned hit til neste runde.
-//  Lava i midten deler lagene. Hades promper hvert 30. sekund:
-//  er du ikke gjemt bak noe når bølgen kommer, blir du fordampet.
+//  Lava i midten deler lagene (lava = død). To broer går over lavaen.
 //  (Lastes etter game.js og bruker variablene derfra.)
 // ===================================================================
 
@@ -13,10 +12,7 @@ scene.add(underGroup);
 
 const mainColliders = colliders.slice();   // boksene i den vanlige verdenen
 const underColliders = [];
-const losMeshes = [];                      // ting som kan skjule deg for Hades
 const BOWL_R = 28, LAVA_HALF = 2.5;
-const FART_ORIGIN = new THREE.Vector3(-20, 7.5, 0);   // nederst i sprekken
-const FART_BUILDUP = 3.0, FART_SWEEP = 1.2;   // 3 sek sakte oppbygging, så feier bølgen over skålen
 
 function uBox(parent, x, y, z, w, h, d, color, opts) {
   opts = opts || {};
@@ -29,7 +25,6 @@ function uBox(parent, x, y, z, w, h, d, color, opts) {
   parent.add(m);
   if (opts.collide) {
     underColliders.push({ minX: x - w / 2, maxX: x + w / 2, minY: y - h / 2, maxY: y + h / 2, minZ: z - d / 2, maxZ: z + d / 2 });
-    losMeshes.push(m);
   }
   return m;
 }
@@ -72,31 +67,25 @@ COVER.forEach(([x, z, w, h, d], i) => {
   });
 });
 
-// ---------- Hades: kjempe-rumpe med flammehår ----------
-const hades = new THREE.Group();
-hades.position.set(-24, 0, 0);
-underGroup.add(hades);
-const SKIN = 0x5b6bb5, SKIN2 = 0x6c7cc6;
-uBox(hades, 0, 10.5, 3.1, 5, 6, 6, SKIN);          // venstre rumpeballe
-uBox(hades, 0, 10.5, -3.1, 5, 6, 6, SKIN);         // høyre rumpeballe
-uBox(hades, 0.8, 10.5, 3.1, 4.2, 5, 5, SKIN2);     // runding
-uBox(hades, 0.8, 10.5, -3.1, 4.2, 5, 5, SKIN2);
-uBox(hades, 2.95, 10.2, 0, 0.3, 4.6, 0.5, 0x2a3060); // sprekken
-uBox(hades, -0.2, 14, 0, 5.4, 1.2, 12.6, 0xd4af37, { rough: 0.3 });   // gullbelte (toga)
-const flames = [];
-for (let i = 0; i < 12; i++) {
-  const f = uBox(hades, (Math.random() - 0.5) * 3, 15.5, (i - 5.5) * 1.0, 0.9, 2.2, 0.9,
-    i % 3 === 0 ? 0xffe14a : (i % 3 === 1 ? 0xff8a00 : 0x5ab4ff), { emissive: i % 3 === 2 ? 0x2266ff : 0xff6600, noShadow: true });
-  flames.push({ m: f, phase: Math.random() * 6.3 });
-}
+// ---------- To broer over lavaen (én på hver side av midten) ----------
+const BRIDGE_X = [-12, 12];
+BRIDGE_X.forEach(bx => {
+  uBox(underGroup, bx, 0.2, 0, 4, 0.4, 8, 0x4a3b3b, { collide: true });            // brodekke (lavt nok til å gå opp på)
+  for (let k = -3; k <= 3; k++) uBox(underGroup, bx, 0.41, k, 4, 0.02, 0.08, 0x2a1f1f, { noShadow: true });   // planke-streker
+  [-1, 1].forEach(side => {
+    uBox(underGroup, bx + side * 2.1, 1.0, 0, 0.2, 1.2, 8, 0xf2ece0, { collide: true });   // rekkverk
+    [-3.8, 0, 3.8].forEach(z => uBox(underGroup, bx + side * 2.1, 1.0, z, 0.4, 1.4, 0.4, 0xd8cfbf, { collide: true }));   // stolper
+  });
+});
 
-// Promp-skyen og bølgen
-const fartCloud = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 12),
-  new THREE.MeshBasicMaterial({ color: 0x9be15d, transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide }));
-fartCloud.position.copy(FART_ORIGIN);
-fartCloud.visible = false;
-fartCloud.raycast = () => {};   // kulene går gjennom skyen
-underGroup.add(fartCloud);
+// ---------- Skyll-håndtak: ett på hvert lags side. Dra = alle skylles opp igjen ----------
+const UNDER_HANDLES = [{ x: 0, z: 24 }, { x: 0, z: -24 }];
+UNDER_HANDLES.forEach(h => {
+  uBox(underGroup, h.x, 3, h.z, 0.4, 6, 0.4, 0xd4af37, { rough: 0.3 });                 // gullstang
+  uBox(underGroup, h.x, 6.1, h.z + Math.sign(-h.z) * 0.8, 0.3, 0.3, 2, 0xd4af37, { rough: 0.3 });   // arm ut
+  for (let i = 0; i < 5; i++) uBox(underGroup, h.x, 5.75 - i * 0.28, h.z + Math.sign(-h.z) * 1.7, 0.07, 0.24, 0.07, 0xb0b0b0, { noShadow: true });   // kjetting
+  uBox(underGroup, h.x, 4.3, h.z + Math.sign(-h.z) * 1.7, 0.45, 0.16, 0.12, 0xffd84a, { emissive: 0x664400, noShadow: true });   // håndtak
+});
 
 // ---------- Håndtaket i den vanlige verdenen ----------
 // Bakre hjørne av venstre hus. Lite og litt skjult – men det glinser.
@@ -124,8 +113,6 @@ function mkDiv(css, html) {
 const pullPrompt = mkDiv('position:fixed;left:50%;top:60%;transform:translateX(-50%);color:#ffe14a;font:bold 20px sans-serif;text-shadow:0 0 6px #000;z-index:6;pointer-events:none;display:none;',
   isTouch ? 'Trykk TREKK for å dra i håndtaket...' : 'Trykk <b>E</b> for å dra i håndtaket...');
 const fallEl = mkDiv('position:fixed;inset:0;z-index:15;display:none;align-items:center;justify-content:center;text-align:center;color:#fff;font:bold 30px sans-serif;text-shadow:0 0 8px #000;background:radial-gradient(circle, #ff5a00 0%, #6a0000 45%, #000 100%);pointer-events:none;');
-const fartCd = mkDiv('position:fixed;left:50%;top:48px;transform:translateX(-50%);color:#b6ff6a;font:bold 26px sans-serif;text-shadow:0 0 6px #000;z-index:6;pointer-events:none;display:none;white-space:nowrap;');
-const fartFlash = mkDiv('position:fixed;inset:0;z-index:2;pointer-events:none;background:rgba(150,230,80,0.6);opacity:0;');
 let pullBtn = null;
 if (isTouch) {
   pullBtn = mkDiv('position:fixed;left:50%;bottom:40px;transform:translateX(-50%);padding:14px 26px;border-radius:30px;background:rgba(212,175,55,0.8);border:2px solid #fff;color:#222;font:bold 18px sans-serif;z-index:6;display:none;user-select:none;', 'TREKK');
@@ -135,8 +122,13 @@ if (isTouch) {
 function nearHandle() {
   return joined && alive && !inUnderworld && Math.hypot(player.x - HANDLE_POS.x, player.z - HANDLE_POS.z) < 1.8 && player.feetY < 1;
 }
+// Nær et skyll-håndtak nede i underverdenen?
+function nearFlush() {
+  return joined && alive && inUnderworld && UNDER_HANDLES.some(h => Math.hypot(player.x - h.x, player.z - (h.z + Math.sign(-h.z) * 1.7)) < 1.8);
+}
 function tryPull() {
   if (nearHandle()) socket.emit('pull');
+  else if (nearFlush()) socket.emit('flush');
 }
 window.addEventListener('keydown', e => {
   if (e.code === 'KeyE' && !(document.activeElement && document.activeElement.tagName === 'INPUT')) tryPull();
@@ -194,9 +186,6 @@ function exitUnderworld() {
   scene.fog.near = 70; scene.fog.far = 150;
   renderer.setClearColor(0x87a7c4);
   for (const id in others) zombify(others[id].body, false);
-  fartT = -1;
-  fartIn = -1;
-  fartCloud.visible = false;
 }
 
 let fallT = 0, fallSwitched = false;
@@ -204,40 +193,29 @@ socket.on('world', d => {
   if (d.name === 'underworld') {
     fallT = 2.2;
     fallSwitched = false;
+    fallEl.style.background = 'radial-gradient(circle, #ff5a00 0%, #6a0000 45%, #000 100%)';
     fallEl.innerHTML = '<div>AAAAAAH! &#128561;<br><span style="font-size:20px">' + teamSpan(d.team, esc(d.by)) +
-      ' dro i håndtaket...</span><br><span style="font-size:26px">Velkommen til HADES&#39; DO! &#128293;&#128701;</span></div>';
+      ' dro i håndtaket...</span><br><span style="font-size:26px">Velkommen til LAVA-DOEN! &#128293;&#128701;</span></div>';
     playFallScream();
   } else if (inUnderworld) {
     exitUnderworld();
+    if (d.flush) {
+      // SPLASH! Blå "skylle-skjerm" et lite øyeblikk
+      fallT = 1.6;
+      fallSwitched = true;
+      fallEl.style.background = 'radial-gradient(circle, #9fe3ff 0%, #2b7bd1 50%, #0a2a55 100%)';
+      fallEl.innerHTML = '<div>SPLASH! &#128166;<br><span style="font-size:20px">' + teamSpan(d.team, esc(d.by)) + ' skylte alle opp igjen!</span></div>';
+      playFallScream();
+    }
   }
 });
 socket.on('welcome', d => {
-  if (d.world === 'underworld') { if (!inUnderworld) enterUnderworld(); fartIn = d.fartIn; }
+  if (d.world === 'underworld') { if (!inUnderworld) enterUnderworld(); }
   else if (inUnderworld) exitUnderworld();
 });
 
-// ---------- Hades' promp ----------
-let fartIn = -1, fartT = -1, fartChecked = false, lavaSent = false;
-socket.on('tick', d => { fartIn = d.fartIn; });
-socket.on('fart', () => {
-  if (!inUnderworld) return;
-  fartT = 0;
-  fartChecked = false;
-  playFart();
-});
+let lavaSent = false;
 socket.on('respawn', () => { lavaSent = false; });
-
-// Kan Hades "se" deg? Linje fra promp-punktet til øynene dine, mot dekning og skål-kant.
-const losRay = new THREE.Raycaster();
-function hiddenFromHades() {
-  const eye = new THREE.Vector3(player.x, player.feetY + slide.eye, player.z);
-  const dir = eye.clone().sub(FART_ORIGIN);
-  const dist = dir.length();
-  losRay.set(FART_ORIGIN, dir.normalize());
-  losRay.far = dist;
-  const hits = losRay.intersectObjects(losMeshes, false);
-  return hits.length > 0 && hits[0].distance < dist - 0.2;
-}
 
 // ---------- Hver ramme ----------
 function updateUnderworld(dt) {
@@ -245,7 +223,8 @@ function updateUnderworld(dt) {
 
   // Håndtaket glinser og svaier litt
   handleGrip.rotation.z = Math.sin(t * 1.5) * 0.15;
-  const near = nearHandle();
+  const near = nearHandle() || nearFlush();
+  pullPrompt.innerHTML = (isTouch ? 'Trykk TREKK' : 'Trykk <b>E</b>') + (inUnderworld ? ' for å skylle alle opp igjen! &#128701;' : ' for å dra i håndtaket...');
   pullPrompt.style.display = near && !isTouch ? 'block' : 'none';
   if (pullBtn) pullBtn.style.display = near ? 'block' : 'none';
 
@@ -257,12 +236,11 @@ function updateUnderworld(dt) {
     if (fallT <= 0) fallEl.style.display = 'none';
   }
 
-  if (!inUnderworld) { fartCd.style.display = 'none'; return; }
+  if (!inUnderworld) return;
 
-  // Lava og flammer som lever
+  // Lava som lever
   lava.material.emissive.setHSL(0.03, 1, 0.35 + Math.sin(t * 3) * 0.08);
   lavaBubbles.forEach(b => { const k = (Math.sin(t * 2 + b.phase) + 1) / 2; b.m.position.y = 0.05 + k * 0.4; b.m.scale.setScalar(0.4 + k); });
-  flames.forEach(f => { f.m.scale.y = 0.7 + (Math.sin(t * 8 + f.phase) + 1) * 0.45; f.m.position.y = 15.3 + f.m.scale.y * 1.1; });
 
   // Gikk du i lavaen?
   if (joined && alive && !lavaSent && player.feetY < 0.25 && Math.abs(player.z) < LAVA_HALF - 0.1 && Math.hypot(player.x, player.z) < BOWL_R) {
@@ -270,66 +248,9 @@ function updateUnderworld(dt) {
     socket.emit('lava');
   }
 
-  // Nedtelling og promp
-  if (fartT >= 0) {
-    fartT += dt;
-    if (fartT < FART_BUILDUP) {
-      // Sakte oppbygging: en grønn sky vokser ut av Hades
-      const k = fartT / FART_BUILDUP;
-      fartCloud.visible = true;
-      fartCloud.scale.setScalar(1 + k * 4 + Math.sin(t * 12) * 0.2);
-      fartCloud.material.opacity = 0.5;
-      fartCd.style.display = 'block';
-      fartCd.innerHTML = '&#128168; PFFFRRRRRT... GJEM DEG! &#128168;';
-      hades.scale.set(1 + Math.sin(t * 20) * 0.02 * k, 1, 1 + Math.sin(t * 20) * 0.02 * k);   // Hades presser...
-    } else {
-      // Bølgen feier over skålen
-      const k = Math.min(1, (fartT - FART_BUILDUP) / FART_SWEEP);
-      const radius = 5 + k * 70;
-      fartCloud.scale.setScalar(radius);
-      fartCloud.material.opacity = 0.35 * (1 - k * 0.7);
-      hades.scale.set(1, 1, 1);
-      fartCd.style.display = 'none';
-      const myDist = new THREE.Vector3(player.x, player.feetY + 1, player.z).distanceTo(FART_ORIGIN);
-      if (!fartChecked && radius >= myDist) {
-        fartChecked = true;
-        fartFlash.style.opacity = 1;
-        if (joined && alive && !hiddenFromHades()) socket.emit('vaporized');
-      }
-      if (k >= 1) { fartT = -1; fartCloud.visible = false; if (!fartChecked) fartChecked = true; }
-    }
-  } else if (fartIn > 0 && fartIn <= 5) {
-    fartCd.style.display = 'block';
-    fartCd.innerHTML = '&#128168; HADES PROMPER OM ' + fartIn + '... finn dekning! &#128168;';
-  } else {
-    fartCd.style.display = 'none';
-  }
-  fartFlash.style.opacity = Math.max(0, parseFloat(fartFlash.style.opacity || 0) - dt * 1.5);
 }
 
 // ---------- Lyder (laget i koden) ----------
-function playFart() {
-  if (!audioCtx) return;
-  const now = audioCtx.currentTime;
-  // Lav, vrikkete "brrrrt" over oppbyggingen
-  const o = audioCtx.createOscillator(), g = audioCtx.createGain(), lfo = audioCtx.createOscillator(), lfoG = audioCtx.createGain();
-  o.type = 'sawtooth';
-  o.frequency.setValueAtTime(90, now);
-  o.frequency.linearRampToValueAtTime(55, now + FART_BUILDUP);
-  lfo.frequency.value = 22; lfoG.gain.value = 18;
-  lfo.connect(lfoG); lfoG.connect(o.frequency);
-  const filt = audioCtx.createBiquadFilter();
-  filt.type = 'lowpass'; filt.frequency.value = 400;
-  g.gain.setValueAtTime(0.0001, now);
-  g.gain.exponentialRampToValueAtTime(0.25, now + 0.3);
-  g.gain.setValueAtTime(0.25, now + FART_BUILDUP - 0.2);
-  g.gain.exponentialRampToValueAtTime(0.0001, now + FART_BUILDUP + 0.6);
-  o.connect(filt); filt.connect(g); g.connect(audioCtx.destination);
-  o.start(now); lfo.start(now);
-  o.stop(now + FART_BUILDUP + 0.7); lfo.stop(now + FART_BUILDUP + 0.7);
-  // Stort smell når bølgen slipper
-  setTimeout(() => playBoom(0.6), FART_BUILDUP * 1000);
-}
 function playFallScream() {
   if (!audioCtx) return;
   const now = audioCtx.currentTime;
@@ -344,5 +265,4 @@ function playFallScream() {
 }
 
 // Til testing
-window.__under = { get inUnderworld() { return inUnderworld; }, get fartT() { return fartT; }, get fartIn() { return fartIn; },
-  hiddenFromHades, nearHandle, enterUnderworld, exitUnderworld, HANDLE_POS, losMeshes };
+window.__under = { get inUnderworld() { return inUnderworld; }, nearHandle, enterUnderworld, exitUnderworld, HANDLE_POS, BRIDGE_X, nearFlush, UNDER_HANDLES };

@@ -33,13 +33,12 @@ let score = { bunny: 0, squirrel: 0 };
 // Skumfest: starter når noen står på toppen av pyramiden, varer til neste runde
 let foamOn = false;
 let foamHoles = [];            // [x, z] for hvert granat-hull (til nye spillere)
-// Underverdenen: et skjult håndtak sender alle ned til Hades' do-skål til neste runde
+// Underverdenen: et skjult håndtak sender alle ned til lava-arenaen til neste runde
 let worldName = 'main';        // 'main' eller 'underworld'
 // Baner byttes hver runde: tempelet og det kjempestore barnerommet (snikskytterbane)
 let mapName = process.env.START_MAP === 'room' ? 'room' : 'temple';   // 'temple' eller 'room' (START_MAP er for testing)
-let nextFart = 0;              // når Hades promper neste gang (ms)
-const FART_EVERY = 30000;      // hvert 30. sekund
 const HANDLE = { x: -25, z: -3 };   // håndtaket i bakre hjørne av venstre hus
+const UNDER_HANDLES = [{ x: 0, z: 24 }, { x: 0, z: -24 }];   // skyll-håndtak i underverdenen (ett per lag)
 let roundEndsAt = Date.now() + ROUND_SECONDS * 1000;
 let intermission = false;
 
@@ -89,7 +88,7 @@ function applyDamage(p, t, dmg, head, weapon) {
   }
 }
 
-// Død uten skytter: lava eller Hades' promp. Gir ikke poeng til noen.
+// Død uten skytter: lava. Gir ikke poeng til noen.
 function killByWorld(t, who, weapon) {
   if (!t.alive) return;
   t.hp = 0;
@@ -129,7 +128,7 @@ io.on('connection', socket => {
     socket.emit('welcome', {
       id: socket.id, spawn: sp, players: others, score,
       foam: { on: foamOn, holes: foamHoles },
-      world: worldName, map: mapName, fartIn: worldName === 'underworld' ? Math.max(0, Math.ceil((nextFart - Date.now()) / 1000)) : 0,
+      world: worldName, map: mapName,
       timeLeft: Math.max(0, Math.ceil((roundEndsAt - Date.now()) / 1000)), intermission
     });
     socket.broadcast.emit('playerJoined', publicPlayer(p));
@@ -191,11 +190,12 @@ io.on('connection', socket => {
   // Granat kastet: telles ned og vises for de andre
   socket.on('throw', d => {
     const p = players[socket.id];
-    if (!p || !p.alive || p.nades <= 0 || !d || typeof d.id !== 'string' || d.id.length > 40) return;
+    // Uendelig med granater i underverdenen
+    if (!p || !p.alive || (worldName !== 'underworld' && p.nades <= 0) || !d || typeof d.id !== 'string' || d.id.length > 40) return;
     if (!Array.isArray(d.p) || !Array.isArray(d.v)) return;
     const pos = d.p.map(v => num(v, -100, 100)), vel = d.v.map(v => num(v, -40, 40));
     if (pos.includes(null) || vel.includes(null)) return;
-    p.nades--;
+    if (worldName !== 'underworld') p.nades--;
     p.pending[d.id] = Date.now();
     socket.broadcast.emit('nade', { id: d.id, p: pos, v: vel });
   });
@@ -227,11 +227,21 @@ io.on('connection', socket => {
     foamOn = false;
     foamHoles = [];
     io.emit('foam', { on: false });
-    nextFart = Date.now() + FART_EVERY;
     io.emit('world', { name: 'underworld', by: p.name, team: p.team });
     console.log(p.name + ' dro i håndtaket – underverdenen!');
     // Alle havner på sin side av do-skålen etter fallet
     setTimeout(() => Object.values(players).forEach(o => respawn(o)), 1500);
+  });
+
+  // Skyll-håndtaket i underverdenen: alle skylles opp igjen til tempelet
+  socket.on('flush', () => {
+    const p = players[socket.id];
+    if (!p || !p.alive || intermission || worldName !== 'underworld') return;
+    if (!UNDER_HANDLES.some(h => Math.hypot(p.x - h.x, p.z - h.z) < 2.5)) return;
+    worldName = 'main';
+    io.emit('world', { name: 'main', by: p.name, team: p.team, flush: true });
+    console.log(p.name + ' skylte alle opp igjen');
+    setTimeout(() => Object.values(players).forEach(o => respawn(o)), 800);
   });
 
   // Gikk i lavaen
@@ -239,13 +249,6 @@ io.on('connection', socket => {
     const p = players[socket.id];
     if (!p || worldName !== 'underworld' || intermission) return;
     killByWorld(p, 'Lava', 'lava');
-  });
-
-  // Ikke gjemt da promp-bølgen kom
-  socket.on('vaporized', () => {
-    const p = players[socket.id];
-    if (!p || worldName !== 'underworld' || intermission) return;
-    killByWorld(p, 'HADES', 'fart');
   });
 
   socket.on('disconnect', () => {
@@ -289,14 +292,8 @@ setInterval(() => {
   }
   io.emit('tick', {
     timeLeft: intermission ? 0 : Math.max(0, Math.ceil((roundEndsAt - now) / 1000)),
-    score, intermission, board: board(),
-    fartIn: worldName === 'underworld' && !intermission ? Math.max(0, Math.ceil((nextFart - now) / 1000)) : -1
+    score, intermission, board: board()
   });
-  // Hades promper!
-  if (worldName === 'underworld' && !intermission && now >= nextFart) {
-    io.emit('fart', {});
-    nextFart = now + FART_EVERY;
-  }
 }, 1000);
 
 server.listen(PORT, () => {
