@@ -373,7 +373,7 @@ socket.on('flyOk', d => {
   flying = true; myTurret = -1;
   player.x = p.x; player.z = p.z; player.feetY = 3.2; player.vy = 0;
   player.yaw = myTeam === 'bunny' ? 0 : Math.PI; player.pitch = 0;
-  fl.speed = 30; fl.boost = 1.5; fl.roll = 0; fl.lastYaw = player.yaw; fl.crashSent = false; fl.launchT = 0; fl.torps = 1;
+  fl.speed = 15; fl.boost = 1.5; fl.roll = 0; fl.lastYaw = player.yaw; fl.crashSent = false; fl.launchT = 0; fl.torps = 1;
   hp = 100;
   myProtectUntil = performance.now() + 1500;
   if (myFighterTeam !== myTeam) {             // bygg riktig fly for laget ditt
@@ -452,7 +452,7 @@ function updateBreaking(dt) {
 // ===================================================================
 //  Flyging (kalles fra updatePlayer i game.js når du sitter i et jagerfly)
 // ===================================================================
-const FLY = { min: 14, cruise: 32, max: 55, boost: 85, turnRate: 1.6 };
+const FLY = { min: 7, cruise: 16, max: 28, boost: 45, turnRate: 1.6 };   // halv fart (ønske fra spillerne)
 function spaceFlyUpdate(dt) {
   if (!spaceFlyingNow()) return false;
   fl.launchT += dt;
