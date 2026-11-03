@@ -295,19 +295,22 @@ function damageTank(dmg) {
 }
 // ---------- [NY] A-10 STØTTEANGREP (radio i vakttårnet, ett per bølge) ----------
 const RADIO = { x: -0.5, y: 8, z: -0.5 };
-const A10_DELAY = 3000, A10_LEN = 46, A10_RUN_MS = 1300;
+const A10_DELAY = 3000, A10_LEN = 60, A10_RUN_MS = 1600;   // 40 mm eksplosive granater langs hele streken
 function a10Strike(p, x, z, yaw) {
   const dx = -Math.sin(yaw), dz = -Math.cos(yaw), now = Date.now();
   io.emit('a10', { x, z, dx, dz, at: A10_DELAY, run: A10_RUN_MS, len: A10_LEN, by: p.name });
-  const steps = 20;
+  const steps = 40, sx = -dz, sz = dx;                // sx/sz = sideveis (beltet er bredt)
   for (let k = 0; k <= steps; k++) {
     setTimeout(() => {
       if (!farmActive()) return;
-      const s = -A10_LEN / 2 + A10_LEN * k / steps, px = x + dx * s, pz = z + dz * s;
-      blastCells(px, 0.6, pz, 1.6);
-      areaHurtChicks(px, pz, 3.2, 320, p);
-      if (k % 3 === 0) igniteAt(px, 0.6, pz, 2.5);
-      chainBarrels(px, pz, 2.5, p);
+      const s = -A10_LEN / 2 + A10_LEN * k / steps;
+      [-1, 1].forEach(side => {                       // to treff per steg, litt til hver side
+        const off = side * (0.6 + Math.random() * 1.6), px = x + dx * s + sx * off, pz = z + dz * s + sz * off;
+        blastOwner = p; blastCells(px, 0.6, pz, 2.2); blastOwner = null;
+        areaHurtChicks(px, pz, 4.5, 500, p);
+        if ((k + (side > 0 ? 1 : 0)) % 4 === 0) igniteAt(px, 0.6, pz, 3);
+        chainBarrels(px, pz, 3, p);
+      });
     }, A10_DELAY + A10_RUN_MS * k / steps);
   }
 }

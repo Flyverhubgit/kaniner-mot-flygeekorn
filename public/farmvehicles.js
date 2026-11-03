@@ -247,7 +247,7 @@ socket.on('a10Need', d => { bannerMsg = '&#128251; Dere må være ' + d.need + '
 function nearRadio() { return farmOn() && alive && !tankRole && player.feetY > 7 && Math.hypot(player.x - radioMesh.position.x, player.z - radioMesh.position.z) < 3; }
 function nearTank() { return farmOn() && alive && !tankRole && tankInfo && tankInfo.alive && tankMesh.visible && Math.hypot(player.x - tankView.x, player.z - tankView.z) < 4.2 && player.feetY < 2; }
 // Strek på bakken: der A-10 skyter
-const strafeMark = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.06, 46), new THREE.MeshBasicMaterial({ color: 0xff3030, transparent: true, opacity: 0.55, depthWrite: false }));
+const strafeMark = new THREE.Mesh(new THREE.BoxGeometry(4.5, 0.06, 60), new THREE.MeshBasicMaterial({ color: 0xff3030, transparent: true, opacity: 0.55, depthWrite: false }));
 strafeMark.visible = false; strafeMark.raycast = () => {};
 farmGroup.add(strafeMark);
 const a10Aim = new THREE.Vector3();
@@ -339,13 +339,33 @@ function updateA10(dt) {
     if (!r.roar && r.t > -1.6) { r.roar = true; playJet(); }
     if (!r.brrt && r.t >= 0) { r.brrt = true; playBrrt(r.run); }
     if (r.t >= 0 && r.t <= r.run) {
-      // Støvskyer og glimt langs streken
+      // 40 mm: ildkuler og metallbiter i et bredt belte langs streken
       const k = r.t / r.run, at = r.center.clone().addScaledVector(r.dir, -r.len / 2 + r.len * k);
-      if (Math.random() < 0.9) addStuffing(new THREE.Vector3(at.x + (Math.random() - 0.5) * 2, 0.4, at.z + (Math.random() - 0.5) * 2));
+      const side = new THREE.Vector3(-r.dir.z, 0, r.dir.x);
+      r.fx = (r.fx || 0) + dt * 55;                                  // ca. 55 smell i sekundet å se på
+      while (r.fx >= 1) {
+        r.fx -= 1;
+        const off = (Math.random() - 0.5) * 4.4, back = (Math.random() - 0.5) * 2;
+        impactFx(at.x + side.x * off + r.dir.x * back, at.z + side.z * off + r.dir.z * back);
+      }
       const dist = Math.hypot(at.x - player.x, at.z - player.z);
       shake = Math.max(shake, 0.9 - dist / 50);
     }
     if (r.t > r.run + 4) { farmGroup.remove(r.plane); farmGroup.remove(r.mark); a10Runs.splice(i, 1); }
+  }
+}
+
+// Ett 40 mm-treff: liten ildkule + biter (bruker de samme "smell"-bitene som verdensrommet, uten lyd)
+function impactFx(x, z) {
+  if (typeof fireballs === 'undefined') { addStuffing(new THREE.Vector3(x, 0.4, z)); return; }
+  const f = fireballs[fbI]; fbI = (fbI + 1) % fireballs.length;
+  f.m.position.set(x, 0.6, z); f.life = 0.45; f.size = 0.9 + Math.random() * 0.6; f.m.visible = true;
+  f.m.material.color.setHex(Math.random() < 0.5 ? 0xffd070 : 0xff7a30);
+  for (let k = 0; k < 3; k++) {
+    const s = shards[shI]; shI = (shI + 1) % shards.length;
+    s.m.position.set(x, 0.4, z);
+    s.v.set((Math.random() - 0.5) * 8, 4 + Math.random() * 6, (Math.random() - 0.5) * 8);
+    s.life = 0.8 + Math.random() * 0.5; s.m.visible = true;
   }
 }
 
@@ -358,6 +378,7 @@ function updateFarmVehicles(dt) {
   if (!farmOn()) { vehHud.style.display = 'none'; if (farmBtn) farmBtn.style.display = 'none'; tankMesh.visible = false; strafeMark.visible = false; return; }
   updateShells(dt);
   updateA10(dt);
+  if (typeof updateFx === 'function') updateFx(dt);   // ildkulene fra A-10 (samme som i verdensrommet)
   // Doseren der alle ser den
   if (tankInfo && tankRole !== 'driver') {
     const k = Math.min(1, dt * 10);
