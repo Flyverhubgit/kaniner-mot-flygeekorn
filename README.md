@@ -48,7 +48,7 @@ Fem baner. Den første som kommer inn på en tom server velger banen. Etter hver
   - Ikke fly inn i asteroider eller skip – da krasjer du.
 - ZOMBIE-KYLLINGER 🐔🧟 (kyllingfarmen, om natta): ALLE spillerne sammen mot kyllingene.
   - Dere starter i kampsenteret midt på gården (Hesco-murer, sandsekker, piggtråd, containere, vakttårn). Alt kan sprenges – også av dere selv!
-  - 10 bølger. Kyllingene kryper opp av kirkegårdene i hjørnene og hakker seg gjennom alt som står i veien. Står du høyt, hakker de i bakken under deg.
+  - 10 bølger. Kyllingene kryper opp av kirkegårdene i hjørnene og hakker seg gjennom alt som står i veien. Står du høyt, hakker de i bakken under deg. Bølgene kommer PÅ TID (39 sek, så 4 sek lenger for hver bølge) – kyllingene som er igjen blir værende, så jo dårligere det går, jo verre blir det! Rydder dere en bølge tidlig, får dere en kort pause (8 sek). De døde kommer tilbake når neste bølge starter.
   - Typer: vanlige (vakler), løpere (raske), eggkastere (råtne egg), eksplosive (smeller) og KONG KLUKK (sjefen, bølge 5 og 10).
   - UENDELIG med ammo: AK og snikskytter trenger aldri å lade om, uendelig med granater og raketter (bazookaen lader fortsatt om). Døde kommer tilbake i pausen. Alle døde = kyllingene vinner. Klar alle 10 = gården er reddet!
   - Røde tønner smeller i kjedereaksjon. Høy, mais og telt tar fyr og brenner. Gullegg = eggmaskingevær i 20 sek.

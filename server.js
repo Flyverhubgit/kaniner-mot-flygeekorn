@@ -248,9 +248,10 @@ const CHICK = {
 };
 const CTYPES = ['walker', 'runner', 'thrower', 'exploder', 'king'];
 const FARM_WAVES = 10;
-const FARM_SECONDS = +process.env.FARM_SECONDS || 600;            // maks 10 min per runde
+const FARM_SECONDS = +process.env.FARM_SECONDS || 900;            // maks 15 min per runde
+const WAVE_SECONDS = n => (35 + n * 4) * (+process.env.FARM_WAVE_SCALE || 1);   // (FARM_WAVE_SCALE er for testing)                              // [NY] bølgene kommer PÅ TID (39 s, 43 s, ... 75 s)
 const FARM_PREP_MS = +process.env.FARM_PREP || 15000;             // tid før første bølge
-const FARM_BREAK_MS = +process.env.FARM_BREAK || 12000;           // pause mellom bølgene
+const FARM_BREAK_MS = +process.env.FARM_BREAK || 8000;            // pause hvis dere rydder en bølge tidlig
 const FARM_NADES = 10, FARM_ROCKETS = 4;                           // mer granater i kyllingkaoset
 const CHICK_CAP = 60;                                              // maks levende kyllinger samtidig
 const GOLD_CHANCE = +process.env.GOLD_CHANCE || 0.05;             // sjanse for gullegg når en kylling dør
@@ -397,7 +398,12 @@ function waveList(n) {
   return list;
 }
 function startWave(n) {
-  farm.wave = n; farm.state = 'fight'; farm.queue = waveList(n); farm.nextSpawn = Date.now() + 500; farm.waveAt = Date.now();
+  // [NY] Bølgene kommer på tid: kyllingene som er igjen blir værende, og den nye bølgen kommer i tillegg!
+  farm.wave = n; farm.state = 'fight'; farm.queue = farm.queue.concat(waveList(n)); farm.nextSpawn = Date.now() + 500; farm.waveAt = Date.now();
+  farm.until = Date.now() + WAVE_SECONDS(n) * 1000;
+  // De døde kommer tilbake, doseren repareres
+  Object.values(players).forEach(p => { if (!p.alive) respawn(p); });
+  if (farm.tank) { if (!farm.tank.alive) { farm.tank = newTank(); io.emit('tankBack', {}); } else farm.tank.hp = TANK_HP; }
   farm.barrels.forEach(b => { b.alive = true; });                  // nye tønner hver bølge
   farm.a10Used = false;                                            // ny A-10 hver bølge
   io.emit('barrels', farm.barrels);
@@ -555,20 +561,16 @@ function farmTick() {
   } else if (farm.state === 'fight') {
     // Alle døde? Da har kyllingene vunnet.
     if (all.length && !alive.length) { endFarm('lose'); return; }
+    // Tiden er ute? Neste bølge kommer – uansett hvor mange som er igjen.
+    if (farm.wave < FARM_WAVES && now >= farm.until) { startWave(farm.wave + 1); return; }
+    if (now - (farm.lastWaveEmit || 0) >= 1000) { farm.lastWaveEmit = now; emitWave(); }
     if (farm.queue.length && now >= farm.nextSpawn && farm.chicks.size < CHICK_CAP) {
       spawnChick(farm.queue.shift());
       farm.nextSpawn = now + Math.max(120, 300 - farm.wave * 15);   // kryper fortere opp (det er 3x så mange)
     }
-    // [FIKS] Sikkerhetsnett: noen få kyllinger igjen og bølgen har vart altfor lenge? De flykter.
-    if (!farm.queue.length && farm.chicks.size && farm.chicks.size <= 3 && now - (farm.waveAt || now) > (90 + farm.wave * 8) * 1000 &&
-        ![...farm.chicks.values()].some(c => c.type === 'king')) {
-      farm.chicks.forEach(c => io.emit('chickDie', { id: c.id, x: +c.x.toFixed(1), z: +c.z.toFixed(1), t: c.t }));
-      farm.chicks.clear();
-      io.emit('fled', { n: farm.wave });
-    }
     if (!farm.queue.length && !farm.chicks.size) {
       if (farm.wave >= FARM_WAVES) { endFarm('win'); return; }
-      farm.state = 'break'; farm.until = now + FARM_BREAK_MS;
+      farm.state = 'break'; farm.until = Math.min(farm.until, now + FARM_BREAK_MS);   // ryddet tidlig = kort pause
       if (!farm.tank.alive) { const keep = farm.tank; farm.tank = newTank(); io.emit('tankBack', {}); } else farm.tank.hp = TANK_HP;   // doseren repareres
       farmRecord = Math.max(farmRecord, farm.wave);
       // Pause: de døde kommer tilbake, alle får fulle granater og raketter

@@ -432,7 +432,7 @@ socket.on('wave', w => {
     playRooster();                                     // KYKELIKYYY!
     setTimeout(playHorn, 1300);
   } else if (w.cleared) {
-    bannerMsg = '&#9989; BØLGE ' + w.n + ' KLART!<br><span style="font-size:20px">Fulle granater &#128163; – de døde er tilbake. Neste bølge om ' + w.in + ' sek</span>';
+    bannerMsg = '&#9989; BØLGE ' + w.n + ' KLART – RASKT!<br><span style="font-size:20px">Kort pause: de døde er tilbake. Neste bølge om ' + w.in + ' sek</span>';
     bannerTime = 4;
   } else if (w.result === 'win') {
     bannerMsg = '&#127881;&#127881; GÅRDEN ER REDDET! &#127881;&#127881;<br><span style="font-size:22px">Dere klarte alle ' + w.total + ' bølgene!</span>';
@@ -467,7 +467,7 @@ socket.on('roundOver', d => {
 });
 function farmDeathText() {
   if (!farmOn()) return null;
-  if (waveInfo.state === 'fight') return 'Du kommer tilbake når bølgen er over – heia på de andre!';
+  if (waveInfo.state === 'fight') return 'Du kommer tilbake når neste bølge starter' + (waveInfo.in > 0 && waveInfo.n < waveInfo.total ? ' (om ' + waveInfo.in + 's)' : '') + ' – heia på de andre!';
   if (waveInfo.state === 'lose') return 'Kyllingene vant denne gangen...';
   if (waveInfo.state === 'win') return 'Gården er reddet!';
   return null;
@@ -481,7 +481,8 @@ function updateFarmHud() {
   let txt;
   if (w.state === 'prep') txt = '&#128020; Gjør dere klare! Første bølge om ' + w.in;
   else if (w.state === 'break') txt = '&#9989; Bølge ' + w.n + ' klart! Neste om ' + w.in;
-  else if (w.state === 'fight') txt = '&#128020; BØLGE ' + w.n + '/' + w.total + ' &nbsp; &#129503; ' + w.left + ' igjen';
+  else if (w.state === 'fight') txt = '&#128020; BØLGE ' + w.n + '/' + w.total + ' &nbsp; &#129503; ' + w.left + ' igjen' +
+    (w.n < w.total ? ' &nbsp; <span style="color:' + (w.in <= 5 ? '#ff6a5a' : '#ffe9a0') + '">&#9201;&#65039; neste bølge om ' + w.in + 's</span>' : ' &nbsp; <span style="color:#ff6a5a">SISTE BØLGE!</span>');
   else txt = w.state === 'win' ? '&#127881; SEIER!' : '&#128020; Kyllingene vant';
   const king = kingId && chicks.get(kingId);
   if (king) txt += '<br><span style="font-size:15px">&#128081; Kong Klukk ' + '<span style="color:#ff5a4a">' + '█'.repeat(Math.ceil((king.hp || 0) * 12)) + '</span><span style="opacity:.3">' + '█'.repeat(12 - Math.ceil((king.hp || 0) * 12)) + '</span></span>';
@@ -492,7 +493,7 @@ function updateFarmHud() {
 let waveSec = 0;
 function updateFarm(dt) {
   waveSec += dt;
-  if (waveSec >= 1) { waveSec = 0; if (waveInfo.in > 0 && (waveInfo.state === 'prep' || waveInfo.state === 'break')) waveInfo.in--; }
+  if (waveSec >= 1) { waveSec = 0; if (waveInfo.in > 0 && (waveInfo.state === 'prep' || waveInfo.state === 'break' || waveInfo.state === 'fight')) waveInfo.in--; }
   updateFarmHud();
   gooT = Math.max(0, gooT - dt);
   goo.style.opacity = farmOn() ? Math.min(1, gooT) : 0;
