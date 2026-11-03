@@ -336,6 +336,8 @@ document.addEventListener('mousemove', e => {
   const locked = document.pointerLockElement === renderer.domElement;
   if (!joined) return;                     // [NY] ikke snu kameraet i menyen
   if (!locked && !mouseDown) return;
+  // [FIKS] Chrome på Windows sender av og til ett enormt musehopp -> kameraet rykker. Ignorer det.
+  if (Math.abs(e.movementX) > 350 || Math.abs(e.movementY) > 350) return;
   const z = scoped ? 0.3 : 1;              // [NY] roligere sikting i kikkerten
   player.yaw -= e.movementX * 0.002 * sens * z;
   player.pitch -= e.movementY * 0.002 * sens * z;
@@ -511,6 +513,7 @@ if (isTouch) {
 }
 
 // ---------- Oppdater spilleren hver ramme ----------
+let stepSmooth = 0;                                      // [FIKS] kameraet glir opp trinn
 function updatePlayer(dt) {
   if (typeof farmVehicleUpdate === 'function' && farmVehicleUpdate(dt)) return;   // [NY] sitter i doseren (farmvehicles.js)
   if (typeof spaceFlyUpdate === 'function' && spaceFlyUpdate(dt)) return;   // [NY] sitter i et jagerfly (space.js)
@@ -599,6 +602,9 @@ function updatePlayer(dt) {
   // Bakke / trinn
   const g = groundAt(player.x, player.z, oldFeet);
   if (player.vy <= 0 && newFeet <= g) {
+    // [FIKS] Gikk opp et trinn (inntil én kloss)? La kameraet gli opp i stedet for å hoppe 1 m på ett bilde.
+    const up = g - oldFeet;
+    if (player.onGround && up > 0.05 && up < 1.2) stepSmooth = Math.max(-1.2, stepSmooth - up);
     newFeet = g; player.vy = 0; player.onGround = true;
   } else {
     player.onGround = false;
@@ -606,7 +612,8 @@ function updatePlayer(dt) {
   player.feetY = newFeet;
 
   // Kameraet følger spilleren
-  camera.position.set(player.x, player.feetY + slide.eye, player.z);
+  stepSmooth *= Math.exp(-dt * 16);                       // [FIKS] glatt trinn: ca. 0,1 sek
+  camera.position.set(player.x, player.feetY + slide.eye + stepSmooth, player.z);
   camera.rotation.y = player.yaw;
   camera.rotation.x = player.pitch;
 }

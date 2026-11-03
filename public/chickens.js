@@ -111,6 +111,9 @@ function buildZombieChicken(type) {
     add(body, 0.75, 0.6, 0.06, 0, 0.8, -0.47, M(0x5a1020), -0.2);
   }
 
+  // [FIKS] Ytelse: lim sammen bitene i hver del (kropp, hode, vinger, bein) til ÉN mesh.
+  // Før: ca. 45 tegnekall per kylling (+ skygger). Nå: ca. 8. Samme utseende og animasjon.
+  [body, head, wingL, wingR, legs[0], legs[1]].forEach(mergeChickenPart);
   g.scale.setScalar(S);
   g.userData.legs = legs;
   g.userData.wings = [wingL, wingR];
@@ -131,4 +134,51 @@ function animateZombieChicken(m, t, speed) {
   u.head.rotation.x = 0.12 + Math.sin(t * 7.1) * 0.08;
   u.wings[1].rotation.z = -0.5 + Math.sin(w + 1) * 0.35;          // den løse vingen dingler
   if (u.belly) u.belly.scale.setScalar(1 + Math.sin(t * 6) * 0.08);
+}
+
+// ---------- [FIKS] Lim sammen boksene i en gruppe til én mesh med farger per hjørne ----------
+const CHICK_STD = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9 });
+const CHICK_BASIC = new THREE.MeshBasicMaterial({ vertexColors: true });
+function mergeChickenPart(group) {
+  const std = [], basic = [];
+  group.children.slice().forEach(m => {
+    if (!m.isMesh || !m.geometry || m.geometry.type !== 'BoxGeometry' || m.children.length) return;
+    const mat = m.material;
+    if (mat.transparent) return;                                    // gjennomsiktige (mage, glød) får være
+    (mat.isMeshBasicMaterial ? basic : std).push(m);
+  });
+  [[std, CHICK_STD, true], [basic, CHICK_BASIC, false]].forEach(([list, material, shadow]) => {
+    if (!list.length) return;
+    let nv = 0, ni = 0;
+    list.forEach(m => { nv += m.geometry.attributes.position.count; ni += m.geometry.index.count; });
+    const pos = new Float32Array(nv * 3), nor = new Float32Array(nv * 3), col = new Float32Array(nv * 3), idx = new Uint32Array(ni);
+    let vo = 0, io = 0;
+    const v = new THREE.Vector3(), nm = new THREE.Matrix3(), c = new THREE.Color();
+    list.forEach(m => {
+      m.updateMatrix();
+      nm.getNormalMatrix(m.matrix);
+      c.copy(m.material.color);
+      if (m.material.emissive) c.add(m.material.emissive);           // gløden blir med i fargen
+      const P = m.geometry.attributes.position, N = m.geometry.attributes.normal, I = m.geometry.index;
+      for (let i = 0; i < P.count; i++) {
+        v.fromBufferAttribute(P, i).applyMatrix4(m.matrix); pos.set([v.x, v.y, v.z], (vo + i) * 3);
+        v.fromBufferAttribute(N, i).applyMatrix3(nm).normalize(); nor.set([v.x, v.y, v.z], (vo + i) * 3);
+        col.set([c.r, c.g, c.b], (vo + i) * 3);
+      }
+      for (let i = 0; i < I.count; i++) idx[io + i] = I.getX(i) + vo;
+      vo += P.count; io += I.count;
+      group.remove(m);
+      m.geometry.dispose();
+    });
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    geo.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+    geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    geo.setIndex(new THREE.BufferAttribute(idx, 1));
+    geo.computeBoundingSphere();
+    const merged = new THREE.Mesh(geo, material);
+    merged.castShadow = shadow;
+    merged.raycast = () => {};
+    group.add(merged);
+  });
 }
