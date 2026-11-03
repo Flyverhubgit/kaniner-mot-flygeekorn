@@ -507,6 +507,7 @@ if (isTouch) {
 
 // ---------- Oppdater spilleren hver ramme ----------
 function updatePlayer(dt) {
+  if (typeof spaceFlyUpdate === 'function' && spaceFlyUpdate(dt)) return;   // [NY] sitter i et jagerfly (space.js)
   // Hvilken vei vil spilleren gå? (fremover/sidelengs, -1 til 1)
   let fwd = touchMove.y, strafe = touchMove.x;
   if (keys['KeyW'] || keys['ArrowUp']) fwd += 1;
@@ -877,6 +878,7 @@ function removeNade(id) {
 }
 
 function throwNade() {
+  if (typeof spaceThrow === 'function' && spaceThrow()) return;   // [NY] torpedo fra jagerflyet
   if (typeof holyThrow === 'function' && holyThrow()) return;   // [NY] har du den hellige ferskenen, kastes den
   if (!joined || !alive || (!underNow() && grenades <= 0) || nadeCooldown > 0) return;
   if (!underNow()) grenades--;            // [NY] uendelig med granater i underverdenen
@@ -1334,6 +1336,7 @@ function muzzleWorld() {
 }
 
 function shoot() {
+  if (typeof spaceShoot === 'function' && spaceShoot()) return;   // [NY] laser fra jagerfly / kanontårn
   if (typeof inMortar !== 'undefined' && inMortar) { fireMortar(); return; }   // [NY] står i morteren
   if (weapon === bazW) { fireRocket(); return; }   // [NY] bazooka skyter en rakett i stedet for en kule
   weapon.mag--;
@@ -1448,7 +1451,7 @@ function updateWeapon(dt) {
     window.__scopeBtn.style.display = weapon === sniperW && joined ? 'flex' : 'none';
     window.__scopeBtn.style.background = scoped ? 'rgba(255,150,205,0.6)' : 'rgba(255,255,255,0.3)';
   }
-  gun.visible = alive && joined && !scoped && !(typeof inMortar !== 'undefined' && inMortar);  // [NY] skjul våpenet i menyen, når du er død, i kikkerten og i morteren
+  gun.visible = alive && joined && !scoped && !(typeof inMortar !== 'undefined' && inMortar) && !(typeof spaceHideGun === 'function' && spaceHideGun());  // [NY] skjul våpenet i menyen, når du er død, i kikkerten og i morteren
 
   flashTime -= dt;
   flash.visible = flashTime > 0;
@@ -1645,7 +1648,7 @@ function updateHud(dt) {
 
 function addKillfeed(d) {
   const div = document.createElement('div');
-  div.innerHTML = teamSpan(d.killerTeam, esc(d.killerName)) + (d.weapon === 'nade' ? ' &#128163; ' : d.weapon === 'lava' ? ' &#127755; ' : d.weapon === 'fart' ? ' &#128168; ' : d.weapon === 'rocket' ? ' &#128640; ' : d.weapon === 'mortar' ? ' &#128163;&#128163; ' : d.weapon === 'holy' ? ' &#127825;&#10024; ' : d.weapon === 'sniper' ? (d.killerTeam === 'bunny' ? ' &#129365;' : ' &#127792;') + (d.head ? '&#127919; ' : ' ') : (d.head ? ' &#127919; ' : ' &#10140; ')) + teamSpan(d.victimTeam, esc(d.victimName));
+  div.innerHTML = teamSpan(d.killerTeam, esc(d.killerName)) + (d.weapon === 'nade' ? ' &#128163; ' : d.weapon === 'lava' ? ' &#127755; ' : d.weapon === 'fart' ? ' &#128168; ' : d.weapon === 'rocket' ? ' &#128640; ' : d.weapon === 'mortar' ? ' &#128163;&#128163; ' : d.weapon === 'holy' ? ' &#127825;&#10024; ' : d.weapon === 'laser' ? ' &#9889; ' : d.weapon === 'turret' ? ' &#128165; ' : d.weapon === 'torpedo' ? ' &#128640; ' : d.weapon === 'crash' ? ' &#128171; ' : d.weapon === 'sniper' ? (d.killerTeam === 'bunny' ? ' &#129365;' : ' &#127792;') + (d.head ? '&#127919; ' : ' ') : (d.head ? ' &#127919; ' : ' &#10140; ')) + teamSpan(d.victimTeam, esc(d.victimName));
   killfeed.prepend(div);
   while (killfeed.children.length > 5) killfeed.lastChild.remove();
   setTimeout(() => div.remove(), 6000);
@@ -1749,6 +1752,7 @@ socket.on('rocket', d => { spawnRocket(d.id, d.team, false, d.p, d.v); });   // 
 socket.on('boom', d => {
   removeNade(d.id);
   removeRocket(d.id);                                 // [NY] rakett
+  if (d.space && typeof spaceBoomFx === 'function') { if (typeof removeTorp === 'function') removeTorp(d.id); spaceBoomFx(d.p, d.big); return; }   // [NY] smell i rommet
   explode(d.p, d.big, d.holy);
   if (d.holy && typeof holyBoomFx === 'function') holyBoomFx(d.p);   // [NY] hvitt lys og mye fyll
   if (foamOn && d.p[1] < 3) cutHole(d.p[0], d.p[2]);   // [NY] granaten blåser bort skummet
@@ -1873,7 +1877,7 @@ function sendState(dt) {
   sendTimer -= dt;
   if (sendTimer > 0 || !joined || !alive) return;
   sendTimer = 0.05;
-  socket.emit('state', [+player.x.toFixed(2), +player.feetY.toFixed(2), +player.z.toFixed(2), +player.yaw.toFixed(3), +player.pitch.toFixed(3), slide.active ? 1 : 0, crouching ? 1 : 0, gliding ? 1 : 0, weapon === sniperW ? 1 : weapon === bazW ? 2 : 0]);
+  socket.emit('state', [+player.x.toFixed(2), +player.feetY.toFixed(2), +player.z.toFixed(2), +player.yaw.toFixed(3), +player.pitch.toFixed(3), slide.active ? 1 : 0, crouching ? 1 : 0, gliding ? 1 : 0, weapon === sniperW ? 1 : weapon === bazW ? 2 : 0, typeof spaceRoll === 'function' ? spaceRoll() : 0]);
 }
 
 // ===================================================================
@@ -1997,6 +2001,7 @@ function animate(now) {
     if (typeof updateCastle === 'function') updateCastle(dt);   // [NY] flyvende kloss-biter
     if (typeof updateMortar === 'function') updateMortar(dt);   // [NY] morterer
     if (typeof updateHoly === 'function') updateHoly(dt);       // [NY] den hellige ferskenen
+    if (typeof updateSpace === 'function') updateSpace(dt);     // [NY] verdensrommet
     updateUnderworld(dt);       // [NY] underverdenen (underworld.js)
     updateHud(dt);
   }

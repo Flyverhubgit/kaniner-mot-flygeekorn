@@ -102,24 +102,26 @@ rSym(9, 0.6, 2.5, 2, 1.2, 1.2, 0xe9c99a, false);           // spissen
 function activeWorldGroup() {
   if (inUnderworld) return underGroup;
   if (currentMap === 'castle') return castleGroup;
+  if (currentMap === 'space' && typeof spaceGroup !== 'undefined') return spaceGroup;   // [NY]
   return currentMap === 'room' ? roomGroup : world;
 }
 function applyMap() {
   if (inUnderworld) return;               // underverdenen bestemmer selv
-  const room = currentMap === 'room', castle = currentMap === 'castle';
-  world.visible = !room && !castle;
+  const room = currentMap === 'room', castle = currentMap === 'castle', space = currentMap === 'space';
+  world.visible = !room && !castle && !space;
+  if (typeof spaceGroup !== 'undefined') spaceGroup.visible = space;   // [NY] verdensrommet
   roomGroup.visible = room;
   if (typeof castleGroup !== 'undefined') castleGroup.visible = castle;   // [NY] klosseslottet
   colliders.length = 0;
-  (room ? roomColliders : castle ? castleColliders : mainColliders).forEach(c => colliders.push(c));
-  const big = room || castle;
-  const sky = room ? 0xfdf0dc : castle ? 0x9fd0ff : 0x87a7c4;
+  (room ? roomColliders : castle ? castleColliders : space ? spaceColliders : mainColliders).forEach(c => colliders.push(c));
+  const big = room || castle || space;
+  const sky = space ? 0x03040c : room ? 0xfdf0dc : castle ? 0x9fd0ff : 0x87a7c4;
   scene.background.setHex(sky);
   scene.fog.color.setHex(sky);
-  scene.fog.near = big ? 140 : 70;
-  scene.fog.far = big ? 340 : 150;
+  scene.fog.near = space ? 450 : big ? 140 : 70;
+  scene.fog.far = space ? 1500 : big ? 340 : 150;
   renderer.setClearColor(sky);
-  camera.far = big ? 400 : 200;
+  camera.far = space ? 2000 : big ? 400 : 200;
   camera.updateProjectionMatrix();
   const S = big ? 95 : 40;                // skygger må dekke hele det store kartet
   sun.shadow.camera.left = -S; sun.shadow.camera.right = S;
@@ -130,12 +132,13 @@ function applyMap() {
   if (big) setFoam(false);
 }
 
-function mapFromName(n) { return n === 'room' || n === 'castle' ? n : 'temple'; }
+function mapFromName(n) { return n === 'room' || n === 'castle' || n === 'space' ? n : 'temple'; }
 socket.on('map', d => {
   currentMap = mapFromName(d.name);
   applyMap();
   bannerMsg = '&#127918; Ny bane: ' + (currentMap === 'room' ? 'KJEMPE-BARNEROMMET &#129528;<br><span style="font-size:20px">Stor bane – bruk snikskytteren (2)!</span>'
-    : currentMap === 'castle' ? 'KLOSSESLOTTET &#127984;<br><span style="font-size:20px">Alt kan skytes i stykker!</span>' : 'TEMPELET &#127963;');
+    : currentMap === 'castle' ? 'KLOSSESLOTTET &#127984;<br><span style="font-size:20px">Alt kan skytes i stykker!</span>'
+    : currentMap === 'space' ? 'VERDENSROMMET &#128640;<br><span style="font-size:20px">Ta et jagerfly i hangaren og spreng fiendens moderskip!</span>' : 'TEMPELET &#127963;');
   bannerTime = 4;
 });
 socket.on('welcome', d => {

@@ -40,18 +40,18 @@ let foamHoles = [];            // [x, z] for hvert granat-hull (til nye spillere
 // Underverdenen: et skjult håndtak sender alle ned til lava-arenaen til neste runde
 let worldName = 'main';        // 'main' eller 'underworld'
 // Baner byttes hver runde: tempelet og det kjempestore barnerommet (snikskytterbane)
-const MAPS = ['temple', 'room', 'castle'];       // rekkefølgen banene byttes i
+const MAPS = ['temple', 'room', 'castle', 'space'];       // rekkefølgen banene byttes i
 let mapName = MAPS.includes(process.env.START_MAP) ? process.env.START_MAP : 'temple';   // (START_MAP er for testing)
 let votes = {};                                    // socket-id -> banen spilleren stemte på (i pausen)
 function voteCounts() {
-  const c = { temple: 0, room: 0, castle: 0 };
+  const c = { temple: 0, room: 0, castle: 0, space: 0 };
   Object.values(votes).forEach(m => { if (c[m] !== undefined) c[m]++; });
   return c;
 }
 // Neste bane: flest stemmer vinner. Likt: den som kommer først i vanlig rekkefølge. Ingen stemmer: vanlig rekkefølge.
 function nextMap() {
   const c = voteCounts(), cur = MAPS.indexOf(mapName);
-  const max = Math.max(c.temple, c.room, c.castle);
+  const max = Math.max(c.temple, c.room, c.castle, c.space);
   if (max === 0) return MAPS[(cur + 1) % MAPS.length];
   for (let k = 1; k <= MAPS.length; k++) { const m = MAPS[(cur + k) % MAPS.length]; if (c[m] === max) return m; }
   return MAPS[(cur + 1) % MAPS.length];
@@ -140,11 +140,80 @@ function startFresh(map) {
   worldName = 'main';
   if (mapName === 'castle') resetCastle();
   holy = { state: 'top', holder: null, readyAt: 0 };
+  resetFleet();
+  Object.values(players).forEach(leaveVehicle);
   foamOn = false; foamHoles = [];
   score = { bunny: 0, squirrel: 0 };
   roundEndsAt = Date.now() + ROUND_SECONDS * 1000;
   console.log('Første spiller valgte banen: ' + map);
 }
+
+// ===================================================================
+// [NY] VERDENSROMMET: to moderskip. Hvert lag har 12 jagerfly per runde og 4 kanontårn.
+// Når flyene er brukt opp, er kanontårnene siste forsvar. Moderskipet sprenges = du vinner.
+// ===================================================================
+const SHIP_HP = +process.env.SHIP_HP || 2500, FIGHTERS_PER_ROUND = 12, TURRET_HP = 250, TURRET_REPAIR_MS = 30000;
+const LASER_DMG = 20, TURRET_DMG = 34;                     // mot spillere/jagerfly
+const HULL_LASER = 8, HULL_TORP = 300, TURRET_LASER = 10, TURRET_TORP = 250;
+const SHIP_Z = { bunny: 135, squirrel: -135 };             // moderskipenes midtpunkt
+let fleet = null, spaceWinner = null, fleetDirty = false;
+function resetFleet() {
+  fleet = {};
+  TEAMS.forEach(t => {
+    fleet[t] = { hp: SHIP_HP, max: SHIP_HP, fighters: FIGHTERS_PER_ROUND, down: false,
+      turrets: [0, 1, 2, 3].map(() => ({ hp: TURRET_HP, gunner: null, repairAt: 0 })) };
+  });
+  spaceWinner = null;
+}
+resetFleet();
+function fleetState() {
+  const o = {};
+  TEAMS.forEach(t => {
+    const f = fleet[t];
+    o[t] = { hp: f.hp, max: f.max, fighters: f.fighters, down: f.down,
+      turrets: f.turrets.map(u => ({ hp: u.hp, gunner: u.gunner })) };
+  });
+  return o;
+}
+function leaveVehicle(p) {                       // ut av jagerfly / kanontårn
+  if (p.vehicle === 'turret' && fleet[p.team]) {
+    const u = fleet[p.team].turrets[p.turret];
+    if (u && u.gunner === p.id) u.gunner = null;
+    fleetDirty = true;
+  }
+  p.vehicle = null; p.turret = -1; p.torps = 0;
+}
+// Står spilleren inne i sin egen hangar?
+function inOwnHangar(p) {
+  const z = SHIP_Z[p.team], dz = (p.z - z) * (p.team === 'bunny' ? 1 : -1);
+  return mapName === 'space' && Math.abs(p.x) < 19 && dz > -28 && dz < 16 && p.y < 3;
+}
+function damageShip(team, dmg, by) {
+  const f = fleet[team];
+  if (!f || f.down || intermission || mapName !== 'space') return;
+  f.hp = Math.max(0, f.hp - dmg);
+  fleetDirty = true;
+  if (f.hp === 0) {
+    f.down = true;
+    spaceWinner = team === 'bunny' ? 'squirrel' : 'bunny';
+    io.emit('shipDown', { team, by: by ? by.name : '', byTeam: by ? by.team : '' });
+    console.log('Moderskipet til ' + team + ' er sprengt!');
+    roundEndsAt = Math.min(roundEndsAt, Date.now() + 7000);   // 7 sek med smell, så er runden over
+  }
+}
+function damageTurret(team, i, dmg) {
+  const f = fleet[team], u = f && f.turrets[i];
+  if (!u || u.hp <= 0 || intermission) return;
+  u.hp = Math.max(0, u.hp - dmg);
+  fleetDirty = true;
+  if (u.hp === 0) {
+    u.repairAt = Date.now() + TURRET_REPAIR_MS;
+    const g = u.gunner && players[u.gunner];
+    if (g) { leaveVehicle(g); io.to(g.id).emit('turretLost', { i }); }
+    io.emit('turretDown', { team, i });
+  }
+}
+setInterval(() => { if (fleetDirty) { fleetDirty = false; io.emit('fleet', fleetState()); } }, 200);
 
 const HANDLE = { x: -25, z: -3 };   // håndtaket i bakre hjørne av venstre hus
 const UNDER_HANDLES = [{ x: 0, z: 24 }, { x: 0, z: -24 }];   // skyll-håndtak i underverdenen (ett per lag)
@@ -158,6 +227,10 @@ function spawnFor(team) {
     const side = Math.random() < 0.5 ? -1 : 1;
     const x = side * (3 + Math.random() * 10);
     return team === 'bunny' ? { x, y: 2, z: 32.5, yaw: 0 } : { x: -x, y: 2, z: -32.5, yaw: Math.PI };
+  }
+  if (mapName === 'space' && worldName === 'main') {       // [NY] i hangaren i moderskipet
+    const x = (Math.random() - 0.5) * 24, back = 6 + Math.random() * 6;
+    return team === 'bunny' ? { x, y: 0, z: SHIP_Z.bunny + back, yaw: 0 } : { x: -x, y: 0, z: SHIP_Z.squirrel - back, yaw: Math.PI };
   }
   if (mapName === 'room' && worldName === 'main') {
     return { x: Math.random() * 60 - 30, z: team === 'bunny' ? 46 : -46, yaw: team === 'bunny' ? 0 : Math.PI };
@@ -197,6 +270,7 @@ function applyDamage(p, t, dmg, head, weapon) {
   if (t.hp <= 0) {
     t.alive = false;
     dropHoly(t);                                       // [NY]
+    leaveVehicle(t);                                   // [NY] jagerflyet er borte
     t.deaths++;
     t.streak = 0;
     p.kills++;
@@ -217,6 +291,7 @@ function killByWorld(t, who, weapon) {
   t.hp = 0;
   t.alive = false;
   dropHoly(t);                                         // [NY]
+  leaveVehicle(t);
   t.deaths++;
   t.streak = 0;
   io.to(t.id).emit('damaged', { hp: 0, fromX: t.x, fromZ: t.z });
@@ -225,6 +300,7 @@ function killByWorld(t, who, weapon) {
 }
 
 function respawn(p) {
+  leaveVehicle(p);                                   // [NY]
   const sp = spawnFor(p.team);
   p.nades = NADES_PER_LIFE;
   p.rockets = ROCKETS_PER_LIFE;
@@ -262,6 +338,7 @@ io.on('connection', socket => {
       timeLeft: Math.max(0, Math.ceil((roundEndsAt - Date.now()) / 1000)), intermission
     });
     socket.emit('holy', holyState());                 // [NY] hvor er ferskenen?
+    socket.emit('fleet', fleetState());               // [NY] moderskipene
     socket.broadcast.emit('playerJoined', publicPlayer(p));
     io.emit('lobby', lobbyCounts());
     console.log(name + ' ble med som ' + (team === 'bunny' ? 'kanin' : 'flygeekorn'));
@@ -271,13 +348,14 @@ io.on('connection', socket => {
   socket.on('state', s => {
     const p = players[socket.id];
     if (!p || !p.alive || !Array.isArray(s)) return;
-    const x = num(s[0], -90, 90), y = num(s[1], -1, 40), z = num(s[2], -60, 60);
+    const x = num(s[0], -300, 300), y = num(s[1], -200, 200), z = num(s[2], -300, 300);   // [NY] verdensrommet er stort
     const yaw = num(s[3], -1e6, 1e6), pitch = num(s[4], -2, 2);
     if (x === null || y === null || z === null || yaw === null || pitch === null) return;
     p.x = x; p.y = y; p.z = z; p.yaw = yaw; p.pitch = pitch; p.slide = s[5] ? 1 : 0;
     p.crouch = s[6] ? 1 : 0;
     p.glide = s[7] ? 1 : 0;
     p.weapon = s[8] === 2 ? 2 : s[8] ? 1 : 0;      // 0 = AK, 1 = snikskytter, 2 = bazooka
+    p.roll = num(s[9], -2, 2) || 0;                  // [NY] jagerflyet krenger
 
     // Toppen av pyramiden (2 x 2 m, 13 m høyt) = SKUMFEST!
     if (worldName === 'main' && mapName === 'temple' && !foamOn && !intermission && y >= 12.9 && Math.abs(x) <= 1.2 && Math.abs(z) <= 1.2) {
@@ -309,6 +387,13 @@ io.on('connection', socket => {
     p.lastHit = now;
 
     const head = !!d.head;
+    if (d.weapon === 'laser' || d.weapon === 'turret') {             // [NY] verdensrommet
+      if (mapName !== 'space') return;
+      if (d.weapon === 'laser' && p.vehicle !== 'fighter') return;
+      if (d.weapon === 'turret' && p.vehicle !== 'turret') return;
+      applyDamage(p, t, d.weapon === 'laser' ? LASER_DMG : TURRET_DMG, false, d.weapon);
+      return;
+    }
     if (d.weapon === 'sniper') {
       // Snikskytter: 60 i kroppen (2 treff), 100 i hodet. Maks ett skudd i sekundet.
       if (now - (p.lastSniper || 0) < SNIPER_MIN_MS) return;
@@ -389,6 +474,81 @@ io.on('connection', socket => {
     p.protectedUntil = Date.now() + HOLY_SHIELD_MS;   // 4 sek skjold så du ikke blir skutt med en gang
     setHoly('held', p.id);
     console.log(p.name + ' tok den hellige ferskenen!');
+  });
+
+  // ---------- [NY] VERDENSROMMET ----------
+  socket.on('fly', () => {                         // sett deg i et jagerfly i hangaren
+    const p = players[socket.id];
+    if (!p || !p.alive || intermission || mapName !== 'space' || p.vehicle || !inOwnHangar(p)) return;
+    const f = fleet[p.team];
+    if (f.fighters <= 0 || f.down) { socket.emit('flyNo', { fighters: f.fighters }); return; }
+    f.fighters--;
+    p.vehicle = 'fighter'; p.torps = 1; p.hp = MAX_HP;
+    p.protectedUntil = Date.now() + 1500;          // litt skjold mens du flyr ut av hangaren
+    fleetDirty = true;
+    socket.emit('flyOk', { fighters: f.fighters });
+  });
+  socket.on('turretIn', d => {
+    const p = players[socket.id];
+    if (!p || !p.alive || intermission || mapName !== 'space' || p.vehicle || !inOwnHangar(p) || !d) return;
+    const u = fleet[p.team].turrets[d.i];
+    if (!u || u.hp <= 0 || u.gunner || fleet[p.team].down) { socket.emit('turretNo', { i: d.i }); return; }
+    u.gunner = p.id; p.vehicle = 'turret'; p.turret = d.i;
+    fleetDirty = true;
+    socket.emit('turretOk', { i: d.i });
+  });
+  socket.on('turretOut', () => { const p = players[socket.id]; if (p && p.vehicle === 'turret') leaveVehicle(p); });
+  // Laserskudd: bare for at de andre skal se (og høre) dem. Treff meldes med 'hit' / 'shipHit'.
+  socket.on('laser', d => {
+    const p = players[socket.id];
+    if (!p || !p.alive || mapName !== 'space' || !p.vehicle || !d || !Array.isArray(d.p) || !Array.isArray(d.v)) return;
+    const now = Date.now();
+    if (now - (p.lastLaser || 0) < 60) return;
+    p.lastLaser = now;
+    const pos = d.p.map(v => num(v, -400, 400)), vel = d.v.map(v => num(v, -400, 400));
+    if (pos.includes(null) || vel.includes(null)) return;
+    socket.broadcast.emit('laser', { p: pos, v: vel, team: p.team, heavy: p.vehicle === 'turret' ? 1 : 0, id: p.id });
+  });
+  socket.on('shipHit', d => {                      // laser traff fiendens moderskip eller kanontårn
+    const p = players[socket.id];
+    if (!p || !p.alive || p.vehicle !== 'fighter' || !d || !TEAMS.includes(d.team) || d.team === p.team) return;
+    const now = Date.now();
+    if (now - (p.lastShipHit || 0) < 90) return;
+    p.lastShipHit = now;
+    if (d.part === 'turret') damageTurret(d.team, d.i | 0, TURRET_LASER);
+    else damageShip(d.team, HULL_LASER, p);
+  });
+  socket.on('torp', d => {                         // torpedo (1 per jagerfly)
+    const p = players[socket.id];
+    if (!p || !p.alive || p.vehicle !== 'fighter' || p.torps <= 0 || !d || typeof d.id !== 'string' || d.id.length > 40) return;
+    if (!Array.isArray(d.p) || !Array.isArray(d.v)) return;
+    const pos = d.p.map(v => num(v, -400, 400)), vel = d.v.map(v => num(v, -400, 400));
+    if (pos.includes(null) || vel.includes(null)) return;
+    p.torps--;
+    p.pending[d.id] = 'torp';
+    socket.broadcast.emit('torp', { id: d.id, p: pos, v: vel, team: p.team });
+  });
+  socket.on('torpBoom', d => {
+    const p = players[socket.id];
+    if (!p || !d || p.pending[d.id] !== 'torp' || !Array.isArray(d.p)) return;
+    delete p.pending[d.id];
+    const pos = d.p.map(v => num(v, -400, 400));
+    if (pos.includes(null)) return;
+    io.emit('boom', { id: d.id, p: pos, big: 4, space: 1 });
+    if (TEAMS.includes(d.team) && d.team !== p.team) {
+      if (d.part === 'turret') damageTurret(d.team, d.i | 0, TURRET_TORP);
+      else if (d.part === 'hull') damageShip(d.team, HULL_TORP, p);
+    }
+    if (intermission) return;
+    Object.values(players).forEach(t => {          // sprut-skade på fiender nær smellet
+      if (!t.alive || t.team === p.team) return;
+      const dist = Math.hypot(t.x - pos[0], t.y - pos[1], t.z - pos[2]);
+      if (dist < 8) applyDamage(p, t, Math.round(150 * (1 - dist / 8)), false, 'torpedo');
+    });
+  });
+  socket.on('crash', () => {                       // fløy inn i noe
+    const p = players[socket.id];
+    if (p && p.alive && p.vehicle === 'fighter') killByWorld(p, 'Krasj', 'crash');
   });
 
   // Skjult håndtak: alle faller ned i underverdenen
@@ -511,6 +671,7 @@ io.on('connection', socket => {
     if (!players[socket.id]) return;
     console.log(players[socket.id].name + ' forlot spillet');
     dropHoly(players[socket.id]);                     // [NY]
+    leaveVehicle(players[socket.id]);
     delete players[socket.id];
     io.emit('playerLeft', { id: socket.id });
     io.emit('lobby', lobbyCounts());
@@ -521,7 +682,7 @@ io.on('connection', socket => {
 setInterval(() => {
   const snap = {};
   Object.values(players).forEach(p => {
-    snap[p.id] = [+p.x.toFixed(2), +p.y.toFixed(2), +p.z.toFixed(2), +p.yaw.toFixed(3), +p.pitch.toFixed(3), p.alive ? 1 : 0, p.slide, p.crouch ? 1 : 0, p.glide ? 1 : 0, p.weapon || 0, Date.now() < (p.protectedUntil || 0) ? 1 : 0];
+    snap[p.id] = [+p.x.toFixed(2), +p.y.toFixed(2), +p.z.toFixed(2), +p.yaw.toFixed(3), +p.pitch.toFixed(3), p.alive ? 1 : 0, p.slide, p.crouch ? 1 : 0, p.glide ? 1 : 0, p.weapon || 0, Date.now() < (p.protectedUntil || 0) ? 1 : 0, p.vehicle === 'fighter' ? 1 : p.vehicle === 'turret' ? 2 + p.turret : 0, +(p.roll || 0).toFixed(2)];
   });
   io.emit('snap', snap);
 }, 50);
@@ -531,7 +692,12 @@ setInterval(() => {
   const now = Date.now();
   if (!intermission && now >= roundEndsAt) {
     intermission = true;
-    const winner = score.bunny === score.squirrel ? 'draw' : (score.bunny > score.squirrel ? 'bunny' : 'squirrel');
+    let winner = score.bunny === score.squirrel ? 'draw' : (score.bunny > score.squirrel ? 'bunny' : 'squirrel');
+    if (mapName === 'space') {                     // [NY] verdensrommet: moderskipet som står igjen vinner
+      const hb = fleet.bunny.hp / fleet.bunny.max, hs = fleet.squirrel.hp / fleet.squirrel.max;
+      winner = spaceWinner || (hb === hs ? 'draw' : hb > hs ? 'bunny' : 'squirrel');
+    }
+    Object.values(players).forEach(leaveVehicle);
     votes = {};
     io.emit('roundOver', { winner, score, board: board(), maps: MAPS, votes: voteCounts(), voteSeconds: BREAK_SECONDS });
     setTimeout(() => {
@@ -542,6 +708,8 @@ setInterval(() => {
       votes = {};
       if (mapName === 'castle') resetCastle();                       // nytt, helt slott
       holy = { state: 'top', holder: null, readyAt: 0 };             // [NY] ny fersken på toppen
+      resetFleet();                                                  // [NY] nye moderskip og 12 nye jagerfly
+      io.emit('fleet', fleetState());
       io.emit('holy', holyState());
       io.emit('map', { name: mapName });
       Object.values(players).forEach(p => { p.kills = 0; p.deaths = 0; p.streak = 0; respawn(p); });
@@ -553,6 +721,9 @@ setInterval(() => {
       io.emit('roundStart', { score });
     }, BREAK_SECONDS * 1000);
   }
+  if (fleet) TEAMS.forEach(t => fleet[t].turrets.forEach(u => {   // [NY] ødelagte kanontårn repareres
+    if (u.hp <= 0 && u.repairAt && now >= u.repairAt && !fleet[t].down) { u.hp = TURRET_HP; u.repairAt = 0; fleetDirty = true; }
+  }));
   if (holy.state === 'wait' && now >= holy.readyAt) setHoly('top', null, { back: true });   // [NY] ny fersken
   io.emit('tick', {
     timeLeft: intermission ? 0 : Math.max(0, Math.ceil((roundEndsAt - now) / 1000)),
