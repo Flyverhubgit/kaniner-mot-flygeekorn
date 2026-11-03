@@ -541,6 +541,14 @@ function spawnBolt(pos, vel, team, mine, heavy) {
   bolts.push({ m, pos: pos.clone(), vel: vel.clone(), team, mine, heavy, life: heavy ? 1.1 : 1.4 });
 }
 let cannonSide = 1;
+// Hvor peker siktet (midt på skjermen)? Første ting langs kameralinjen, ellers 160 m frem.
+function crosshairPoint() {
+  camera.updateMatrixWorld(true);
+  const cd = camera.getWorldDirection(new THREE.Vector3());
+  const co = camera.position.clone(), far = co.clone().addScaledVector(cd, 280);
+  const h = firstHit(co, far, myTeam, { players: true, pad: 1.5 });
+  return h && h.t * 280 > 12 ? co.clone().lerp(far, h.t) : co.addScaledVector(cd, 160);
+}
 // Kalles fra shoot() i game.js. true = skuddet ble tatt her.
 function spaceShoot() {
   if (!spaceOn()) return false;
@@ -553,7 +561,8 @@ function spaceShoot() {
     const off = myTeam === 'bunny' ? new THREE.Vector3(3.75 * cannonSide, -0.15, 2.2) : new THREE.Vector3(0.45 * cannonSide, -0.65, 3.8);
     cannonSide = -cannonSide;
     const from = myFighterTilt.localToWorld(off);
-    const vel = f.multiplyScalar(170 + fl.speed);
+    // Laserne fra vingene møtes der siktet peker
+    const vel = crosshairPoint().sub(from).normalize().multiplyScalar(170 + fl.speed);
     spawnBolt(from, vel, myTeam, true, false);
     socket.emit('laser', { p: [+from.x.toFixed(2), +from.y.toFixed(2), +from.z.toFixed(2)], v: [+vel.x.toFixed(1), +vel.y.toFixed(1), +vel.z.toFixed(1)] });
     playLaser(0.16, false);
@@ -564,7 +573,7 @@ function spaceShoot() {
     const t = TURRETS[myTeam][myTurret];
     const f = fwdVec(player.yaw, player.pitch);
     const from = t.pos.clone().add(new THREE.Vector3(0, 1.9 * t.up, 0)).addScaledVector(f, 4.5);
-    const vel = f.multiplyScalar(220);
+    const vel = crosshairPoint().sub(from).normalize().multiplyScalar(220);
     spawnBolt(from, vel, myTeam, true, true);
     socket.emit('laser', { p: [+from.x.toFixed(2), +from.y.toFixed(2), +from.z.toFixed(2)], v: [+vel.x.toFixed(1), +vel.y.toFixed(1), +vel.z.toFixed(1)] });
     playLaser(0.2, true);
