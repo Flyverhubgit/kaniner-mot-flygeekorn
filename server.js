@@ -409,11 +409,23 @@ function startWave(n) {
   io.emit('barrels', farm.barrels);
   emitWave({ start: true });
 }
-function spawnChick(type) {
+// [NY] Kyllingene kommer fra ALLE kanter (kirkegårdene i hjørnene + 12 steder langs kanten av kartet)
+const EDGE_SPAWNS = FM.SPAWNS.concat([[0, -45], [-38, -45], [38, -46], [0, 44], [-38, 45], [38, 45],
+  [-75, 0], [-75, -20], [-75, 20], [74, 0], [74, -20], [74, 20]]);
+function freeSpawnSpot(r) {
+  for (let k = 0; k < 10; k++) {
+    const [sx, sz] = EDGE_SPAWNS[Math.floor(Math.random() * EDGE_SPAWNS.length)];
+    const x = sx + 0.5 + (Math.random() - 0.5) * 6, z = sz + 0.5 + (Math.random() - 0.5) * 5;
+    if (!chickBlocked(x, z, r, 2)) return [x, z];
+  }
   const [sx, sz] = FM.SPAWNS[Math.floor(Math.random() * FM.SPAWNS.length)];
+  return [sx + 0.5, sz + 0.5];
+}
+function spawnChick(type) {
   const T = CHICK[type], np = Math.max(1, farmPlayers().length);
   const hp = type === 'king' ? Math.round((farm.wave >= 10 ? 2500 : 1500) * (1 + 0.5 * (np - 1))) : T.hp;
-  const c = { id: ++chickSeq, type, t: CTYPES.indexOf(type), x: sx + 0.5 + (Math.random() - 0.5) * 6, z: sz + 0.5 + (Math.random() - 0.5) * 5,
+  const [px, pz] = freeSpawnSpot(T.r);
+  const c = { id: ++chickSeq, type, t: CTYPES.indexOf(type), x: px, z: pz,
     yaw: 0, hp, max: hp, atkAt: 0, peckAt: 0, pecking: 0, throwAt: Date.now() + 2000 + Math.random() * 2000, slamAt: Date.now() + 5000,
     ax: 0, az: 0, anchorAt: Date.now(), throws: 0, walkUntil: 0 };
   c.ax = c.x; c.az = c.z;
