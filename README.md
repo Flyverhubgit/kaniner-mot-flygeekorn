@@ -42,7 +42,7 @@ Fire baner. Den første som kommer inn på en tom server velger banen. Etter hve
 - DEN HELLIGE FERSKENEN 🍑 (klosseslottet): svever på toppen av det høye tårnet midt på kartet. Klatre opp stigen (gå inn i den og hold W / fremover – ingen dekning!) og gå inn i ferskenen. Du får 4 sek skjold, og neste granat-kast (G / GRANAT) er ferskenen. Etter 3,5 sek synger koret HALLELUJA, og den sprenger mer enn et halvt slott. En trykkbølge farer utover og dytter folk bort. Den skader ALLE innenfor 20 m – også ditt eget lag! (Bare den som kastet er trygg.) Dør du med den, går den tilbake til tårnet. Ny fersken 60 sek etter smellet.
 - VERDENSROMMET 🚀: hvert lag har et moderskip. Du starter i hangaren.
   - Gå til et jagerfly og trykk E (mobil: FLY). Laget har 12 jagerfly per runde – når de er brukt opp, er kanontårnene siste forsvar.
-  - Jagerfly: mus = styr, W/S = gass, A/D = sving, Shift eller mellomrom = turbo, skyt = laser, G = torpedo (1 per fly, stor skade på moderskip). Mobil: dra = styr, joystick = gass/sving, HOPP = turbo, GRANAT = torpedo.
+  - Jagerfly: mus = styr, W/S = gass, A/D = sving, Shift eller mellomrom = turbo, skyt = laser, G = torpedo (1 per fly, stor skade på moderskip). Mobil: joysticken er styrespaken (opp = fly opp, ned = fly ned, sideveis = sving), dra på høyre side = sikt, HOPP = turbo, DUKK = sakte, GRANAT = torpedo.
   - Kanontårn: gå til en av de 4 konsollene bakerst i hangaren og trykk E (mobil: KANON). Sikt og skyt fiendens jagerfly. E eller gå = ut. Ødelagte tårn repareres etter 30 sek.
   - Laser biter litt på moderskipet, torpedo biter mye. Sprenger dere fiendens moderskip, vinner dere runden! Er tiden ute, vinner skipet med mest liv igjen.
   - Ikke fly inn i asteroider eller skip – da krasjer du.

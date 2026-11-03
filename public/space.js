@@ -381,7 +381,7 @@ socket.on('flyOk', d => {
     myFighterTilt.add(buildFighter(myTeam));
     myFighterTeam = myTeam;
   }
-  bannerMsg = '&#9992;&#65039; AV GÅRDE! <span style="font-size:18px"><br>' + (isTouch ? 'Dra = styr, joystick opp/ned = gass, HOPP = turbo, GRANAT = torpedo' : 'Mus = styr &nbsp; W/S = gass &nbsp; Shift = turbo &nbsp; G = torpedo') + '</span>';
+  bannerMsg = '&#9992;&#65039; AV GÅRDE! <span style="font-size:18px"><br>' + (isTouch ? 'Joystick = styr (opp = fly opp) &nbsp; HOPP = turbo &nbsp; DUKK = sakte &nbsp; GRANAT = torpedo' : 'Mus = styr &nbsp; W/S = gass &nbsp; Shift = turbo &nbsp; G = torpedo') + '</span>';
   bannerTime = 3.5;
   playLaunch();
   startEngine();
@@ -456,8 +456,10 @@ const FLY = { min: 14, cruise: 32, max: 55, boost: 85, turnRate: 1.6 };
 function spaceFlyUpdate(dt) {
   if (!spaceFlyingNow()) return false;
   fl.launchT += dt;
-  // Gass: W/S (mobil: joystick opp/ned). Sidestyring: A/D (mobil: joystick sideveis).
-  let thr = touchMove.y, turn = touchMove.x;
+  // PC: W/S = gass, A/D = sving, mus = sikt/styr.
+  // Mobil: joysticken er en styrespak – opp = fly opp, ned = fly ned, sideveis = sving. DUKK = sakte, HOPP = turbo.
+  let thr = touchCrouch ? -1 : 0, turn = touchMove.x;
+  player.pitch = Math.max(-1.45, Math.min(1.45, player.pitch + touchMove.y * 1.1 * dt));
   if (keys['KeyW'] || keys['ArrowUp']) thr += 1;
   if (keys['KeyS'] || keys['ArrowDown']) thr -= 1;
   if (keys['KeyD'] || keys['ArrowRight']) turn += 1;
