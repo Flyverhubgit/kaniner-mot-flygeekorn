@@ -103,23 +103,29 @@ function activeWorldGroup() {
   if (inUnderworld) return underGroup;
   if (currentMap === 'castle') return castleGroup;
   if (currentMap === 'space' && typeof spaceGroup !== 'undefined') return spaceGroup;   // [NY]
+  if (currentMap === 'farm' && typeof farmGroup !== 'undefined') return farmGroup;      // [NY]
   return currentMap === 'room' ? roomGroup : world;
 }
 function applyMap() {
   if (inUnderworld) return;               // underverdenen bestemmer selv
-  const room = currentMap === 'room', castle = currentMap === 'castle', space = currentMap === 'space';
-  world.visible = !room && !castle && !space;
+  const room = currentMap === 'room', castle = currentMap === 'castle', space = currentMap === 'space', farm = currentMap === 'farm';
+  world.visible = !room && !castle && !space && !farm;
+  if (typeof farmGroup !== 'undefined') farmGroup.visible = farm;   // [NY] kyllingfarmen
   if (typeof spaceGroup !== 'undefined') spaceGroup.visible = space;   // [NY] verdensrommet
   roomGroup.visible = room;
   if (typeof castleGroup !== 'undefined') castleGroup.visible = castle;   // [NY] klosseslottet
   colliders.length = 0;
-  (room ? roomColliders : castle ? castleColliders : space ? spaceColliders : mainColliders).forEach(c => colliders.push(c));
-  const big = room || castle || space;
-  const sky = space ? 0x03040c : room ? 0xfdf0dc : castle ? 0x9fd0ff : 0x87a7c4;
+  (room ? roomColliders : castle ? castleColliders : space ? spaceColliders : farm ? farmColliders : mainColliders).forEach(c => colliders.push(c));
+  const big = room || castle || space || farm;
+  const sky = farm ? 0x0c1428 : space ? 0x03040c : room ? 0xfdf0dc : castle ? 0x9fd0ff : 0x87a7c4;
+  // [NY] Natt på kyllingfarmen: svakere, blått månelys
+  hemi.intensity = farm ? 0.42 : 0.7;
+  sun.color.setHex(farm ? 0xa9bcff : 0xffffff);
+  sun.intensity = farm ? 0.55 : 0.8;
   scene.background.setHex(sky);
   scene.fog.color.setHex(sky);
-  scene.fog.near = space ? 450 : big ? 140 : 70;
-  scene.fog.far = space ? 1500 : big ? 340 : 150;
+  scene.fog.near = farm ? 30 : space ? 450 : big ? 140 : 70;
+  scene.fog.far = farm ? 125 : space ? 1500 : big ? 340 : 150;
   renderer.setClearColor(sky);
   camera.far = space ? 2000 : big ? 400 : 200;
   camera.updateProjectionMatrix();
@@ -132,12 +138,13 @@ function applyMap() {
   if (big) setFoam(false);
 }
 
-function mapFromName(n) { return n === 'room' || n === 'castle' || n === 'space' ? n : 'temple'; }
+function mapFromName(n) { return n === 'room' || n === 'castle' || n === 'space' || n === 'farm' ? n : 'temple'; }
 socket.on('map', d => {
   currentMap = mapFromName(d.name);
   applyMap();
   bannerMsg = '&#127918; Ny bane: ' + (currentMap === 'room' ? 'KJEMPE-BARNEROMMET &#129528;<br><span style="font-size:20px">Stor bane – bruk snikskytteren (2)!</span>'
     : currentMap === 'castle' ? 'KLOSSESLOTTET &#127984;<br><span style="font-size:20px">Alt kan skytes i stykker!</span>'
+    : currentMap === 'farm' ? 'ZOMBIE-KYLLINGER! &#128020;&#129503;<br><span style="font-size:20px">Alle sammen mot kyllingene – forsvar leiren!</span>'
     : currentMap === 'space' ? 'VERDENSROMMET &#128640;<br><span style="font-size:20px">Ta et jagerfly i hangaren og spreng fiendens moderskip!</span>' : 'TEMPELET &#127963;');
   bannerTime = 4;
 });

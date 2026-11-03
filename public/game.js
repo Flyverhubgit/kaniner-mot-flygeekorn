@@ -271,13 +271,17 @@ function blocked(px, pz, fy) {
     if (px + RADIUS > b.minX && px - RADIUS < b.maxX &&
         pz + RADIUS > b.minZ && pz - RADIUS < b.maxZ) return true;
   }
-  if (castleOn() && castleBlocked(px, pz, fy)) return true;   // [NY] klossene i klosseslottet
+  if (voxelOn() && castleBlocked(px, pz, fy)) return true;   // [NY] klossene i klosseslottet
   return false;
 }
 
 // [NY] Er vi på klosseslottet? (castle.js lastes etter denne filen)
 function castleOn() {
   return typeof currentMap !== 'undefined' && currentMap === 'castle' && !underNow() && typeof castleBlocked === 'function';
+}
+// [NY] Er vi på en klosse-bane (klosseslottet eller kyllingfarmen)?
+function voxelOn() {
+  return typeof currentMap !== 'undefined' && (currentMap === 'castle' || (currentMap === 'farm' && typeof farmWorld !== 'undefined' && farmWorld)) && !underNow() && typeof castleBlocked === 'function';
 }
 
 // Høyden på bakken (eller trinnet) under spilleren
@@ -288,7 +292,7 @@ function groundAt(px, pz, fy) {
     if (px + RADIUS > b.minX && px - RADIUS < b.maxX &&
         pz + RADIUS > b.minZ && pz - RADIUS < b.maxZ && b.maxY > g) g = b.maxY;
   }
-  if (castleOn()) g = Math.max(g, castleGround(px, pz, fy));   // [NY] stå på klosser
+  if (voxelOn()) g = Math.max(g, castleGround(px, pz, fy));   // [NY] stå på klosser
   return g;
 }
 
@@ -527,8 +531,9 @@ function updatePlayer(dt) {
   crouching = !!(keys['KeyQ'] || touchCrouch);
   const speed = gliding ? GLIDE_SPEED : (crouching ? WALK * 0.5 : ((keys['ShiftLeft'] || keys['ShiftRight']) ? SPRINT : WALK));
   const sin = Math.sin(player.yaw), cos = Math.cos(player.yaw);
-  let dx = (-sin * fwd + cos * strafe) * speed * dt;
-  let dz = (-cos * fwd - sin * strafe) * speed * dt;
+  const wireK = typeof wireSlow === 'function' ? wireSlow(player.x, player.z) : 1;   // [NY] piggtråd = halv fart
+  let dx = (-sin * fwd + cos * strafe) * speed * wireK * dt;
+  let dz = (-cos * fwd - sin * strafe) * speed * wireK * dt;
 
   // Slide (C eller venstre Ctrl på PC/Mac, SLIDE-knappen på mobil)
   // [NY] Ingen slide i skummet
@@ -565,7 +570,8 @@ function updatePlayer(dt) {
   const oldFeet = player.feetY;
   player.vy -= GRAVITY * dt;
   // [NY] Stige (det hellige tårnet): W = klatre opp, S = ned, ingenting = heng fast
-  const climbV = (typeof ladderClimbV === 'function') ? ladderClimbV(fwd) : null;
+  let climbV = (typeof ladderClimbV === 'function') ? ladderClimbV(fwd) : null;
+  if (climbV === null && typeof farmLadderV === 'function') climbV = farmLadderV(fwd);   // [NY] stiger på kyllingfarmen
   if (climbV !== null) player.vy = climbV;
   // [NY] Flygeekornet svever sakte ned mens du holder inne hopp i lufta
   gliding = climbV === null && myTeam === 'squirrel' && !player.onGround && player.vy < 0 && !!(keys['Space'] || touchJumpHeld);
@@ -583,7 +589,7 @@ function updatePlayer(dt) {
         player.vy = 0;
       }
     }
-    if (castleOn()) {                            // [NY] hodet i en kloss
+    if (voxelOn()) {                             // [NY] hodet i en kloss
       const c = castleCeiling(player.x, player.z, oldHead, newHead);
       if (c !== null) { newFeet = c - HEIGHT; player.vy = 0; }
     }
@@ -856,7 +862,7 @@ function buildNadeMesh() {
 // Treffer granaten noe? (gulv eller en boks)
 function nadeHits(x, y, z) {
   if (y < NADE_R) return true;
-  if (castleOn() && castlePointSolid(x, y, z)) return true;   // [NY] klosser
+  if (voxelOn() && castlePointSolid(x, y, z)) return true;   // [NY] klosser
   for (const b of colliders) {
     if (x + NADE_R > b.minX && x - NADE_R < b.maxX && y + NADE_R > b.minY && y - NADE_R < b.maxY &&
         z + NADE_R > b.minZ && z - NADE_R < b.maxZ) return true;
@@ -1339,11 +1345,12 @@ function muzzleWorld() {
 function shoot() {
   if (typeof spaceShoot === 'function' && spaceShoot()) return;   // [NY] laser fra jagerfly / kanontårn
   if (typeof inMortar !== 'undefined' && inMortar) { fireMortar(); return; }   // [NY] står i morteren
-  if (weapon === bazW) { fireRocket(); return; }   // [NY] bazooka skyter en rakett i stedet for en kule
-  weapon.mag--;
-  fireCooldown = weapon.fireDelay;
+  const egg = typeof minigunOn === 'function' && minigunOn();   // [NY] eggmaskingevær (gullegg på kyllingfarmen)
+  if (weapon === bazW && !egg) { fireRocket(); return; }   // [NY] bazooka skyter en rakett i stedet for en kule
+  if (!egg) weapon.mag--;
+  fireCooldown = egg ? 0.06 : weapon.fireDelay;
   myProtectUntil = 0;                             // [NY] skyter du, er skjoldet borte
-  const sn = weapon === sniperW;                 // [NY] snikskytter?
+  const sn = weapon === sniperW && !egg;         // [NY] snikskytter?
   recoil = sn ? 1.5 : Math.min(recoil + 0.7, 1.5);
   flashTime = sn ? 0.07 : 0.04;
   flash.rotation.z = Math.random() * Math.PI;
@@ -1356,7 +1363,7 @@ function shoot() {
   raycaster.setFromCamera({ x: (Math.random() - 0.5) * spread, y: (Math.random() - 0.5) * spread }, camera);
   const hits = raycaster.intersectObject(activeWorldGroup(), true);   // [NY] bare verden (ikke spor/fyll), riktig bane
   const o = raycaster.ray.origin, d = raycaster.ray.direction;
-  const vox = castleOn() ? castleRay(o, d, 200) : null;   // [NY] første kloss kula treffer
+  const vox = voxelOn() ? castleRay(o, d, 200) : null;   // [NY] første kloss kula treffer
 
   // [NY] Traff vi en fiende før veggen?
   let bestT = Math.min(hits.length ? hits[0].distance : 200, vox ? vox.dist : 200), target = null, head = false;
@@ -1373,9 +1380,21 @@ function shoot() {
     if (th !== null && th < bestT) { bestT = tb !== null ? Math.min(tb, th) : th; target = id; head = true; }
     else if (tb !== null && tb < bestT) { bestT = tb; target = id; head = false; }
   }
+  // [NY] Kyllinger og tønner på kyllingfarmen (farm.js)
+  let chick = null, barrelHit = null;
+  if (typeof farmRayTest === 'function') {
+    const fr = farmRayTest(o, d, bestT);
+    if (fr) { bestT = fr.t; target = null; if (fr.chick) chick = fr; else barrelHit = fr; }
+  }
   const end = o.clone().addScaledVector(d, bestT);
 
-  if (target) {
+  if (chick) {
+    socket.emit('chickenHit', { id: chick.id, head: chick.head, w: egg ? 'egg' : weapon.id });
+    addStuffing(end);                                             // fjær!
+    hitmarkTime = 0.1;
+  } else if (barrelHit) {
+    socket.emit('barrelHit', { id: barrelHit.id });
+  } else if (target) {
     socket.emit('hit', { target, head, weapon: weapon.id });
     addStuffing(end);
   } else if (vox && (!hits.length || vox.dist <= hits[0].distance)) {
@@ -1387,6 +1406,7 @@ function shoot() {
     addImpact(h.point, n);
   }
   addTracer(muzzleWorld(), end);
+  if (egg && typeof eggShotFx === 'function') eggShotFx(muzzleWorld(), end);
   socket.emit('shot', { to: [+end.x.toFixed(2), +end.y.toFixed(2), +end.z.toFixed(2)], w: weapon.id });
 
   // Liten rekyl i sikte
@@ -1617,7 +1637,8 @@ function updateHud(dt) {
   } else if (!alive) {
     deathTimer = Math.max(0, deathTimer - dt);
     centerEl.style.display = 'block';
-    centerEl.innerHTML = 'Du ble tatt av ' + esc(killerName) + '<br><span style="font-size:20px">Tilbake om ' + Math.ceil(deathTimer) + '...</span>';
+    const farmTxt = typeof farmDeathText === 'function' ? farmDeathText() : null;   // [NY] kyllingfarmen: vent til bølgen er over
+    centerEl.innerHTML = 'Du ble tatt av ' + esc(killerName) + '<br><span style="font-size:20px">' + (farmTxt || 'Tilbake om ' + Math.ceil(deathTimer) + '...') + '</span>';
   } else if (bannerTime > 0) {
     centerEl.style.display = 'block';           // [NY] skumfest-melding
     centerEl.innerHTML = bannerMsg;
@@ -1650,7 +1671,7 @@ function updateHud(dt) {
 
 function addKillfeed(d) {
   const div = document.createElement('div');
-  div.innerHTML = teamSpan(d.killerTeam, esc(d.killerName)) + (d.weapon === 'nade' ? ' &#128163; ' : d.weapon === 'lava' ? ' &#127755; ' : d.weapon === 'fart' ? ' &#128168; ' : d.weapon === 'rocket' ? ' &#128640; ' : d.weapon === 'mortar' ? ' &#128163;&#128163; ' : d.weapon === 'holy' ? ' &#127825;&#10024; ' : d.weapon === 'laser' ? ' &#9889; ' : d.weapon === 'turret' ? ' &#128165; ' : d.weapon === 'torpedo' ? ' &#128640; ' : d.weapon === 'crash' ? ' &#128171; ' : d.weapon === 'sniper' ? (d.killerTeam === 'bunny' ? ' &#129365;' : ' &#127792;') + (d.head ? '&#127919; ' : ' ') : (d.head ? ' &#127919; ' : ' &#10140; ')) + teamSpan(d.victimTeam, esc(d.victimName));
+  div.innerHTML = teamSpan(d.killerTeam, esc(d.killerName)) + (d.weapon === 'nade' ? ' &#128163; ' : d.weapon === 'lava' ? ' &#127755; ' : d.weapon === 'fart' ? ' &#128168; ' : d.weapon === 'rocket' ? ' &#128640; ' : d.weapon === 'mortar' ? ' &#128163;&#128163; ' : d.weapon === 'holy' ? ' &#127825;&#10024; ' : d.weapon === 'laser' ? ' &#9889; ' : d.weapon === 'turret' ? ' &#128165; ' : d.weapon === 'torpedo' ? ' &#128640; ' : d.weapon === 'crash' ? ' &#128171; ' : d.weapon === 'chicken' ? ' &#128020; ' : d.weapon === 'chickboom' || d.weapon === 'barrel' ? ' &#128165; ' : d.weapon === 'fire' ? ' &#128293; ' : d.weapon === 'egg' ? ' &#129370; ' : d.weapon === 'sniper' ? (d.killerTeam === 'bunny' ? ' &#129365;' : ' &#127792;') + (d.head ? '&#127919; ' : ' ') : (d.head ? ' &#127919; ' : ' &#10140; ')) + teamSpan(d.victimTeam, esc(d.victimName));
   killfeed.prepend(div);
   while (killfeed.children.length > 5) killfeed.lastChild.remove();
   setTimeout(() => div.remove(), 6000);
@@ -2004,6 +2025,7 @@ function animate(now) {
     if (typeof updateMortar === 'function') updateMortar(dt);   // [NY] morterer
     if (typeof updateHoly === 'function') updateHoly(dt);       // [NY] den hellige ferskenen
     if (typeof updateSpace === 'function') updateSpace(dt);     // [NY] verdensrommet
+    if (typeof updateFarm === 'function') updateFarm(dt);       // [NY] zombie-kyllingfarmen
     updateUnderworld(dt);       // [NY] underverdenen (underworld.js)
     updateHud(dt);
   }

@@ -170,7 +170,6 @@
 
     // ================= KIREKEGÅRDENE (der kyllingene kommer fra) =================
     SPAWNS.forEach(([cx, cz]) => {
-      box(cx - 6, cx + 6, 0, 0, cz - 5, cz + 5, T.DIRT);                    // gravjord (flat)
       for (let k = 0; k < 9; k++) {
         const x = cx - 5 + Math.floor(rnd() * 11), z = cz - 4 + Math.floor(rnd() * 9);
         if (Math.abs(x - cx) < 2 && Math.abs(z - cz) < 2) continue;         // midten fri (der de kryper opp)

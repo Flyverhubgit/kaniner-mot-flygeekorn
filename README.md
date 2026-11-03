@@ -2,7 +2,7 @@
 
 Blokkete flerspiller-FPS i nettleseren. Velg lag, skyt det andre laget. 5 minutter per runde.
 
-Fire baner. Den første som kommer inn på en tom server velger banen. Etter hver runde **stemmer** alle på neste bane (12 sekunder, trykk 1/2/3 eller trykk på knappen). Flest stemmer vinner, uavgjort = den som kommer først i rekkefølgen, ingen stemmer = vanlig rekkefølge. Banene: **Tempelet** (med skumfest og hemmelig håndtak), **Kjempe-barnerommet** (stor snikskytterbane med kjempesenger, bok-trapper, alfabetklosser og lego) og **Klosseslottet** (to slott, landsby og trær – ALT kan skytes og sprenges i stykker!). og **Verdensrommet** (moderskip-kamp med jagerfly og laser!).
+Fem baner. Den første som kommer inn på en tom server velger banen. Etter hver runde **stemmer** alle på neste bane (12 sekunder, trykk 1/2/3 eller trykk på knappen). Flest stemmer vinner, uavgjort = den som kommer først i rekkefølgen, ingen stemmer = vanlig rekkefølge. Banene: **Tempelet** (med skumfest og hemmelig håndtak), **Kjempe-barnerommet** (stor snikskytterbane med kjempesenger, bok-trapper, alfabetklosser og lego) og **Klosseslottet** (to slott, landsby og trær – ALT kan skytes og sprenges i stykker!). og **Verdensrommet** (moderskip-kamp med jagerfly og laser!).
 
 ## Spill hjemme (samme WiFi)
 1. Pakk ut zip-filen (høyreklikk → **Pakk ut alle**). Ikke kjør fra inne i zip-filen.
@@ -46,6 +46,13 @@ Fire baner. Den første som kommer inn på en tom server velger banen. Etter hve
   - Kanontårn: gå til en av de 4 konsollene bakerst i hangaren og trykk E (mobil: KANON). Sikt og skyt fiendens jagerfly. E eller gå = ut. Ødelagte tårn repareres etter 30 sek.
   - Laser biter litt på moderskipet, torpedo biter mye. Sprenger dere fiendens moderskip, vinner dere runden! Er tiden ute, vinner skipet med mest liv igjen.
   - Ikke fly inn i asteroider eller skip – da krasjer du.
+- ZOMBIE-KYLLINGER 🐔🧟 (kyllingfarmen, om natta): ALLE spillerne sammen mot kyllingene.
+  - Dere starter i kampsenteret midt på gården (Hesco-murer, sandsekker, piggtråd, containere, vakttårn). Alt kan sprenges – også av dere selv!
+  - 10 bølger. Kyllingene kryper opp av kirkegårdene i hjørnene og hakker seg gjennom alt som står i veien. Står du høyt, hakker de i bakken under deg.
+  - Typer: vanlige (vakler), løpere (raske), eggkastere (råtne egg), eksplosive (smeller) og KONG KLUKK (sjefen, bølge 5 og 10).
+  - 10 granater og 4 raketter – fylles opp etter hver bølge. Døde kommer tilbake i pausen. Alle døde = kyllingene vinner. Klar alle 10 = gården er reddet!
+  - Røde tønner smeller i kjedereaksjon. Høy, mais og telt tar fyr og brenner. Gullegg = eggmaskingevær i 20 sek.
+  - Stiger på tårn, containere, portbroer, låve, våningshus og silo (W = opp, S = ned). Piggtråd gir halv fart.
 - 3 granater per liv. Smeller etter 2 sek, opptil 110 skade innenfor 6 m.
 - HEMMELIG: Et lite gyllent håndtak henger i venstre hus i tempelet. Dra i det (E / TREKK) og alle faller ned i lava-doen! Alle blir zombier, lava deler lagene (lava = død), to broer går over, og granatene er uendelige. Dra i det gylne skyll-håndtaket på deres side for å skylle alle opp igjen (ellers: tilbake ved neste runde).
 - Drap på rad: 3 = KILLINGSPREE!, 5 = USTOPPELIG!, 10 = LEGENDARISK!

@@ -11,10 +11,7 @@ const castleGroup = new THREE.Group();
 castleGroup.visible = false;
 scene.add(castleGroup);
 const castleColliders = [];            // bare kantmurene rundt kartet (vanlige bokser)
-
-const pristineGrid = CM.build();       // kartet slik det er ved rundestart
-const grid = pristineGrid.slice();     // kartet slik det er nå (med hull)
-const VSTEP = 1.05;                    // kan gå rett opp én kloss (som i Minecraft)
+const VSTEP = 1.05;                    // kan gå rett opp én kloss (trapper, bakke, planker)
 
 // ---------- Bakke, elv og kantmurer ----------
 function cBox(x, y, z, w, h, d, color, collide, opts) {
@@ -32,71 +29,76 @@ cBox(0, 0.01, -0.5, 160, 0.02, 4, 0x4a90d9, false, { noShadow: true, emissive: 0
 [[0, 50.5, 162, 1], [0, -50.5, 162, 1]].forEach(([x, z, w, d]) => cBox(x, 3, z, w, 6, d, 0x5b5d63, true));
 [[80.5, 0, 1, 102], [-80.5, 0, 1, 102]].forEach(([x, z, w, d]) => cBox(x, 3, z, w, 6, d, 0x5b5d63, true));
 
-// ---------- Klossene: én InstancedMesh per type ----------
+// ---------- [NY] Klosse-verden: kan brukes av flere baner (klosseslottet og kyllingfarmen) ----------
+// LIB = kart-biblioteket (CastleMap / FarmMap), group = gruppen klossene tegnes i.
 const boxGeo = new THREE.BoxGeometry(1, 1, 1);
-const typeMeshes = {};
-const instIndex = new Int32Array(grid.length).fill(-1);
 const dummyObj = new THREE.Object3D();
-(function buildInstances() {
+function makeVoxelWorld(LIB, group) {
+  const W = { LIB, group, pristine: LIB.build(), typeMeshes: {} };
+  W.grid = W.pristine.slice();
+  W.instIndex = new Int32Array(W.grid.length).fill(-1);
   const counts = {};
-  for (let i = 0; i < pristineGrid.length; i++) { const t = pristineGrid[i]; if (t) counts[t] = (counts[t] || 0) + 1; }
+  for (let i = 0; i < W.pristine.length; i++) { const t = W.pristine[i]; if (t) counts[t] = (counts[t] || 0) + 1; }
   for (const t in counts) {
-    const info = CM.INFO[t];
-    const mat = new THREE.MeshStandardMaterial({ color: info.color, roughness: 0.85,
-      emissive: (t == CM.T.GLASS ? 0x224466 : 0) });
+    const info = LIB.INFO[t];
+    const mat = new THREE.MeshStandardMaterial({ color: info.color, roughness: 0.85, emissive: info.emissive || ((LIB === CM && t == CM.T.GLASS) ? 0x224466 : 0) });
     const mesh = new THREE.InstancedMesh(boxGeo, mat, counts[t]);
     mesh.castShadow = !isTouch;          // skygger koster mye på mobil
     mesh.receiveShadow = true;
     mesh.frustumCulled = false;
     mesh.raycast = () => {};             // kuler sjekkes i rutenettet i stedet (mye raskere)
     mesh.userData.next = 0;
-    castleGroup.add(mesh);
-    typeMeshes[t] = mesh;
+    group.add(mesh);
+    W.typeMeshes[t] = mesh;
   }
-  for (let i = 0; i < pristineGrid.length; i++) {
-    const t = pristineGrid[i];
-    if (!t) continue;
-    const mesh = typeMeshes[t];
-    instIndex[i] = mesh.userData.next++;
+  for (let i = 0; i < W.pristine.length; i++) {
+    const t = W.pristine[i];
+    if (t) W.instIndex[i] = W.typeMeshes[t].userData.next++;
   }
-})();
-
-function cellPos(i) {
-  const x = i % CM.NX, rest = (i - x) / CM.NX, z = rest % CM.NZ, y = (rest - z) / CM.NZ;
-  return [x + CM.X0, y, z + CM.Z0];
+  W.cellPos = i => {
+    const x = i % LIB.NX, rest = (i - x) / LIB.NX, z = rest % LIB.NZ, y = (rest - z) / LIB.NZ;
+    return [x + LIB.X0, y, z + LIB.Z0];
+  };
+  W.showCell = (i, on) => {
+    const t = W.pristine[i];
+    if (!t) return;
+    const [x, y, z] = W.cellPos(i);
+    dummyObj.position.set(x + 0.5, y + 0.5, z + 0.5);
+    dummyObj.scale.setScalar(on ? 1 : 0.0001);
+    dummyObj.updateMatrix();
+    W.typeMeshes[t].setMatrixAt(W.instIndex[i], dummyObj.matrix);
+  };
+  W.flush = () => { for (const t in W.typeMeshes) W.typeMeshes[t].instanceMatrix.needsUpdate = true; };
+  W.reset = () => {                                // ny runde: alle klosser tilbake
+    W.grid.set(W.pristine);
+    for (let i = 0; i < W.grid.length; i++) if (W.pristine[i]) W.showCell(i, true);
+    W.flush();
+  };
+  W.reset();
+  return W;
 }
-function showCell(i, on) {
-  const t = pristineGrid[i];
-  if (!t) return;
-  const [x, y, z] = cellPos(i);
-  dummyObj.position.set(x + 0.5, y + 0.5, z + 0.5);
-  dummyObj.scale.setScalar(on ? 1 : 0.0001);
-  dummyObj.updateMatrix();
-  typeMeshes[t].setMatrixAt(instIndex[i], dummyObj.matrix);
-}
-function flushInstances() {
-  for (const t in typeMeshes) typeMeshes[t].instanceMatrix.needsUpdate = true;
-}
-// Nytt slott (rundestart): alle klosser tilbake
-function resetCastle() {
-  grid.set(pristineGrid);
-  for (let i = 0; i < grid.length; i++) if (pristineGrid[i]) showCell(i, true);
-  flushInstances();
-}
-resetCastle();
+const castleWorld = makeVoxelWorld(CM, castleGroup);
+let farmWorld = null;                    // lages av farm.js
+// Hvilken klosse-verden gjelder nå?
+function voxWorld() { return (typeof currentMap !== 'undefined' && currentMap === 'farm' && farmWorld) ? farmWorld : castleWorld; }
+// Gamle navn (brukes av morteren og testene): klosseslottets rutenett
+const grid = castleWorld.grid, pristineGrid = castleWorld.pristine;
+function cellPos(i) { return voxWorld().cellPos(i); }
+function resetCastle() { castleWorld.reset(); }
 
 // ---------- Rutenett-oppslag ----------
 function solidCell(ix, iy, iz) {          // ix, iy, iz er heltall i verdens-koordinater
-  if (iy < 0 || iy >= CM.NY || ix < CM.X0 || ix >= CM.X0 + CM.NX || iz < CM.Z0 || iz >= CM.Z0 + CM.NZ) return false;
-  return grid[CM.idx(ix, iy, iz)] !== 0;
+  const W = voxWorld(), L = W.LIB;
+  if (iy < 0 || iy >= L.NY || ix < L.X0 || ix >= L.X0 + L.NX || iz < L.Z0 || iz >= L.Z0 + L.NZ) return false;
+  return W.grid[L.idx(ix, iy, iz)] !== 0;
 }
 function castlePointSolid(x, y, z) {
   return solidCell(Math.floor(x), Math.floor(y), Math.floor(z));
 }
 // Kan man gå rett opp på denne klossen? Trapper, bakke og planker: ja (1 kloss). Alt annet: må hoppe.
 function stepOk(ix, iy, iz, fy) {
-  const t = grid[CM.idx(ix, iy, iz)];
-  return iy + 1 <= fy + (CM.INFO[t].step ? VSTEP : STEP);
+  const L = voxWorld().LIB, t = voxWorld().grid[L.idx(ix, iy, iz)];
+  return iy + 1 <= fy + (L.INFO[t].step ? VSTEP : STEP);
 }
 // Går spilleren inn i en kloss?
 function castleBlocked(px, pz, fy) {
@@ -113,7 +115,7 @@ function castleGround(px, pz, fy) {
   const x0 = Math.floor(px - RADIUS), x1 = Math.floor(px + RADIUS - 1e-6);
   const z0 = Math.floor(pz - RADIUS), z1 = Math.floor(pz + RADIUS - 1e-6);
   let best = 0;
-  for (let y = Math.min(CM.NY - 1, Math.floor(fy + VSTEP) - 1); y >= 0; y--) {
+  for (let y = Math.min(voxWorld().LIB.NY - 1, Math.floor(fy + VSTEP) - 1); y >= 0; y--) {
     for (let x = x0; x <= x1; x++) for (let z = z0; z <= z1; z++) {
       if (solidCell(x, y, z) && stepOk(x, y, z, fy) && y + 1 > best) best = y + 1;
     }
@@ -125,7 +127,7 @@ function castleGround(px, pz, fy) {
 function castleCeiling(px, pz, oldHead, newHead) {
   const x0 = Math.floor(px - RADIUS), x1 = Math.floor(px + RADIUS - 1e-6);
   const z0 = Math.floor(pz - RADIUS), z1 = Math.floor(pz + RADIUS - 1e-6);
-  for (let y = Math.max(0, Math.ceil(oldHead - 0.01)); y < newHead && y < CM.NY; y++) {
+  for (let y = Math.max(0, Math.ceil(oldHead - 0.01)); y < newHead && y < voxWorld().LIB.NY; y++) {
     for (let x = x0; x <= x1; x++) for (let z = z0; z <= z1; z++) if (solidCell(x, y, z)) return y;
   }
   return null;
@@ -141,11 +143,11 @@ function castleRay(o, d, maxDist) {
   let tz = ((sz > 0 ? z + 1 - o.z : o.z - z)) * tdz;
   let t = 0, nx = 0, ny = 0, nz = 0;
   for (let n = 0; n < 600 && t <= maxDist; n++) {
-    if (solidCell(x, y, z)) return { dist: t, i: CM.idx(x, y, z), normal: new THREE.Vector3(nx, ny, nz) };
+    if (solidCell(x, y, z)) return { dist: t, i: voxWorld().LIB.idx(x, y, z), normal: new THREE.Vector3(nx, ny, nz) };
     if (tx < ty && tx < tz) { x += sx; t = tx; tx += tdx; nx = -sx; ny = 0; nz = 0; }
     else if (ty < tz) { y += sy; t = ty; ty += tdy; nx = 0; ny = -sy; nz = 0; }
     else { z += sz; t = tz; tz += tdz; nx = 0; ny = 0; nz = -sz; }
-    if (y < -1 || y > CM.NY + 1) break;
+    if (y < -1 || y > voxWorld().LIB.NY + 1) break;
   }
   return null;
 }
@@ -156,13 +158,13 @@ for (let i = 0; i < 160; i++) {
   const m = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.35, 0.35), new THREE.MeshStandardMaterial({ color: 0x999999 }));
   m.visible = false;
   m.raycast = () => {};
-  castleGroup.add(m);
+  scene.add(m);                        // [NY] felles for alle klosse-baner
   debris.push({ m, vx: 0, vy: 0, vz: 0, life: 0 });
 }
 let debrisIndex = 0;
 function spawnDebris(i, n) {
-  const [x, y, z] = cellPos(i);
-  const color = CM.INFO[pristineGrid[i]].color;
+  const W = voxWorld(), [x, y, z] = W.cellPos(i);
+  const color = W.LIB.INFO[W.pristine[i]].color;
   for (let k = 0; k < n; k++) {
     const d = debris[debrisIndex];
     debrisIndex = (debrisIndex + 1) % debris.length;
@@ -175,13 +177,15 @@ function spawnDebris(i, n) {
 }
 function removeCells(list, noDebris) {
   let fx = 0;
+  const W = voxWorld();
   list.forEach(i => {
-    if (!grid[i]) return;
-    grid[i] = 0;
-    showCell(i, false);
+    if (!W.grid[i]) return;
+    W.grid[i] = 0;
+    W.showCell(i, false);
     if (!noDebris && fx < 60) { spawnDebris(i, list.length > 20 ? 1 : 3); fx++; }
   });
-  flushInstances();
+  W.flush();
+  if (typeof onCellsRemoved === 'function') onCellsRemoved(list);   // [NY] f.eks. flammer som slukkes (farm.js)
 }
 function updateCastle(dt) {
   debris.forEach(d => {
@@ -197,10 +201,12 @@ function updateCastle(dt) {
 
 // ---------- Meldinger fra serveren ----------
 socket.on('blocks', d => removeCells(d.gone));
-socket.on('map', d => { if (d.name === 'castle') resetCastle(); });
+function worldFor(name) { return name === 'castle' ? castleWorld : (name === 'farm' ? farmWorld : null); }
+socket.on('map', d => { const W = worldFor(d.name); if (W) W.reset(); });
 socket.on('welcome', d => {
-  if (d.map === 'castle') { resetCastle(); if (d.blocksGone) removeCells(d.blocksGone, true); }
+  const W = worldFor(d.map);
+  if (W) { W.reset(); if (d.blocksGone) { const keep = currentMap; currentMap = d.map; removeCells(d.blocksGone, true); currentMap = keep; } }
 });
 
 window.__castleDebrisHide = () => debris.forEach(d => { d.m.visible = false; d.life = 0; });
-window.__castle = { grid, pristineGrid, castleRay, castleBlocked, castleGround, removeCells, resetCastle, CM };
+window.__castle = { grid, pristineGrid, castleRay, castleBlocked, castleGround, removeCells, resetCastle, CM, voxWorld, makeVoxelWorld };

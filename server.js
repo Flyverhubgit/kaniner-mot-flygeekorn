@@ -7,6 +7,7 @@ const http = require('http');
 const express = require('express');
 const { Server } = require('socket.io');
 const CM = require('./public/castlemap.js');   // klosseslottet: samme kart som nettleseren bygger
+const FM = require('./public/farmmap.js');     // [NY] zombie-kyllingfarmen (samme klosse-system)
 
 const app = express();
 app.use(express.static(path.join(__dirname, 'public')));
@@ -40,52 +41,62 @@ let foamHoles = [];            // [x, z] for hvert granat-hull (til nye spillere
 // Underverdenen: et skjult håndtak sender alle ned til lava-arenaen til neste runde
 let worldName = 'main';        // 'main' eller 'underworld'
 // Baner byttes hver runde: tempelet og det kjempestore barnerommet (snikskytterbane)
-const MAPS = ['temple', 'room', 'castle', 'space'];       // rekkefølgen banene byttes i
+const MAPS = ['temple', 'room', 'castle', 'space', 'farm'];       // rekkefølgen banene byttes i
 let mapName = MAPS.includes(process.env.START_MAP) ? process.env.START_MAP : 'temple';   // (START_MAP er for testing)
 let votes = {};                                    // socket-id -> banen spilleren stemte på (i pausen)
 function voteCounts() {
-  const c = { temple: 0, room: 0, castle: 0, space: 0 };
+  const c = { temple: 0, room: 0, castle: 0, space: 0, farm: 0 };
   Object.values(votes).forEach(m => { if (c[m] !== undefined) c[m]++; });
   return c;
 }
 // Neste bane: flest stemmer vinner. Likt: den som kommer først i vanlig rekkefølge. Ingen stemmer: vanlig rekkefølge.
 function nextMap() {
   const c = voteCounts(), cur = MAPS.indexOf(mapName);
-  const max = Math.max(c.temple, c.room, c.castle, c.space);
+  const max = Math.max(c.temple, c.room, c.castle, c.space, c.farm);
   if (max === 0) return MAPS[(cur + 1) % MAPS.length];
   for (let k = 1; k <= MAPS.length; k++) { const m = MAPS[(cur + k) % MAPS.length]; if (c[m] === max) return m; }
   return MAPS[(cur + 1) % MAPS.length];
 }
 
 // Klosseslottet: hvilke klosser finnes og hvor mye liv de har igjen
-const castlePristine = CM.build();
-const castleGrid = castlePristine.slice();
-const castleHp = new Uint8Array(castleGrid.length);
-let castleGone = [];                               // ødelagte klosser (sendes til nye spillere)
-function resetCastle() {
-  castleGrid.set(castlePristine);
-  for (let i = 0; i < castleGrid.length; i++) castleHp[i] = castleGrid[i] ? CM.INFO[castleGrid[i]].hp : 0;
-  castleGone = [];
+// [NY] Klosse-baner: klosseslottet og kyllingfarmen. Hver har sitt rutenett med liv per kloss.
+function makeVox(LIB) {
+  const pristine = LIB.build();
+  return { LIB, pristine, grid: pristine.slice(), hp: new Uint8Array(pristine.length), gone: [] };
 }
-resetCastle();
+const VOX = { castle: makeVox(CM), farm: makeVox(FM) };
+function resetVox(name) {
+  const V = VOX[name];
+  if (!V) return;
+  V.grid.set(V.pristine);
+  for (let i = 0; i < V.grid.length; i++) V.hp[i] = V.grid[i] ? V.LIB.INFO[V.grid[i]].hp : 0;
+  V.gone = [];
+}
+resetVox('castle'); resetVox('farm');
+function resetCastle() { resetVox('castle'); }
+function vox() { return worldName === 'main' ? VOX[mapName] || null : null; }   // klosse-banen som gjelder nå
 // Fjern klosser og si fra til alle
 function destroyCells(list) {
+  const V = vox();
+  if (!V) return;
   const gone = [];
   list.forEach(i => {
-    const t = castleGrid[i];
-    if (!t || CM.INFO[t].hp === 0) return;        // tom, eller bakke som ikke kan ødelegges
-    castleGrid[i] = 0;
+    const t = V.grid[i];
+    if (!t || V.LIB.INFO[t].hp === 0) return;     // tom, eller bakke som ikke kan ødelegges
+    V.grid[i] = 0;
     gone.push(i);
   });
-  if (gone.length) { castleGone.push(...gone); io.emit('blocks', { gone }); }
+  if (gone.length) { V.gone.push(...gone); io.emit('blocks', { gone }); }
 }
 // Alle klosser innenfor en radius (granat, bazooka, morter)
 function blastCells(x, y, z, r) {
-  const list = [];
-  for (let iy = Math.max(0, Math.floor(y - r)); iy <= Math.min(CM.NY - 1, Math.floor(y + r)); iy++)
-    for (let ix = Math.max(CM.X0, Math.floor(x - r)); ix <= Math.min(CM.X0 + CM.NX - 1, Math.floor(x + r)); ix++)
-      for (let iz = Math.max(CM.Z0, Math.floor(z - r)); iz <= Math.min(CM.Z0 + CM.NZ - 1, Math.floor(z + r)); iz++)
-        if (Math.hypot(ix + 0.5 - x, iy + 0.5 - y, iz + 0.5 - z) <= r) list.push(CM.idx(ix, iy, iz));
+  const V = vox();
+  if (!V) return;
+  const L = V.LIB, list = [];
+  for (let iy = Math.max(0, Math.floor(y - r)); iy <= Math.min(L.NY - 1, Math.floor(y + r)); iy++)
+    for (let ix = Math.max(L.X0, Math.floor(x - r)); ix <= Math.min(L.X0 + L.NX - 1, Math.floor(x + r)); ix++)
+      for (let iz = Math.max(L.Z0, Math.floor(z - r)); iz <= Math.min(L.Z0 + L.NZ - 1, Math.floor(z + r)); iz++)
+        if (Math.hypot(ix + 0.5 - x, iy + 0.5 - y, iz + 0.5 - z) <= r) list.push(L.idx(ix, iy, iz));
   destroyCells(list);
 }
 const BLOCK_DMG = { ak: 1, sniper: 4 };            // kloss-skade per skudd
@@ -99,8 +110,9 @@ let mortarSeq = 0;
 // Høyeste klosstopp på et punkt (der granaten lander)
 function groundTop(x, z) {
   const ix = Math.floor(x), iz = Math.floor(z);
+  const V = VOX.castle;
   if (ix < CM.X0 || ix >= CM.X0 + CM.NX || iz < CM.Z0 || iz >= CM.Z0 + CM.NZ) return 0;
-  for (let y = CM.NY - 1; y >= 0; y--) if (castleGrid[CM.idx(ix, y, iz)]) return y + 1;
+  for (let y = CM.NY - 1; y >= 0; y--) if (V.grid[CM.idx(ix, y, iz)]) return y + 1;
   return 0;
 }
 // [NY] DEN HELLIGE FERSKENEN: svever på toppen av tårnet midt i klosseslottet.
@@ -138,13 +150,14 @@ function startFresh(map) {
   if (intermission) { firstPick = map; return; }   // pausen er i gang: banen brukes når den nye runden starter
   mapName = map;
   worldName = 'main';
-  if (mapName === 'castle') resetCastle();
+  resetVox(mapName);
   holy = { state: 'top', holder: null, readyAt: 0 };
   resetFleet();
   Object.values(players).forEach(leaveVehicle);
   foamOn = false; foamHoles = [];
   score = { bunny: 0, squirrel: 0 };
-  roundEndsAt = Date.now() + ROUND_SECONDS * 1000;
+  roundEndsAt = Date.now() + (mapName === 'farm' ? FARM_SECONDS : ROUND_SECONDS) * 1000;
+  if (mapName === 'farm') resetFarm();
   console.log('Første spiller valgte banen: ' + map);
 }
 
@@ -215,10 +228,333 @@ function damageTurret(team, i, dmg) {
 }
 setInterval(() => { if (fleetDirty) { fleetDirty = false; io.emit('fleet', fleetState()); } }, 200);
 
+// ===================================================================
+// [NY] ZOMBIE-KYLLINGER 🐔🧟 – alle spillerne sammen mot kyllingene (bane 'farm')
+// Serveren styrer kyllingene. 10 bølger, Kong Klukk på bølge 5 og 10.
+// Kyllingene hakker seg gjennom klosser som står i veien. Alle døde = tapt.
+// ===================================================================
+const CHICK = {
+  walker: { hp: 60, speed: 2.9, dmg: 10, atkMs: 1000, reach: 1.3, r: 0.35, h: 2, peck: 1 },
+  runner: { hp: 35, speed: 5.6, dmg: 6, atkMs: 600, reach: 1.2, r: 0.3, h: 2, peck: 1 },
+  thrower: { hp: 70, speed: 2.6, dmg: 12, atkMs: 3000, reach: 1.3, r: 0.4, h: 2, peck: 1 },
+  exploder: { hp: 40, speed: 3.9, dmg: 45, atkMs: 0, reach: 1.8, r: 0.4, h: 2, peck: 1 },
+  king: { hp: 1500, speed: 2.3, dmg: 35, atkMs: 1500, reach: 3.2, r: 1.2, h: 4, peck: 3 }
+};
+const CTYPES = ['walker', 'runner', 'thrower', 'exploder', 'king'];
+const FARM_WAVES = 10;
+const FARM_SECONDS = +process.env.FARM_SECONDS || 600;            // maks 10 min per runde
+const FARM_PREP_MS = +process.env.FARM_PREP || 15000;             // tid før første bølge
+const FARM_BREAK_MS = +process.env.FARM_BREAK || 12000;           // pause mellom bølgene
+const FARM_NADES = 10, FARM_ROCKETS = 4;                           // mer granater i kyllingkaoset
+const CHICK_CAP = 45;                                              // maks levende kyllinger samtidig
+const GOLD_CHANCE = +process.env.GOLD_CHANCE || 0.05;             // sjanse for gullegg når en kylling dør
+const BURNABLE = new Set([FM.T.HAY, FM.T.CORN, FM.T.STRAW, FM.T.TENT]);
+const WIRE_SET = new Set(FM.WIRE.map(([x, z]) => x + ',' + z));
+const BARREL_SPOTS = [[-8, -4], [7, 3], [-3, -19], [2, 18], [-30, -12], [33, -18], [30, 8], [-36, 10], [40, -24],
+  [-48, -20], [22, 26], [-52, 18], [55, 22], [-20, 35], [12, -40], [-62, -5]];
+let farm = null, farmRecord = 0, chickSeq = 0, goldSeq = 0;
+function resetFarm() {
+  farm = { wave: 0, state: 'prep', until: Date.now() + FARM_PREP_MS, chicks: new Map(), queue: [], nextSpawn: 0,
+    barrels: BARREL_SPOTS.map(([x, z], i) => ({ id: i, x: x + 0.5, z: z + 0.5, alive: true })),
+    fire: new Map(), gold: new Map(), lastFire: 0 };
+  io.emit('barrels', farm.barrels);
+  io.emit('gold', { list: [] });
+  emitWave();
+}
+function farmActive() { return mapName === 'farm' && worldName === 'main' && farm; }
+function farmPlayers() { return Object.values(players); }
+function emitWave(extra) {
+  if (!farm) return;
+  const left = farm.queue.length + farm.chicks.size;
+  io.emit('wave', Object.assign({ n: farm.wave, total: FARM_WAVES, state: farm.state, left,
+    in: Math.max(0, Math.ceil((farm.until - Date.now()) / 1000)), record: farmRecord }, extra || {}));
+}
+function waveList(n) {
+  const np = Math.max(1, farmPlayers().length), k = 1 + 0.45 * (np - 1);
+  const total = Math.round((5 + n * 3) * k), list = [];
+  for (let i = 0; i < total; i++) {
+    const r = Math.random();
+    list.push(n >= 4 && r < 0.12 ? 'exploder' : n >= 3 && r < 0.27 ? 'thrower' : n >= 2 && r < 0.47 ? 'runner' : 'walker');
+  }
+  if (n === 5 || n === 10) list.splice(Math.floor(list.length / 2), 0, 'king');
+  return list;
+}
+function startWave(n) {
+  farm.wave = n; farm.state = 'fight'; farm.queue = waveList(n); farm.nextSpawn = Date.now() + 500;
+  farm.barrels.forEach(b => { b.alive = true; });                  // nye tønner hver bølge
+  io.emit('barrels', farm.barrels);
+  emitWave({ start: true });
+}
+function spawnChick(type) {
+  const [sx, sz] = FM.SPAWNS[Math.floor(Math.random() * FM.SPAWNS.length)];
+  const T = CHICK[type], np = Math.max(1, farmPlayers().length);
+  const hp = type === 'king' ? Math.round((farm.wave >= 10 ? 2500 : 1500) * (1 + 0.5 * (np - 1))) : T.hp;
+  const c = { id: ++chickSeq, type, t: CTYPES.indexOf(type), x: sx + 0.5 + (Math.random() - 0.5) * 6, z: sz + 0.5 + (Math.random() - 0.5) * 5,
+    yaw: 0, hp, max: hp, atkAt: 0, peckAt: 0, pecking: 0, throwAt: Date.now() + 2000 + Math.random() * 2000, slamAt: Date.now() + 5000 };
+  farm.chicks.set(c.id, c);
+  if (type === 'king') io.emit('king', { id: c.id });
+}
+// Er det klosser der kyllingen vil stå? (sjekker en firkant rundt den, fra bakken og h klosser opp)
+function chickBlocked(x, z, r, h) {
+  const V = VOX.farm, G = V.grid;
+  for (let ix = Math.floor(x - r); ix <= Math.floor(x + r); ix++)
+    for (let iz = Math.floor(z - r); iz <= Math.floor(z + r); iz++) {
+      if (ix < FM.X0 || ix >= FM.X0 + FM.NX || iz < FM.Z0 || iz >= FM.Z0 + FM.NZ) return { edge: true };
+      for (let y = 0; y < h; y++) { const i = FM.idx(ix, y, iz); if (G[i]) return { i }; }
+    }
+  return null;
+}
+// Hakk på en kloss (den mister liv, og forsvinner når livet er brukt opp)
+function peckCell(i, dmg) {
+  const V = VOX.farm, t = V.grid[i];
+  if (!t || FM.INFO[t].hp === 0) return;
+  V.hp[i] = Math.max(0, V.hp[i] - dmg);
+  if (V.hp[i] === 0) destroyCells([i]);
+}
+// Skade fra kyllinger, ild og tønner på spillere (gir ingen poeng)
+function chickHurt(t, dmg, who, weapon, fromX, fromZ) {
+  if (!t.alive || Date.now() < (t.protectedUntil || 0) || intermission) return;
+  t.hp -= dmg;
+  if (t.hp <= 0) killByWorld(t, who, weapon);
+  else io.to(t.id).emit('damaged', { hp: t.hp, fromX: fromX === undefined ? t.x : fromX, fromZ: fromZ === undefined ? t.z : fromZ });
+}
+function hurtChick(c, dmg, p) {
+  if (!farm || !farm.chicks.has(c.id)) return;
+  c.hp -= dmg;
+  if (c.hp <= 0) killChick(c, p);
+}
+function killChick(c, p) {
+  farm.chicks.delete(c.id);
+  if (p) { p.kills++; if (players[p.id]) io.to(p.id).emit('hitConfirm', { head: false, kill: true }); }
+  io.emit('chickDie', { id: c.id, x: +c.x.toFixed(1), z: +c.z.toFixed(1), t: c.t });
+  if (c.type === 'exploder') chickExplode(c);
+  if (c.type === 'king' || Math.random() < GOLD_CHANCE) {            // gullegg!
+    const g = { id: ++goldSeq, x: c.x, z: c.z, until: Date.now() + 30000 };
+    farm.gold.set(g.id, g);
+    io.emit('gold', { add: [g.id, +g.x.toFixed(1), +g.z.toFixed(1)] });
+  }
+}
+// Eksploderende kylling: smell, hull i murer, skader alle i nærheten (også andre kyllinger)
+function chickExplode(c) {
+  farm.chicks.delete(c.id);
+  io.emit('boom', { id: 'cx' + c.id, p: [+c.x.toFixed(1), 0.8, +c.z.toFixed(1)], big: 1.8 });
+  blastCells(c.x, 0.8, c.z, 2.2);
+  igniteAt(c.x, 0.8, c.z, 4);
+  farmPlayers().forEach(t => {
+    const d = Math.hypot(t.x - c.x, t.y + 0.9 - 0.8, t.z - c.z);
+    if (d < 4) chickHurt(t, Math.round(CHICK.exploder.dmg * (1 - d / 4) + 10), 'Eksplosiv kylling', 'chickboom', c.x, c.z);
+  });
+  areaHurtChicks(c.x, c.z, 4, 100, null);
+  chainBarrels(c.x, c.z, 3);
+}
+// Smell skader kyllinger i en radius (granat, bazooka, tønne ...)
+function areaHurtChicks(x, z, r, max, p) {
+  if (!farm) return;
+  [...farm.chicks.values()].forEach(c => {
+    const d = Math.hypot(c.x - x, c.z - z);
+    if (d < r + CHICK[c.type].r) hurtChick(c, Math.round(max * Math.max(0.25, 1 - d / r)), p);
+  });
+}
+// ---------- Tønner med gjødsel: smeller i kjedereaksjon ----------
+function explodeBarrel(b, p) {
+  if (!b.alive || !farm) return;
+  b.alive = false;
+  io.emit('barrelBoom', { id: b.id, p: [b.x, 0.8, b.z] });
+  io.emit('boom', { id: 'b' + b.id, p: [b.x, 0.8, b.z], big: 2.4 });
+  blastCells(b.x, 0.8, b.z, 2.6);
+  igniteAt(b.x, 0.8, b.z, 5);
+  areaHurtChicks(b.x, b.z, 6, 150, p);
+  farmPlayers().forEach(t => {
+    const d = Math.hypot(t.x - b.x, t.y + 0.9 - 0.8, t.z - b.z);
+    if (d < 5) chickHurt(t, Math.round(60 * (1 - d / 5)), p ? p.name : 'Tønne', 'barrel', b.x, b.z);
+  });
+  chainBarrels(b.x, b.z, 6, p);
+}
+function chainBarrels(x, z, r, p) {
+  if (!farm) return;
+  farm.barrels.forEach(o => {
+    if (o.alive && Math.hypot(o.x - x, o.z - z) < r) setTimeout(() => explodeBarrel(o, p), 250);
+  });
+}
+// ---------- Ild: høy, mais, halm og telt brenner og sprer seg ----------
+function igniteAt(x, y, z, r) {
+  if (!farmActive()) return;
+  const V = VOX.farm, add = [];
+  for (let iy = Math.max(0, Math.floor(y - r)); iy <= Math.min(FM.NY - 1, Math.floor(y + r)); iy++)
+    for (let ix = Math.floor(x - r); ix <= Math.floor(x + r); ix++)
+      for (let iz = Math.floor(z - r); iz <= Math.floor(z + r); iz++) {
+        if (ix < FM.X0 || ix >= FM.X0 + FM.NX || iz < FM.Z0 || iz >= FM.Z0 + FM.NZ) continue;
+        const i = FM.idx(ix, iy, iz);
+        if (BURNABLE.has(V.grid[i]) && !farm.fire.has(i) && Math.hypot(ix + 0.5 - x, iy + 0.5 - y, iz + 0.5 - z) <= r) {
+          farm.fire.set(i, Date.now() + 2500 + Math.random() * 1500); add.push(i);
+        }
+      }
+  if (add.length) io.emit('fire', { add });
+}
+function fireTick(now) {
+  if (!farm.fire.size) return;
+  const V = VOX.farm, add = [], done = [], hot = [];
+  farm.fire.forEach((until, i) => {
+    const x = i % FM.NX, rest = (i - x) / FM.NX, z = rest % FM.NZ, y = (rest - z) / FM.NZ;
+    hot.push([x + FM.X0 + 0.5, y, z + FM.Z0 + 0.5]);
+    if (farm.fire.size + add.length < 600) [[1, 0, 0], [-1, 0, 0], [0, 0, 1], [0, 0, -1], [0, 1, 0], [0, -1, 0], [1, 0, 1], [-1, 0, -1]].forEach(([dx, dy, dz]) => {
+      const nx = x + dx, ny = y + dy, nz = z + dz;
+      if (nx < 0 || nx >= FM.NX || nz < 0 || nz >= FM.NZ || ny < 0 || ny >= FM.NY) return;
+      const j = (ny * FM.NZ + nz) * FM.NX + nx;
+      if (BURNABLE.has(V.grid[j]) && !farm.fire.has(j) && Math.random() < 0.35) { farm.fire.set(j, now + 2500 + Math.random() * 1500); add.push(j); }
+    });
+    if (now >= until) done.push(i);
+  });
+  done.forEach(i => farm.fire.delete(i));
+  if (done.length) destroyCells(done);
+  if (add.length) io.emit('fire', { add });
+  // Ild brenner kyllinger og spillere som står i den
+  hot.forEach(([hx, hy, hz]) => {
+    if (hy > 2) return;
+    farm.chicks.forEach(c => { if (Math.abs(c.x - hx) < 1.2 && Math.abs(c.z - hz) < 1.2) hurtChick(c, 10, null); });
+    farmPlayers().forEach(t => { if (t.y < 2 && Math.abs(t.x - hx) < 0.9 && Math.abs(t.z - hz) < 0.9) chickHurt(t, 5, 'Ild', 'fire', hx, hz); });
+  });
+}
+// ---------- Bølgene og kyllingenes hjerne (10 ganger i sekundet) ----------
+function farmTick() {
+  if (!farmActive() || intermission) return;
+  const now = Date.now(), dt = 0.1;
+  const all = farmPlayers(), alive = all.filter(p => p.alive);
+  if (!all.length) {                                 // ingen spillere: vent (start på nytt når noen kommer)
+    if (farm.wave || farm.chicks.size) resetFarm();
+    farm.until = now + FARM_PREP_MS;
+    return;
+  }
+  if (now - farm.lastFire >= 500) { farm.lastFire = now; fireTick(now); }
+  farm.gold.forEach((g, id) => { if (now > g.until) { farm.gold.delete(id); io.emit('gold', { remove: id }); } });
+  if (farm.state === 'prep' || farm.state === 'break') {
+    if (now >= farm.until) startWave(farm.wave === 0 && process.env.FARM_START_WAVE ? +process.env.FARM_START_WAVE : farm.wave + 1);   // (FARM_START_WAVE er for testing)
+  } else if (farm.state === 'fight') {
+    // Alle døde? Da har kyllingene vunnet.
+    if (all.length && !alive.length) { endFarm('lose'); return; }
+    if (farm.queue.length && now >= farm.nextSpawn && farm.chicks.size < CHICK_CAP) {
+      spawnChick(farm.queue.shift());
+      farm.nextSpawn = now + Math.max(250, 700 - farm.wave * 40);
+    }
+    if (!farm.queue.length && !farm.chicks.size) {
+      if (farm.wave >= FARM_WAVES) { endFarm('win'); return; }
+      farm.state = 'break'; farm.until = now + FARM_BREAK_MS;
+      farmRecord = Math.max(farmRecord, farm.wave);
+      // Pause: de døde kommer tilbake, alle får fulle granater og raketter
+      all.forEach(p => { if (!p.alive) respawn(p); else { p.nades = FARM_NADES; p.rockets = FARM_ROCKETS; } io.to(p.id).emit('refill', { nades: FARM_NADES, rockets: FARM_ROCKETS }); });
+      emitWave({ cleared: true });
+      return;
+    }
+  }
+  // Kyllingene beveger seg
+  const list = [...farm.chicks.values()];
+  list.forEach(c => {
+    const T = CHICK[c.type];
+    // Nærmeste levende spiller
+    let tgt = null, best = 1e9;
+    alive.forEach(p => { const d = Math.hypot(p.x - c.x, p.z - c.z); if (d < best) { best = d; tgt = p; } });
+    c.pecking = 0;
+    if (!tgt) return;
+    let gx = tgt.x, gz = tgt.z;
+    // Er spilleren inni leiren og kyllingen ute? Gå mot nærmeste port først.
+    const inside = (x, z) => Math.abs(x) < 20 && z > -16 && z < 16;
+    if (inside(tgt.x, tgt.z) && !inside(c.x, c.z) && c.type !== 'king') {
+      const gzOut = c.z < 0 ? -19 : 18, gzIn = c.z < 0 ? -12 : 11;
+      if (Math.hypot(c.x + 0.5, c.z - gzOut) > 2.5 && Math.abs(c.z) > 17) { gx = -0.5; gz = gzOut; } else { gx = -0.5; gz = gzIn; }
+      if (Math.abs(c.x + 0.5) < 2 && Math.abs(c.z) < 17) { gx = tgt.x; gz = tgt.z; }
+    }
+    const high = tgt.y > 1.2;
+    const dx = gx - c.x, dz = gz - c.z, dist = Math.hypot(dx, dz);
+    c.yaw = Math.atan2(tgt.x - c.x, tgt.z - c.z);
+    // Eggkaster: står i avstand og kaster råtne egg
+    if (c.type === 'thrower' && best < 16 && best > 4) {
+      if (now >= c.throwAt) {
+        c.throwAt = now + T.atkMs;
+        const to = [tgt.x + (Math.random() - 0.5) * 1.2, tgt.y + 1, tgt.z + (Math.random() - 0.5) * 1.2];
+        io.emit('egg', { from: [+c.x.toFixed(1), 1.2, +c.z.toFixed(1)], to: to.map(v => +v.toFixed(1)), ms: 1100 });
+        setTimeout(() => {
+          farmPlayers().forEach(t => { if (Math.hypot(t.x - to[0], t.y + 1 - to[1], t.z - to[2]) < 1.8) { chickHurt(t, T.dmg, 'Eggkaster-kylling', 'egg', c.x, c.z); io.to(t.id).emit('egged'); } });
+        }, 1100);
+      }
+      return;
+    }
+    // Nær nok til å angripe?
+    if (best < T.reach + 0.35 && (!high || tgt.y < T.reach + 0.3)) {
+      if (c.type === 'exploder') { chickExplode(c); return; }
+      if (now >= c.atkAt) {
+        c.atkAt = now + T.atkMs;
+        chickHurt(tgt, T.dmg, c.type === 'king' ? 'Kong Klukk' : 'Zombie-kylling', 'chicken', c.x, c.z);
+      }
+      return;
+    }
+    // Kongen: bakkeslag som rister alt rundt seg
+    if (c.type === 'king' && now >= c.slamAt && best < 6) {
+      c.slamAt = now + 6000;
+      io.emit('slam', { p: [+c.x.toFixed(1), 0, +c.z.toFixed(1)] });
+      alive.forEach(t => { const d = Math.hypot(t.x - c.x, t.z - c.z); if (d < 6 && t.y < 2) chickHurt(t, Math.round(40 * (1 - d / 6) + 10), 'Kong Klukk', 'chicken', c.x, c.z); });
+      blastCells(c.x, 0.5, c.z, 2.5);
+    }
+    // Spilleren står høyt oppe (på et tak eller en container)? Hakk på klossen under spilleren!
+    if (high && best < 1.6 + T.r) {
+      if (now >= c.peckAt) {
+        c.peckAt = now + 700;
+        const fy = Math.floor(tgt.y) - 1;
+        for (let y = fy; y >= 0; y--) {
+          const i = FM.idx(Math.floor(tgt.x), y, Math.floor(tgt.z));
+          if (VOX.farm.grid[i]) { peckCell(i, T.peck); break; }
+        }
+      }
+      c.pecking = 1;
+      return;
+    }
+    if (dist < 0.05) return;
+    // Gå (piggtråd = sakte og vondt)
+    const inWire = WIRE_SET.has(Math.floor(c.x) + ',' + Math.floor(c.z));
+    if (inWire) hurtChick(c, 0.4, null);
+    if (!farm.chicks.has(c.id)) return;
+    const sp = T.speed * (inWire ? 0.4 : 1) * dt;
+    const ux = dx / dist, uz = dz / dist;
+    let moved = false;
+    for (const a of [0, 0.6, -0.6, 1.2, -1.2]) {                    // rett frem, ellers litt til siden
+      const cx = ux * Math.cos(a) - uz * Math.sin(a), cz = ux * Math.sin(a) + uz * Math.cos(a);
+      const nx = c.x + cx * sp, nz = c.z + cz * sp;
+      if (!chickBlocked(nx, nz, T.r, T.h)) { c.x = nx; c.z = nz; moved = true; break; }
+    }
+    if (!moved) {                                                   // står fast: hakk deg gjennom!
+      const b = chickBlocked(c.x + ux * (T.r + 0.4), c.z + uz * (T.r + 0.4), T.r, T.h);
+      if (b && b.i !== undefined && now >= c.peckAt) { c.peckAt = now + 700; peckCell(b.i, T.peck); }
+      c.pecking = 1;
+    }
+  });
+  // Skyv kyllinger litt fra hverandre (så de ikke står oppå hverandre)
+  for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++) {
+    const a = list[i], b = list[j], dx = b.x - a.x, dz = b.z - a.z, d = Math.hypot(dx, dz), min = CHICK[a.type].r + CHICK[b.type].r;
+    if (d > 0.001 && d < min) {
+      const push = (min - d) / 2, ux = dx / d, uz = dz / d;
+      if (!chickBlocked(a.x - ux * push, a.z - uz * push, CHICK[a.type].r, 1)) { a.x -= ux * push; a.z -= uz * push; }
+      if (!chickBlocked(b.x + ux * push, b.z + uz * push, CHICK[b.type].r, 1)) { b.x += ux * push; b.z += uz * push; }
+    }
+  }
+  // Til alle: [id, type, x, z, yaw, hakker, liv-andel]
+  io.emit('chix', list.filter(c => farm.chicks.has(c.id)).map(c => [c.id, c.t, +c.x.toFixed(2), +c.z.toFixed(2), +c.yaw.toFixed(2), c.pecking, +(c.hp / c.max).toFixed(2)]));
+}
+function endFarm(result) {
+  farm.state = result;
+  if (result === 'win') farmRecord = Math.max(farmRecord, FARM_WAVES);
+  else farmRecord = Math.max(farmRecord, farm.wave - 1);
+  farm.chicks.clear();
+  io.emit('chix', []);
+  emitWave({ result });
+  roundEndsAt = Math.min(roundEndsAt, Date.now() + 6000);           // 6 sek med jubel / sorg, så stemming
+  console.log('Kyllingfarmen: ' + (result === 'win' ? 'SEIER!' : 'tapt på bølge ' + farm.wave));
+}
+setInterval(farmTick, 100);
+
 const HANDLE = { x: -25, z: -3 };   // håndtaket i bakre hjørne av venstre hus
 const UNDER_HANDLES = [{ x: 0, z: 24 }, { x: 0, z: -24 }];   // skyll-håndtak i underverdenen (ett per lag)
 let roundEndsAt = Date.now() + ROUND_SECONDS * 1000;
 let intermission = false;
+if (mapName === 'farm') { resetFarm(); roundEndsAt = Date.now() + FARM_SECONDS * 1000; }   // [NY] start rett på kyllingfarmen (testing)
 
 // Startplass: kaniner på blå side (z = +19), flygeekorn på rød side (z = -19)
 function spawnFor(team) {
@@ -227,6 +563,20 @@ function spawnFor(team) {
     const side = Math.random() < 0.5 ? -1 : 1;
     const x = side * (3 + Math.random() * 10);
     return team === 'bunny' ? { x, y: 2, z: 32.5, yaw: 0 } : { x: -x, y: 2, z: -32.5, yaw: Math.PI };
+  }
+  if (mapName === 'farm') {                                 // [NY] alle starter inni kampsenteret
+    const S = FM.START, G = VOX.farm.grid;
+    const free = (x, z) => {                               // ingen klosser der du står
+      for (let ix = Math.floor(x - 0.5); ix <= Math.floor(x + 0.5); ix++)
+        for (let iz = Math.floor(z - 0.5); iz <= Math.floor(z + 0.5); iz++)
+          for (let y = 0; y < 2; y++) if (G[FM.idx(ix, y, iz)]) return false;
+      return true;
+    };
+    for (let k = 0; k < 60; k++) {
+      const x = S.x0 + 1 + Math.random() * (S.x1 - S.x0 - 2), z = S.z0 + 1 + Math.random() * (S.z1 - S.z0 - 2);
+      if (free(x, z)) return { x, y: 0, z, yaw: Math.random() * 6.28 };
+    }
+    return { x: -6.5, y: 0, z: 3.5, yaw: 0 };
   }
   if (mapName === 'space' && worldName === 'main') {       // [NY] i hangaren i moderskipet
     const x = (Math.random() - 0.5) * 24, back = 6 + Math.random() * 6;
@@ -281,7 +631,7 @@ function applyDamage(p, t, dmg, head, weapon) {
       io.emit('streak', { name: p.name, team: p.team, n: p.streak });
     }
     io.emit('kill', { killer: p.id, killerName: p.name, killerTeam: p.team, victim: t.id, victimName: t.name, victimTeam: t.team, head, weapon, score });
-    setTimeout(() => { if (players[t.id] && !t.alive) respawn(t); }, RESPAWN_SECONDS * 1000);
+    if (!(farmActive() && farm.state === 'fight')) setTimeout(() => { if (players[t.id] && !t.alive) respawn(t); }, RESPAWN_SECONDS * 1000);
   }
 }
 
@@ -296,14 +646,15 @@ function killByWorld(t, who, weapon) {
   t.streak = 0;
   io.to(t.id).emit('damaged', { hp: 0, fromX: t.x, fromZ: t.z });
   io.emit('kill', { killer: null, killerName: who, killerTeam: 'none', victim: t.id, victimName: t.name, victimTeam: t.team, head: false, weapon, score });
-  setTimeout(() => { if (players[t.id] && !t.alive) respawn(t); }, RESPAWN_SECONDS * 1000);
+  // [NY] Kyllingfarmen: døde kommer tilbake i pausen etter bølgen
+  if (!(farmActive() && farm.state === 'fight')) setTimeout(() => { if (players[t.id] && !t.alive) respawn(t); }, RESPAWN_SECONDS * 1000);
 }
 
 function respawn(p) {
   leaveVehicle(p);                                   // [NY]
   const sp = spawnFor(p.team);
-  p.nades = NADES_PER_LIFE;
-  p.rockets = ROCKETS_PER_LIFE;
+  p.nades = mapName === 'farm' ? FARM_NADES : NADES_PER_LIFE;      // [NY] 10 granater på kyllingfarmen
+  p.rockets = mapName === 'farm' ? FARM_ROCKETS : ROCKETS_PER_LIFE;
   p.protectedUntil = Date.now() + SPAWN_PROTECT_MS;
   p.hp = MAX_HP;
   p.alive = true;
@@ -334,11 +685,16 @@ io.on('connection', socket => {
     socket.emit('welcome', {
       id: socket.id, spawn: sp, players: others, score,
       foam: { on: foamOn, holes: foamHoles },
-      world: worldName, map: mapName, blocksGone: mapName === 'castle' ? castleGone : undefined,
+      world: worldName, map: mapName, blocksGone: VOX[mapName] ? VOX[mapName].gone : undefined,
       timeLeft: Math.max(0, Math.ceil((roundEndsAt - Date.now()) / 1000)), intermission
     });
     socket.emit('holy', holyState());                 // [NY] hvor er ferskenen?
     socket.emit('fleet', fleetState());               // [NY] moderskipene
+    if (farmActive()) {                               // [NY] kyllingfarmen: bølge, tønner, gullegg
+      socket.emit('barrels', farm.barrels);
+      socket.emit('gold', { list: [...farm.gold.values()].map(g => [g.id, +g.x.toFixed(1), +g.z.toFixed(1)]) });
+      emitWave();
+    }
     socket.broadcast.emit('playerJoined', publicPlayer(p));
     io.emit('lobby', lobbyCounts());
     console.log(name + ' ble med som ' + (team === 'bunny' ? 'kanin' : 'flygeekorn'));
@@ -380,6 +736,7 @@ io.on('connection', socket => {
   socket.on('hit', d => {
     const p = players[socket.id];
     if (!p || !p.alive || intermission || !d) return;
+    if (mapName === 'farm') return;                    // [NY] kyllingfarmen: alle er på samme lag
     const t = players[d.target];
     if (!t || !t.alive || t.team === p.team) return;
     const now = Date.now();
@@ -456,9 +813,15 @@ io.on('connection', socket => {
       return;
     }
     io.emit('boom', { id: d.id, p: pos });
-    if (mapName === 'castle' && worldName === 'main') blastCells(pos[0], pos[1], pos[2], 3);   // granaten sprenger klosser
+    blastCells(pos[0], pos[1], pos[2], 3);                         // granaten sprenger klosser (klosse-baner)
     if (foamOn && pos[1] < 3) foamHoles.push([pos[0], pos[2]]);   // hullet i skummet blir stående
     if (intermission) return;
+    if (farmActive()) {                               // [NY] kyllingfarmen: skader kyllinger, tenner på høy, smeller tønner
+      areaHurtChicks(pos[0], pos[2], NADE_RADIUS, NADE_MAX_DMG, p);
+      igniteAt(pos[0], pos[1], pos[2], 5);           // ilden når litt lenger enn hullet
+      chainBarrels(pos[0], pos[2], 3, p);
+      return;
+    }
     Object.values(players).forEach(t => {
       if (!t.alive || t.team === p.team) return;
       const dist = Math.hypot(t.x - pos[0], t.y + 0.9 - pos[1], t.z - pos[2]);
@@ -551,6 +914,37 @@ io.on('connection', socket => {
     if (p && p.alive && p.vehicle === 'fighter') killByWorld(p, 'Krasj', 'crash');
   });
 
+  // ---------- [NY] KYLLINGFARMEN ----------
+  socket.on('chickenHit', d => {                     // kule traff en kylling
+    const p = players[socket.id];
+    if (!p || !p.alive || !farmActive() || !d) return;
+    const c = farm.chicks.get(d.id);
+    if (!c) return;
+    const now = Date.now(), w = d.w === 'sniper' ? 'sniper' : d.w === 'egg' ? 'egg' : 'ak';
+    if (w === 'egg' && now > (p.minigunUntil || 0)) return;
+    const key = 'lastChick_' + w, min = w === 'sniper' ? SNIPER_MIN_MS : w === 'egg' ? 35 : MIN_HIT_MS;
+    if (now - (p[key] || 0) < min) return;
+    p[key] = now;
+    const base = w === 'sniper' ? 60 : w === 'egg' ? 15 : DMG_BODY;
+    hurtChick(c, d.head ? base * 2 : base, p);
+  });
+  socket.on('barrelHit', d => {                      // skjøt en tønne
+    const p = players[socket.id];
+    if (!p || !p.alive || !farmActive() || !d) return;
+    const b = farm.barrels[d.id | 0];
+    if (b) explodeBarrel(b, p);
+  });
+  socket.on('goldGrab', d => {                       // plukket opp et gullegg: eggmaskingevær i 20 sek
+    const p = players[socket.id];
+    if (!p || !p.alive || !farmActive() || !d) return;
+    const g = farm.gold.get(d.id);
+    if (!g || Math.hypot(p.x - g.x, p.z - g.z) > 2.2) return;
+    farm.gold.delete(g.id);
+    io.emit('gold', { remove: g.id });
+    p.minigunUntil = Date.now() + 20000;
+    socket.emit('minigun', { ms: 20000 });
+  });
+
   // Skjult håndtak: alle faller ned i underverdenen
   socket.on('pull', () => {
     const p = players[socket.id];
@@ -598,8 +992,14 @@ io.on('connection', socket => {
     const pos = d.p.map(v => num(v, -100, 100));
     if (pos.includes(null)) return;
     io.emit('boom', { id: d.id, p: pos, big: 1.6 });
-    if (mapName === 'castle' && worldName === 'main') blastCells(pos[0], pos[1], pos[2], ROCKET_BLOCKS);
+    blastCells(pos[0], pos[1], pos[2], ROCKET_BLOCKS);
     if (intermission) return;
+    if (farmActive()) {                               // [NY] kyllingfarmen
+      areaHurtChicks(pos[0], pos[2], ROCKET_RADIUS, ROCKET_MAX_DMG, p);
+      igniteAt(pos[0], pos[1], pos[2], 5.5);
+      chainBarrels(pos[0], pos[2], 3.5, p);
+      return;
+    }
     Object.values(players).forEach(t => {
       if (!t.alive || t.team === p.team) return;
       const dist = Math.hypot(t.x - pos[0], t.y + 0.9 - pos[1], t.z - pos[2]);
@@ -639,17 +1039,18 @@ io.on('connection', socket => {
   // Kule traff en kloss på klosseslottet
   socket.on('blockHit', d => {
     const p = players[socket.id];
-    if (!p || !p.alive || !d || mapName !== 'castle' || worldName !== 'main') return;
+    const V = vox();
+    if (!p || !p.alive || !d || !V) return;
     const i = d.i;
-    if (!Number.isInteger(i) || i < 0 || i >= castleGrid.length) return;
-    const t = castleGrid[i];
-    if (!t || CM.INFO[t].hp === 0) return;
+    if (!Number.isInteger(i) || i < 0 || i >= V.grid.length) return;
+    const t = V.grid[i];
+    if (!t || V.LIB.INFO[t].hp === 0) return;
     const now = Date.now(), sniper = d.w === 'sniper';
     if (now - (sniper ? (p.lastBlockSniper || 0) : (p.lastBlockHit || 0)) < (sniper ? SNIPER_MIN_MS : MIN_HIT_MS)) return;
     if (sniper) p.lastBlockSniper = now; else p.lastBlockHit = now;
     const dmg = BLOCK_DMG[sniper ? 'sniper' : 'ak'];
-    castleHp[i] = Math.max(0, castleHp[i] - dmg);
-    if (castleHp[i] === 0) destroyCells([i]);
+    V.hp[i] = Math.max(0, V.hp[i] - dmg);
+    if (V.hp[i] === 0) destroyCells([i]);
   });
 
   // Gikk i lavaen
@@ -698,23 +1099,30 @@ setInterval(() => {
       winner = spaceWinner || (hb === hs ? 'draw' : hb > hs ? 'bunny' : 'squirrel');
     }
     Object.values(players).forEach(leaveVehicle);
+    let farmResult = null;
+    if (mapName === 'farm' && farm) {              // [NY] kyllingfarmen: seier eller tap for alle sammen
+      farmResult = { result: farm.state === 'win' ? 'win' : 'lose', wave: farm.wave, record: farmRecord };
+      winner = 'farm';
+      farm.chicks.clear(); io.emit('chix', []);
+    }
     votes = {};
-    io.emit('roundOver', { winner, score, board: board(), maps: MAPS, votes: voteCounts(), voteSeconds: BREAK_SECONDS });
+    io.emit('roundOver', { winner, score, board: board(), maps: MAPS, votes: voteCounts(), voteSeconds: BREAK_SECONDS, farm: farmResult });
     setTimeout(() => {
       score = { bunny: 0, squirrel: 0 };
       if (worldName !== 'main') { worldName = 'main'; io.emit('world', { name: 'main' }); }
       mapName = firstPick || nextMap();                              // ny bane: flest stemmer, ellers vanlig rekkefølge
       firstPick = null;
       votes = {};
-      if (mapName === 'castle') resetCastle();                       // nytt, helt slott
+      resetVox(mapName);                                             // nytt, helt slott / ny farm
       holy = { state: 'top', holder: null, readyAt: 0 };             // [NY] ny fersken på toppen
       resetFleet();                                                  // [NY] nye moderskip og 12 nye jagerfly
       io.emit('fleet', fleetState());
       io.emit('holy', holyState());
       io.emit('map', { name: mapName });
       Object.values(players).forEach(p => { p.kills = 0; p.deaths = 0; p.streak = 0; respawn(p); });
-      roundEndsAt = Date.now() + ROUND_SECONDS * 1000;
+      roundEndsAt = Date.now() + (mapName === 'farm' ? FARM_SECONDS : ROUND_SECONDS) * 1000;
       intermission = false;
+      if (mapName === 'farm') resetFarm(); else farm = null;          // [NY] kyllingfarmen starter på bølge 1
       foamOn = false;              // skummet forsvinner ved ny runde
       foamHoles = [];
       io.emit('foam', { on: false });
