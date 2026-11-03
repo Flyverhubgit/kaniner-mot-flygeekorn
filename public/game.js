@@ -973,6 +973,8 @@ function updateNades(dt) {
 
   // Skjelving når et smell er nært
   shake = Math.max(0, shake - dt * 2.5);
+  // [FIKS] Kyllingfarmen: smell hele tiden – mye mindre risting, ellers hopper bildet rundt når du sikter
+  if (typeof farmOn === 'function' && farmOn()) shake = Math.min(shake, 0.25);
   if (shake > 0 && alive && joined) {
     camera.rotation.x += (Math.random() - 0.5) * shake * 0.08;
     camera.rotation.y += (Math.random() - 0.5) * shake * 0.08;

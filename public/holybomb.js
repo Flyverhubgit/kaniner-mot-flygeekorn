@@ -82,6 +82,9 @@ function onLadder(x, z, feet) {
 }
 function ladderClimbV(fwd) {
   if (!alive || !onLadder(player.x, player.z, player.feetY)) return null;
+  // [FIKS] Bare når du ser mot tårnet (ellers ble du dratt opp når du gikk forbi)
+  const facing = (-Math.sin(player.yaw)) * -Math.sign(player.x) > 0.5;
+  if (!facing && player.feetY < 0.05) return null;
   if (fwd > 0.1) return player.feetY < HOLY_TOP + 0.15 ? CLIMB_SPEED : 0;
   if (fwd < -0.1) return -CLIMB_SPEED;
   return 0;

@@ -97,8 +97,12 @@ const wireSet = new Set(FM.WIRE.map(([x, z]) => x + ',' + z));
 // Stiger: stå i stige-ruta. W = opp, S = ned, ellers heng fast (kalles fra updatePlayer i game.js)
 function farmLadderV(fwd) {
   if (!farmOn() || !alive) return null;
+  // [FIKS] Bare klatre når du SER mot veggen stigen står på – ellers ble du "dratt opp" når du gikk forbi
+  const lookX = -Math.sin(player.yaw), lookZ = -Math.cos(player.yaw);
   for (const l of FM.LADDERS) {
     if (Math.abs(player.x - (l.x + 0.5)) < 0.62 && Math.abs(player.z - (l.z + 0.5)) < 0.62 && player.feetY < l.top + 0.2) {
+      const facing = lookX * l.nx + lookZ * l.nz > 0.5;
+      if (!facing && player.feetY < 0.05) return null;          // står på bakken og ser en annen vei: bare gå videre
       if (fwd > 0.1) return player.feetY < l.top + 0.15 ? 3.5 : 0;
       if (fwd < -0.1) return player.feetY > 0.01 ? -3.5 : null;
       return player.feetY > 0.01 ? 0 : null;
