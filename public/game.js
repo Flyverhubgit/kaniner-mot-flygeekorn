@@ -420,6 +420,7 @@ if (isTouch) {
   scopeBtn.style.cssText = 'position:fixed;right:140px;bottom:240px;width:64px;height:64px;border-radius:50%;background:rgba(255,255,255,0.3);border:2px solid rgba(255,255,255,0.6);color:#fff;font:bold 13px sans-serif;display:none;align-items:center;justify-content:center;z-index:5;user-select:none;';
   document.body.appendChild(scopeBtn);
   window.__scopeBtn = scopeBtn;   // vises bare med snikskytter (se updateWeapon)
+  window.__mobBtns = { jumpBtn, slideBtn, reloadBtn, nadeBtn, crouchBtn, swapBtn, scopeBtn };   // [NY] verdensrommet bytter navn/skjuler knapper i flyet
 
   let moveId = null, lookId = null, fireId = null, lastLookTap = 0, jumpId = null;
   const origin = { x: 0, y: 0 }, lastLook = { x: 0, y: 0 }, lastFire = { x: 0, y: 0 };
@@ -1627,7 +1628,8 @@ function updateHud(dt) {
 
   // [NY] Rosa og uklart når øynene er under skummet
   const eyeY = player.feetY + slide.eye;
-  document.getElementById('foamview').style.display = alive && eyeY < foamHeightAt(player.x, player.z) ? 'block' : 'none';
+  const foamH = foamHeightAt(player.x, player.z);   // [FIKS] bare når det faktisk er skum (ikke når du flyr lavt i verdensrommet)
+  document.getElementById('foamview').style.display = alive && foamH > 0 && eyeY < foamH ? 'block' : 'none';
 
   // Poengtavle (hold Tab)
   if (keys['Tab']) {

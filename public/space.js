@@ -326,7 +326,7 @@ const spaceHud = document.createElement('div');
 spaceHud.style.cssText = 'position:fixed;left:50%;top:44px;transform:translateX(-50%);color:#fff;font:bold 14px sans-serif;text-shadow:0 0 4px #000;z-index:4;pointer-events:none;display:none;white-space:nowrap;text-align:center;';
 document.body.appendChild(spaceHud);
 const flyHud = document.createElement('div');
-flyHud.style.cssText = 'position:fixed;left:50%;bottom:80px;transform:translateX(-50%);color:#bfefff;font:bold 15px monospace;text-shadow:0 0 6px #08f;z-index:6;pointer-events:none;display:none;text-align:center;';
+flyHud.style.cssText = 'position:fixed;left:50%;bottom:' + (isTouch ? '8px' : '80px') + ';transform:translateX(-50%);color:#bfefff;font:bold ' + (isTouch ? '12px' : '15px') + ' monospace;white-space:nowrap;text-shadow:0 0 6px #08f;z-index:6;pointer-events:none;display:none;text-align:center;';
 document.body.appendChild(flyHud);
 let spaceBtn = null;
 if (isTouch) {
@@ -335,8 +335,8 @@ if (isTouch) {
   spaceBtn.addEventListener('touchstart', e => { e.preventDefault(); spaceAction(); }, { passive: false });
   document.body.appendChild(spaceBtn);
 }
-function bar(frac, col) {
-  const n = 12, f = Math.round(Math.max(0, Math.min(1, frac)) * n);
+function bar(frac, col, len) {
+  const n = len || 12, f = Math.round(Math.max(0, Math.min(1, frac)) * n);
   return '<span style="color:' + col + '">' + '█'.repeat(f) + '</span><span style="opacity:.3">' + '█'.repeat(n - f) + '</span>';
 }
 
@@ -381,7 +381,7 @@ socket.on('flyOk', d => {
     myFighterTilt.add(buildFighter(myTeam));
     myFighterTeam = myTeam;
   }
-  bannerMsg = '&#9992;&#65039; AV GÅRDE! <span style="font-size:18px"><br>' + (isTouch ? 'Joystick = styr (opp = fly opp) &nbsp; HOPP = turbo &nbsp; DUKK = sakte &nbsp; GRANAT = torpedo' : 'Mus = styr &nbsp; W/S = gass &nbsp; Shift = turbo &nbsp; G = torpedo') + '</span>';
+  bannerMsg = '&#9992;&#65039; AV GÅRDE! <span style="font-size:18px"><br>' + (isTouch ? 'Joystick = styr' : 'Mus = styr &nbsp; W/S = gass &nbsp; Shift = turbo &nbsp; G = torpedo') + '</span>';
   bannerTime = 3.5;
   playLaunch();
   startEngine();
@@ -864,7 +864,25 @@ function updateOthersSpace(dt) {
 // ===================================================================
 //  Hver ramme (kalles fra game.js)
 // ===================================================================
+// Mindre rot på skjermen i flyet / kanontårnet: skjul knapper og tekst du ikke trenger, gi resten fly-navn
+let vehUi = false;
+function tidyScreen() {
+  const inVeh = spaceOn() && alive && (flying || myTurret >= 0);
+  healthEl.style.visibility = inVeh ? 'hidden' : '';
+  const b = window.__mobBtns;
+  if (!b) return;
+  [b.slideBtn, b.reloadBtn, b.swapBtn, b.scopeBtn].forEach(x => { x.style.visibility = inVeh ? 'hidden' : ''; });
+  b.jumpBtn.style.visibility = b.crouchBtn.style.visibility = b.nadeBtn.style.visibility = inVeh && !flying ? 'hidden' : '';
+  if (inVeh !== vehUi) {
+    vehUi = inVeh;
+    b.jumpBtn.textContent = inVeh ? 'TURBO' : 'HOPP';
+    b.nadeBtn.textContent = inVeh ? 'TORPEDO' : 'GRANAT';
+    b.crouchBtn.textContent = inVeh ? 'SAKTE' : 'DUKK';
+    if (touchCrouch) { touchCrouch = false; b.crouchBtn.style.background = 'rgba(255,255,255,0.3)'; }   // nullstill av/på-knappen
+  }
+}
 function updateSpace(dt) {
+  tidyScreen();
   updateOthersSpace(dt);
   hud.style.visibility = spaceHideGun() ? 'hidden' : '';   // ingen AK-teller i jagerflyet / kanontårnet
   if (!spaceOn()) {
@@ -896,7 +914,7 @@ function updateSpace(dt) {
   // Skjerm: moderskipenes liv og fly igjen
   if (fleetInfo && joined) {
     spaceHud.style.display = 'block';
-    const line = t => teamSpan(t, t === 'bunny' ? '&#128048;' : '&#128063;&#65039;') + ' ' + bar(fleetInfo[t].hp / fleetInfo[t].max, t === 'bunny' ? '#ff6a5a' : '#9cff5a') +
+    const line = t => teamSpan(t, t === 'bunny' ? '&#128048;' : '&#128063;&#65039;') + ' ' + bar(fleetInfo[t].hp / fleetInfo[t].max, t === 'bunny' ? '#ff6a5a' : '#9cff5a', isTouch ? 6 : 12) +
       ' ' + Math.round(fleetInfo[t].hp / fleetInfo[t].max * 100) + '% &nbsp;&#9992;&#65039;' + fleetInfo[t].fighters;
     spaceHud.innerHTML = line('bunny') + ' &nbsp; &nbsp; ' + line('squirrel');
     // Alarm når ditt moderskip er lavt
@@ -906,9 +924,10 @@ function updateSpace(dt) {
   }
   if (flying && alive) {
     flyHud.style.display = 'block';
-    flyHud.innerHTML = 'FART ' + Math.round(fl.speed * 3.6) + ' km/t &nbsp; TURBO ' + bar(fl.boost / 1.5, '#7fd8ff') +
-      ' &nbsp; TORPEDO ' + (fl.torps > 0 ? '&#128640;' : '–') + ' &nbsp; SKROG ' + Math.max(0, hp) + '%' +
-      (fl.outside ? '<br><span style="color:#ff6a5a">FOR LANGT UTE – SNUR!</span>' : '');
+    // Kort og enkelt: fart, turbo, torpedo, liv
+    flyHud.innerHTML = Math.round(fl.speed * 3.6) + ' km/t &nbsp;' + bar(fl.boost / 1.5, '#7fd8ff', 5) +
+      ' &nbsp;' + (fl.torps > 0 ? '&#128640;' : '') + ' &nbsp;&#9829; ' + Math.max(0, hp) +
+      (fl.outside ? '<br><span style="color:#ff6a5a">SNUR!</span>' : '');
   } else if (myTurret >= 0) {
     flyHud.style.display = 'block';
     const u = fleetInfo && fleetInfo[myTeam].turrets[myTurret];
