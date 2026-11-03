@@ -106,12 +106,12 @@
     box(-3, 2, 0, 0, -3, 2, T.PLANK);
 
     // [NY] DET HELLIGE TÅRNET midt på broa: 2 x 2 søyle, 21 høy, uten dekning.
-    // Stige på hver lags side (z = +1 og z = -1). Plattform på toppen med hull der stigene kommer opp.
+    // Stiger på øst- og vestsiden (x = +1 og x = -1), så begge slottene ser (og kan skyte) den som klatrer. Plattform på toppen med hull der stigene kommer opp.
     // Den hellige ferskenen svever over toppen (se holybomb.js).
     box(-1, 0, 0, 20, -1, 0, T.HOLY);              // søylen
     box(-3, 2, 21, 21, -3, 2, T.HOLY);             // plattformen (6 x 6), toppen er y = 22
-    box(-2, 1, 21, 21, 1, 2, 0);                   // hull for stigen (kaninenes side)
-    box(-2, 1, 21, 21, -3, -2, 0);                 // hull for stigen (flygeekornenes side)
+    box(1, 2, 21, 21, -2, 1, 0);                   // hull for stigen (østsiden – synlig fra begge slottene)
+    box(-3, -2, 21, 21, -2, 1, 0);                 // hull for stigen (vestsiden – synlig fra begge slottene)
     return g;
   }
 

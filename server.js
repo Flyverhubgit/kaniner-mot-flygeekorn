@@ -109,7 +109,7 @@ function groundTop(x, z) {
 // Ny fersken på toppen 60 sek etter smellet. Dør du med den, går den tilbake til toppen.
 const HOLY_SPOT = { x: 0, y: 22.9, z: 0 };
 const HOLY_SHIELD_MS = 4000, HOLY_BACK_MS = 60000;
-const HOLY_BLOCKS = 9, HOLY_RADIUS = 14, HOLY_MAX_DMG = 400;
+const HOLY_BLOCKS = 13, HOLY_RADIUS = 20, HOLY_MAX_DMG = 800;   // dobbelt så sinnssykt (ca. 3x så mange klosser)
 let holy = { state: 'top', holder: null, readyAt: 0 };     // state: top / held / flying / wait
 function holyState() {
   const h = holy.holder && players[holy.holder];

@@ -45,19 +45,19 @@ function buildHolyPeach() {
   return g;
 }
 
-// ---------- Stigene på tårnet (én på hver lags side) ----------
+// ---------- Stigene på tårnet (øst og vest, så begge lag ser den som klatrer) ----------
 const ladderMat = new THREE.MeshStandardMaterial({ color: 0x8b5a2b });
-[1, -1].forEach(side => {
-  const zf = side * 1.04;
-  [-0.6, 0.6].forEach(x => {
+[1, -1].forEach(side => {                      // stiger på øst- og vestsiden: synlige fra begge slottene
+  const xf = side * 1.04;
+  [-0.6, 0.6].forEach(z => {
     const rail = new THREE.Mesh(new THREE.BoxGeometry(0.08, HOLY_TOP, 0.08), ladderMat);
-    rail.position.set(x, HOLY_TOP / 2, zf);
+    rail.position.set(xf, HOLY_TOP / 2, z);
     rail.raycast = () => {};
     castleGroup.add(rail);
   });
   for (let y = 0.5; y < HOLY_TOP; y += 0.5) {
-    const rung = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.06, 0.06), ladderMat);
-    rung.position.set(0, y, zf);
+    const rung = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, 1.2), ladderMat);
+    rung.position.set(xf, y, 0);
     rung.raycast = () => {};
     castleGroup.add(rung);
   }
@@ -76,9 +76,9 @@ castleGroup.add(beam);
 
 // ---------- Klatring: står du inntil stigen? W = opp, S = ned, ellers heng fast ----------
 function onLadder(x, z, feet) {
-  if (!castleOn() || Math.abs(x) > 1.2 || feet > HOLY_TOP + 0.2) return false;
-  const az = Math.abs(z);
-  return az >= 1 && az <= 2.0;
+  if (!castleOn() || Math.abs(z) > 1.2 || feet > HOLY_TOP + 0.2) return false;
+  const ax = Math.abs(x);
+  return ax >= 1 && ax <= 2.0;
 }
 function ladderClimbV(fwd) {
   if (!alive || !onLadder(player.x, player.z, player.feetY)) return null;
@@ -122,10 +122,55 @@ holyFlash.style.cssText = 'position:fixed;inset:0;background:#fffbe8;pointer-eve
 document.body.appendChild(holyFlash);
 let holyFlashT = 0;
 function holyBoomFx(p) {
-  for (let k = 0; k < 3; k++) explode([p[0] + (Math.random() - 0.5) * 8, p[1] + 1 + Math.random() * 3, p[2] + (Math.random() - 0.5) * 8], 3);
+  for (let k = 0; k < 3; k++) explode([p[0] + (Math.random() - 0.5) * 8, p[1] + 1 + Math.random() * 3, p[2] + (Math.random() - 0.5) * 8], 3, true);
   const dist = Math.hypot(p[0] - player.x, p[2] - player.z);
   holyFlashT = Math.max(0.15, 1.2 - dist / 80);
-  shake = Math.max(shake, 2.5 - dist / 40);
+  // Trykkbølgen: en hvit ring som farer utover. Når den når deg: BOOM, risting og du blir dyttet bort.
+  wave.p = p; wave.t = 0; wave.hit = false; wave.on = true;
+  waveShell.position.set(p[0], p[1], p[2]);
+  waveRing.position.set(p[0], Math.max(0.05, p[1] - 1.5), p[2]);
+}
+
+// ---------- Trykkbølgen ----------
+const WAVE_SPEED = 45, WAVE_MAX = 70, PUSH_RANGE = 40;
+const wave = { on: false, t: 0, p: null, hit: false };
+const waveShell = new THREE.Mesh(new THREE.SphereGeometry(1, 32, 16),
+  new THREE.MeshBasicMaterial({ color: 0xfff6d8, transparent: true, opacity: 0.35, depthWrite: false, side: THREE.DoubleSide }));
+const waveRing = new THREE.Mesh(new THREE.RingGeometry(0.85, 1, 64),
+  new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.8, depthWrite: false, side: THREE.DoubleSide }));
+waveRing.rotation.x = -Math.PI / 2;
+[waveShell, waveRing].forEach(m => { m.visible = false; m.raycast = () => {}; scene.add(m); });
+let push = { x: 0, z: 0, t: 0 };
+function updateWave(dt) {
+  if (!wave.on) { waveShell.visible = waveRing.visible = false; return; }
+  wave.t += dt;
+  const r = WAVE_SPEED * wave.t, k = r / WAVE_MAX;
+  waveShell.visible = waveRing.visible = true;
+  waveShell.scale.setScalar(Math.max(0.1, r * 0.6));
+  waveShell.material.opacity = Math.max(0, 0.35 * (1 - k));
+  waveRing.scale.setScalar(Math.max(0.1, r));
+  waveRing.material.opacity = Math.max(0, 0.85 * (1 - k));
+  const dx = player.x - wave.p[0], dz = player.z - wave.p[2], dist = Math.hypot(dx, dz);
+  if (!wave.hit && r >= dist) {
+    wave.hit = true;
+    playHolyBoom(Math.max(0.25, 1 - dist / 120));
+    shake = Math.max(shake, 3 - dist / 30);
+    if (alive && dist < PUSH_RANGE) {               // dytt bort fra smellet (og litt opp)
+      const f = 1 - dist / PUSH_RANGE, l = dist || 1;
+      push = { x: dx / l * 16 * f, z: dz / l * 16 * f, t: 0.6 };
+      player.vy = Math.max(player.vy, 7 * f);
+      player.onGround = false;
+    }
+  }
+  if (k >= 1) wave.on = false;
+}
+function updatePush(dt) {
+  if (push.t <= 0) return;
+  push.t -= dt;
+  const k = Math.max(0, push.t / 0.6);
+  const mx = push.x * k * dt, mz = push.z * k * dt;
+  if (!blocked(player.x + mx, player.z, player.feetY)) player.x += mx;
+  if (!blocked(player.x, player.z + mz, player.feetY)) player.z += mz;
 }
 
 // ---------- Lyder (laget i koden) ----------
@@ -141,14 +186,14 @@ function playBell(vol) {
     o.start(t); o.stop(t + 1.6);
   });
 }
-// "Ha-le-lu-JAAAH": fire akkorder, den siste lang. Sagtann gjennom et "aaah"-filter med vibrato.
+// "Ha-le-lu-JAAAH": fire akkorder, den siste lang. Myke stemmer med vibrato.
 function playChoir(vol) {
   if (!audioCtx) return;
   const t0 = audioCtx.currentTime;
   const chords = [[0, 0.3, [220, 277, 330, 440]], [0.3, 0.3, [220, 277, 330, 440]], [0.6, 0.3, [247, 294, 370, 494]], [0.9, 1.3, [293, 370, 440, 587]]];
   const out = audioCtx.createGain(); out.gain.value = vol;
-  const formant = audioCtx.createBiquadFilter(); formant.type = 'bandpass'; formant.frequency.value = 850; formant.Q.value = 1.2;
-  const soft = audioCtx.createBiquadFilter(); soft.type = 'lowpass'; soft.frequency.value = 2200;
+  const formant = audioCtx.createBiquadFilter(); formant.type = 'lowpass'; formant.frequency.value = 1400; formant.Q.value = 0.7;
+  const soft = audioCtx.createBiquadFilter(); soft.type = 'lowpass'; soft.frequency.value = 1800;
   formant.connect(soft); soft.connect(out); out.connect(audioCtx.destination);
   const vib = audioCtx.createOscillator(), vibAmt = audioCtx.createGain();
   vib.frequency.value = 5.5; vibAmt.gain.value = 4; vib.connect(vibAmt); vib.start(t0); vib.stop(t0 + 2.5);
@@ -156,7 +201,7 @@ function playChoir(vol) {
     notes.forEach((f, i) => {
       [-3, 3].forEach(det => {                     // to stemmer per tone = kor
         const o = audioCtx.createOscillator(), g = audioCtx.createGain();
-        o.type = 'sawtooth'; o.frequency.value = f; o.detune.value = det + i;
+        o.type = 'triangle'; o.frequency.value = f; o.detune.value = det + i;   // myke stemmer (ikke skarpe)
         vibAmt.connect(o.frequency);
         const a = t0 + start, e = a + len;
         g.gain.setValueAtTime(0.0001, a);
@@ -170,6 +215,29 @@ function playChoir(vol) {
   });
 }
 
+// Stort, dypt BOOM: lavt rumlende smell (lang hale) + en dyp tone som faller (kjennes i magen)
+function playHolyBoom(vol) {
+  if (!audioCtx) return;
+  const t = audioCtx.currentTime, sr = audioCtx.sampleRate, len = Math.floor(3 * sr);
+  const buf = audioCtx.createBuffer(1, len, sr), data = buf.getChannelData(0);
+  let last = 0;
+  for (let i = 0; i < len; i++) {                 // brun støy (mykere enn vanlig støy)
+    last = (last + 0.02 * (Math.random() * 2 - 1)) / 1.02;
+    data[i] = last * 3.5 * Math.pow(1 - i / len, 1.6);
+  }
+  const src = audioCtx.createBufferSource(); src.buffer = buf;
+  const lp = audioCtx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.setValueAtTime(320, t); lp.frequency.exponentialRampToValueAtTime(90, t + 2.5);
+  const g = audioCtx.createGain(); g.gain.value = vol;
+  src.connect(lp); lp.connect(g); g.connect(audioCtx.destination);
+  src.start(t);
+  const sub = audioCtx.createOscillator(), sg = audioCtx.createGain();
+  sub.type = 'sine';
+  sub.frequency.setValueAtTime(70, t); sub.frequency.exponentialRampToValueAtTime(28, t + 1.8);
+  sg.gain.setValueAtTime(vol * 0.9, t); sg.gain.exponentialRampToValueAtTime(0.001, t + 2.2);
+  sub.connect(sg); sg.connect(audioCtx.destination);
+  sub.start(t); sub.stop(t + 2.3);
+}
+
 // ---------- Glorie over den som bærer ferskenen ----------
 const carrierHalo = new THREE.Mesh(new THREE.TorusGeometry(0.35, 0.05, 6, 24), new THREE.MeshBasicMaterial({ color: 0xffd84a }));
 carrierHalo.rotation.x = Math.PI / 2;
@@ -180,6 +248,8 @@ scene.add(carrierHalo);
 // ---------- Hver frame ----------
 let grabCooldown = 0;
 function updateHoly(dt) {
+  updateWave(dt);
+  updatePush(dt);
   const on = castleOn();
   const top = on && holyInfo.state === 'top';
   bigPeach.visible = top;

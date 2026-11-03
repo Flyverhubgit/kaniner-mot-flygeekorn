@@ -993,7 +993,7 @@ for (let i = 0; i < 400; i++) {
 }
 let stuffIndex = 0;
 
-function explode(p, big) {
+function explode(p, big, silent) {   // [NY] silent: ingen lyd (den hellige ferskenen har sin egen)
   const b = booms[boomIndex];
   boomIndex = (boomIndex + 1) % booms.length;
   b.life = 0.35;
@@ -1018,7 +1018,7 @@ function explode(p, big) {
   }
   const dist = Math.hypot(p[0] - player.x, p[1] - (player.feetY + 1), p[2] - player.z);
   shake = Math.max(shake, 1.2 - dist / 15);
-  playBoom(Math.max(0.05, 0.6 - dist * 0.012));
+  if (!silent) playBoom(Math.max(0.05, 0.6 - dist * 0.012));
 }
 
 // Dypt smell (laget i koden, ingen lydfil)
@@ -1749,7 +1749,7 @@ socket.on('rocket', d => { spawnRocket(d.id, d.team, false, d.p, d.v); });   // 
 socket.on('boom', d => {
   removeNade(d.id);
   removeRocket(d.id);                                 // [NY] rakett
-  explode(d.p, d.big);
+  explode(d.p, d.big, d.holy);
   if (d.holy && typeof holyBoomFx === 'function') holyBoomFx(d.p);   // [NY] hvitt lys og mye fyll
   if (foamOn && d.p[1] < 3) cutHole(d.p[0], d.p[2]);   // [NY] granaten blåser bort skummet
 });
