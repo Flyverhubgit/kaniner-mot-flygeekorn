@@ -195,7 +195,7 @@ socket.on('world', d => {
     fallSwitched = false;
     fallEl.style.background = 'radial-gradient(circle, #ff5a00 0%, #6a0000 45%, #000 100%)';
     fallEl.innerHTML = '<div>AAAAAAH! &#128561;<br><span style="font-size:20px">' + teamSpan(d.team, esc(d.by)) +
-      ' dro i håndtaket...</span><br><span style="font-size:26px">Velkommen til LAVA-DOEN! &#128293;&#128701;</span></div>';
+      ' dro i håndtaket...</span><br><span style="font-size:min(26px,6vw);white-space:nowrap">Velkommen til LAVA-BANEN! &#128293;</span></div>';
     playFallScream();
   } else if (inUnderworld) {
     exitUnderworld();
