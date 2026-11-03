@@ -353,15 +353,27 @@ function releaseAll() {
 }
 window.addEventListener('blur', releaseAll);
 
+// [FIKS] Lås musa med "rå" musebevegelse (unadjustedMovement). Den vanlige låsen i Chrome på Windows
+// gir av og til hoppende verdier -> kameraet hakker når du panorerer. Faller tilbake til vanlig lås.
+function lockMouse(onFail) {
+  const cv = renderer.domElement;
+  try {
+    const p = cv.requestPointerLock({ unadjustedMovement: true });
+    if (p && p.catch) p.catch(() => {
+      try {
+        const p2 = cv.requestPointerLock();
+        if (p2 && p2.catch) p2.catch(() => { if (onFail) onFail(); });
+      } catch (e) { if (onFail) onFail(); }
+    });
+  } catch (err) {
+    if (onFail) onFail();
+  }
+}
+
 if (!isTouch) {
-  overlay.innerHTML = '<div><b>Klikk for å spille</b><br>WASD = gå &nbsp; Mus = sikte<br>Mellomrom = hopp &nbsp; Shift = løp<br>C = slide (mens du går) &nbsp; Esc = pause<br>Venstre museknapp = skyt &nbsp; R = lad om<br>G = kast granat &nbsp; Hold Q = dukk<br>1 / 2 / 3 / musehjul = bytt våpen (3 = bazooka) &nbsp; Høyre museknapp = kikkert<br>&#129991; Tips: klatre til toppen av pyramiden (den rosa boblen) = SKUMFEST!<br>Kanin: superhopp &nbsp; Flygeekorn: hold mellomrom i lufta = svev<br>Hold Tab = poengtavle<br>Virker ikke musen? Hold inne venstre knapp og dra, og skyt med F.</div>';
+  overlay.innerHTML ='<div><b>Klikk for å spille</b><br>WASD = gå &nbsp; Mus = sikte<br>Mellomrom = hopp &nbsp; Shift = løp<br>C = slide (mens du går) &nbsp; Esc = pause<br>Venstre museknapp = skyt &nbsp; R = lad om<br>G = kast granat &nbsp; Hold Q = dukk<br>1 / 2 / 3 / musehjul = bytt våpen (3 = bazooka) &nbsp; Høyre museknapp = kikkert<br>&#129991; Tips: klatre til toppen av pyramiden (den rosa boblen) = SKUMFEST!<br>Kanin: superhopp &nbsp; Flygeekorn: hold mellomrom i lufta = svev<br>Hold Tab = poengtavle<br>Virker ikke musen? Hold inne venstre knapp og dra, og skyt med F.</div>';
   overlay.addEventListener('click', () => {
-    try {
-      const p = renderer.domElement.requestPointerLock();
-      if (p && p.catch) p.catch(() => { overlay.style.display = 'none'; });
-    } catch (err) {
-      overlay.style.display = 'none';
-    }
+    lockMouse(() => { overlay.style.display = 'none'; });
   });
   document.addEventListener('pointerlockerror', () => { overlay.style.display = 'none'; });
   document.addEventListener('pointerlockchange', () => {
@@ -2005,12 +2017,7 @@ el('joinBtn').addEventListener('click', () => {
   if (pickedMap && el('mapRow').style.display !== 'none') lastJoin.map = pickedMap;   // [NY] første spiller velger bane
   socket.emit('join', lastJoin);
   nameInput.blur();
-  if (!isTouch) {
-    try {
-      const p = renderer.domElement.requestPointerLock();
-      if (p && p.catch) p.catch(() => {});
-    } catch (err) {}
-  }
+  if (!isTouch) lockMouse();
 });
 
 // [NY] Til testing i nettleseren
