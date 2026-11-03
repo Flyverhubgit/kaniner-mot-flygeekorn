@@ -110,8 +110,8 @@
     // Den hellige ferskenen svever over toppen (se holybomb.js).
     box(-1, 0, 0, 20, -1, 0, T.HOLY);              // søylen
     box(-3, 2, 21, 21, -3, 2, T.HOLY);             // plattformen (6 x 6), toppen er y = 22
-    box(-1, 0, 21, 21, 1, 2, 0);                   // hull for stigen (kaninenes side)
-    box(-1, 0, 21, 21, -3, -2, 0);                 // hull for stigen (flygeekornenes side)
+    box(-2, 1, 21, 21, 1, 2, 0);                   // hull for stigen (kaninenes side)
+    box(-2, 1, 21, 21, -3, -2, 0);                 // hull for stigen (flygeekornenes side)
     return g;
   }
 

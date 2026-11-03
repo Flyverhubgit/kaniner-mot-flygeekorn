@@ -105,7 +105,7 @@ function groundTop(x, z) {
 }
 // [NY] DEN HELLIGE FERSKENEN: svever på toppen av tårnet midt i klosseslottet.
 // Den som går inn i den får 4 sek skjold, og neste granat-kast er ferskenen.
-// Smeller etter 3,5 sek: sprenger et halvt slott og skader ALLE (også eget lag og deg selv).
+// Smeller etter 3,5 sek: sprenger et halvt slott og skader ALLE (også eget lag) – bare den som kastet er trygg.
 // Ny fersken på toppen 60 sek etter smellet. Dør du med den, går den tilbake til toppen.
 const HOLY_SPOT = { x: 0, y: 22.9, z: 0 };
 const HOLY_SHIELD_MS = 4000, HOLY_BACK_MS = 60000;
@@ -361,7 +361,7 @@ io.on('connection', socket => {
       if (holy.state === 'flying') setHoly('wait');
       if (intermission) return;
       Object.values(players).forEach(t => {
-        if (!t.alive) return;
+        if (!t.alive || t.id === p.id) return;          // den som kastet er trygg (alle andre er ikke!)
         const dist = Math.hypot(t.x - pos[0], t.y + 0.9 - pos[1], t.z - pos[2]);
         if (dist >= HOLY_RADIUS) return;
         const dmg = Math.round(HOLY_MAX_DMG * (1 - dist / HOLY_RADIUS));

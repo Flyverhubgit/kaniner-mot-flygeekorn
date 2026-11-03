@@ -10,7 +10,7 @@
 const HOLY_FUSE = 3.5;
 const HOLY_TOP = CM.TOWER.top;                 // toppen av plattformen (y = 22)
 const HOLY_SPOT = new THREE.Vector3(0, HOLY_TOP + 0.9, 0);
-const CLIMB_SPEED = 3;                         // meter per sekund opp/ned stigen
+const CLIMB_SPEED = 4.5;                         // meter per sekund opp/ned stigen
 let holyInfo = { state: 'top', holder: null };
 window.holyMine = false;
 
@@ -76,9 +76,9 @@ castleGroup.add(beam);
 
 // ---------- Klatring: står du inntil stigen? W = opp, S = ned, ellers heng fast ----------
 function onLadder(x, z, feet) {
-  if (!castleOn() || Math.abs(x) > 0.65 || feet > HOLY_TOP + 0.2) return false;
+  if (!castleOn() || Math.abs(x) > 1.2 || feet > HOLY_TOP + 0.2) return false;
   const az = Math.abs(z);
-  return az >= 1 && az <= 1.75;
+  return az >= 1 && az <= 2.0;
 }
 function ladderClimbV(fwd) {
   if (!alive || !onLadder(player.x, player.z, player.feetY)) return null;
@@ -212,7 +212,7 @@ socket.on('holy', d => {
   if (!castleOn()) return;
   if (window.holyMine && !wasMine) {
     myProtectUntil = performance.now() + 4000;     // 4 sek skjold
-    bannerMsg = '&#127825; DU HAR DEN HELLIGE FERSKENEN! &#127825;<br><span style="font-size:20px">4 sek skjold – kom deg ned!<br>Kast den med ' + (isTouch ? 'GRANAT-knappen' : 'G') + '. Den treffer ALLE, også deg!</span>';
+    bannerMsg = '&#127825; DU HAR DEN HELLIGE FERSKENEN! &#127825;<br><span style="font-size:20px">4 sek skjold – kom deg ned!<br>Kast den med ' + (isTouch ? 'GRANAT-knappen' : 'G') + '. Den treffer ALLE – også laget ditt!</span>';
     bannerTime = 4.5;
     playBell(0.5);
   } else if (d.state === 'held') {
