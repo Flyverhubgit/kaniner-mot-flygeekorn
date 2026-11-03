@@ -778,11 +778,12 @@ io.on('connection', socket => {
       return;
     }
     // Uendelig med granater i underverdenen
-    if (!p || !p.alive || (worldName !== 'underworld' && p.nades <= 0) || !d || typeof d.id !== 'string' || d.id.length > 40) return;
+    const endless = worldName === 'underworld' || mapName === 'farm';   // [NY] uendelig i underverdenen og på kyllingfarmen
+    if (!p || !p.alive || (!endless && p.nades <= 0) || !d || typeof d.id !== 'string' || d.id.length > 40) return;
     if (!Array.isArray(d.p) || !Array.isArray(d.v)) return;
     const pos = d.p.map(v => num(v, -100, 100)), vel = d.v.map(v => num(v, -40, 40));
     if (pos.includes(null) || vel.includes(null)) return;
-    if (worldName !== 'underworld') p.nades--;
+    if (!endless) p.nades--;
     p.protectedUntil = 0;
     p.pending[d.id] = Date.now();
     socket.broadcast.emit('nade', { id: d.id, p: pos, v: vel });
@@ -974,7 +975,7 @@ io.on('connection', socket => {
   // Bazooka: rakett skutt (vises for de andre)
   socket.on('rocketFire', d => {
     const p = players[socket.id];
-    if (!p || !p.alive || p.rockets <= 0 || !d || typeof d.id !== 'string' || d.id.length > 40) return;
+    if (!p || !p.alive || (p.rockets <= 0 && mapName !== 'farm') || !d || typeof d.id !== 'string' || d.id.length > 40) return;   // [NY] uendelig på kyllingfarmen
     if (!Array.isArray(d.p) || !Array.isArray(d.v)) return;
     const pos = d.p.map(v => num(v, -100, 100)), vel = d.v.map(v => num(v, -40, 40));
     if (pos.includes(null) || vel.includes(null)) return;

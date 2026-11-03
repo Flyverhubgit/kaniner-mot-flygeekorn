@@ -887,8 +887,9 @@ function removeNade(id) {
 function throwNade() {
   if (typeof spaceThrow === 'function' && spaceThrow()) return;   // [NY] torpedo fra jagerflyet
   if (typeof holyThrow === 'function' && holyThrow()) return;   // [NY] har du den hellige ferskenen, kastes den
-  if (!joined || !alive || (!underNow() && grenades <= 0) || nadeCooldown > 0) return;
-  if (!underNow()) grenades--;            // [NY] uendelig med granater i underverdenen
+  const endless = underNow() || (typeof farmOn === 'function' && farmOn());   // [NY] uendelig i underverdenen og på kyllingfarmen
+  if (!joined || !alive || (!endless && grenades <= 0) || nadeCooldown > 0) return;
+  if (!endless) grenades--;            // [NY] uendelig med granater i underverdenen
   myProtectUntil = 0;
   nadeCooldown = 0.8;
   camera.updateMatrixWorld(true);
@@ -1089,6 +1090,7 @@ function removeRocket(id) {
 }
 function fireRocket() {
   if (weapon.mag <= 0) return;
+  if (typeof farmOn === 'function' && farmOn()) bazW.reserve = 9;   // [NY] kyllingfarmen: uendelig med raketter (men du lader om)
   weapon.mag--;
   fireCooldown = weapon.fireDelay;
   recoil = 1.5;
@@ -1347,7 +1349,7 @@ function shoot() {
   if (typeof inMortar !== 'undefined' && inMortar) { fireMortar(); return; }   // [NY] står i morteren
   const egg = typeof minigunOn === 'function' && minigunOn();   // [NY] eggmaskingevær (gullegg på kyllingfarmen)
   if (weapon === bazW && !egg) { fireRocket(); return; }   // [NY] bazooka skyter en rakett i stedet for en kule
-  if (!egg) weapon.mag--;
+  if (!egg && !(typeof farmOn === 'function' && farmOn())) weapon.mag--;   // [NY] kyllingfarmen: bunnløst magasin
   fireCooldown = egg ? 0.06 : weapon.fireDelay;
   myProtectUntil = 0;                             // [NY] skyter du, er skjoldet borte
   const sn = weapon === sniperW && !egg;         // [NY] snikskytter?
@@ -1500,7 +1502,7 @@ function updateWeapon(dt) {
 
   const wIcon = weapon === sniperW ? (myTeam === 'bunny' ? '🥕 ' : '🌰 ') : weapon === bazW ? '🚀 ' : 'AK ';   // [NY] gulrot / nøtt / bazooka
   hud.textContent = wIcon + (reloading > 0 ? 'LADER...' : weapon.mag + ' / ' + (weapon.reserve === Infinity ? '∞' : weapon.reserve)) +
-    '   💣 ' + (underNow() ? '∞' : grenades) + (window.holyMine ? '   🍑 HELLIG FERSKEN (G)' : '');   // [NY] viser granater også (uendelig i underverdenen)
+    '   💣 ' + (underNow() || (typeof farmOn === 'function' && farmOn()) ? '∞' : grenades) + (window.holyMine ? '   🍑 HELLIG FERSKEN (G)' : '');   // [NY] viser granater også (uendelig i underverdenen)
 }
 
 // ===================================================================

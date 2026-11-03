@@ -50,7 +50,7 @@ Fem baner. Den første som kommer inn på en tom server velger banen. Etter hver
   - Dere starter i kampsenteret midt på gården (Hesco-murer, sandsekker, piggtråd, containere, vakttårn). Alt kan sprenges – også av dere selv!
   - 10 bølger. Kyllingene kryper opp av kirkegårdene i hjørnene og hakker seg gjennom alt som står i veien. Står du høyt, hakker de i bakken under deg.
   - Typer: vanlige (vakler), løpere (raske), eggkastere (råtne egg), eksplosive (smeller) og KONG KLUKK (sjefen, bølge 5 og 10).
-  - 10 granater og 4 raketter – fylles opp etter hver bølge. Døde kommer tilbake i pausen. Alle døde = kyllingene vinner. Klar alle 10 = gården er reddet!
+  - UENDELIG med ammo: AK og snikskytter trenger aldri å lade om, uendelig med granater og raketter (bazookaen lader fortsatt om). Døde kommer tilbake i pausen. Alle døde = kyllingene vinner. Klar alle 10 = gården er reddet!
   - Røde tønner smeller i kjedereaksjon. Høy, mais og telt tar fyr og brenner. Gullegg = eggmaskingevær i 20 sek.
   - Stiger på tårn, containere, portbroer, låve, våningshus og silo (W = opp, S = ned). Piggtråd gir halv fart.
 - 3 granater per liv. Smeller etter 2 sek, opptil 110 skade innenfor 6 m.
