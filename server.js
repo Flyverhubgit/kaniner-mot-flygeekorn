@@ -397,7 +397,7 @@ function waveList(n) {
   return list;
 }
 function startWave(n) {
-  farm.wave = n; farm.state = 'fight'; farm.queue = waveList(n); farm.nextSpawn = Date.now() + 500;
+  farm.wave = n; farm.state = 'fight'; farm.queue = waveList(n); farm.nextSpawn = Date.now() + 500; farm.waveAt = Date.now();
   farm.barrels.forEach(b => { b.alive = true; });                  // nye tønner hver bølge
   farm.a10Used = false;                                            // ny A-10 hver bølge
   io.emit('barrels', farm.barrels);
@@ -408,7 +408,9 @@ function spawnChick(type) {
   const T = CHICK[type], np = Math.max(1, farmPlayers().length);
   const hp = type === 'king' ? Math.round((farm.wave >= 10 ? 2500 : 1500) * (1 + 0.5 * (np - 1))) : T.hp;
   const c = { id: ++chickSeq, type, t: CTYPES.indexOf(type), x: sx + 0.5 + (Math.random() - 0.5) * 6, z: sz + 0.5 + (Math.random() - 0.5) * 5,
-    yaw: 0, hp, max: hp, atkAt: 0, peckAt: 0, pecking: 0, throwAt: Date.now() + 2000 + Math.random() * 2000, slamAt: Date.now() + 5000 };
+    yaw: 0, hp, max: hp, atkAt: 0, peckAt: 0, pecking: 0, throwAt: Date.now() + 2000 + Math.random() * 2000, slamAt: Date.now() + 5000,
+    ax: 0, az: 0, anchorAt: Date.now(), throws: 0, walkUntil: 0 };
+  c.ax = c.x; c.az = c.z;
   farm.chicks.set(c.id, c);
   if (type === 'king') io.emit('king', { id: c.id });
 }
@@ -557,6 +559,13 @@ function farmTick() {
       spawnChick(farm.queue.shift());
       farm.nextSpawn = now + Math.max(120, 300 - farm.wave * 15);   // kryper fortere opp (det er 3x så mange)
     }
+    // [FIKS] Sikkerhetsnett: noen få kyllinger igjen og bølgen har vart altfor lenge? De flykter.
+    if (!farm.queue.length && farm.chicks.size && farm.chicks.size <= 3 && now - (farm.waveAt || now) > (90 + farm.wave * 8) * 1000 &&
+        ![...farm.chicks.values()].some(c => c.type === 'king')) {
+      farm.chicks.forEach(c => io.emit('chickDie', { id: c.id, x: +c.x.toFixed(1), z: +c.z.toFixed(1), t: c.t }));
+      farm.chicks.clear();
+      io.emit('fled', { n: farm.wave });
+    }
     if (!farm.queue.length && !farm.chicks.size) {
       if (farm.wave >= FARM_WAVES) { endFarm('win'); return; }
       farm.state = 'break'; farm.until = now + FARM_BREAK_MS;
@@ -599,9 +608,12 @@ function farmTick() {
     const dx = gx - c.x, dz = gz - c.z, dist = Math.hypot(dx, dz);
     c.yaw = Math.atan2(tgt.x - c.x, tgt.z - c.z);
     // Eggkaster: står i avstand og kaster råtne egg
-    if (c.type === 'thrower' && best < 16 && best > 4) {
+    if (c.type === 'thrower' && best < 12 && best > 6 && now >= (c.walkUntil || 0)) {   // [FIKS] nærmere, og går videre etter 3 kast
       if (now >= c.throwAt) {
         c.throwAt = now + T.atkMs;
+        c.anchorAt = now;
+        c.throws = (c.throws || 0) + 1;
+        if (c.throws >= 3) { c.throws = 0; c.walkUntil = now + 3500; }
         const to = [tgt.x + (Math.random() - 0.5) * 1.2, tgt.y + 1, tgt.z + (Math.random() - 0.5) * 1.2];
         io.emit('egg', { from: [+c.x.toFixed(1), 1.2, +c.z.toFixed(1)], to: to.map(v => +v.toFixed(1)), ms: 1100 });
         setTimeout(() => {
@@ -617,6 +629,7 @@ function farmTick() {
         c.atkAt = now + T.atkMs;
         chickHurt(tgt, T.dmg, c.type === 'king' ? 'Kong Klukk' : 'Zombie-kylling', 'chicken', c.x, c.z);
       }
+      c.anchorAt = now;
       return;
     }
     // Kongen: bakkeslag som rister alt rundt seg
@@ -637,6 +650,7 @@ function farmTick() {
         }
       }
       c.pecking = 1;
+      c.anchorAt = now;
       return;
     }
     if (dist < 0.05) return;
@@ -651,6 +665,14 @@ function farmTick() {
       const cx = ux * Math.cos(a) - uz * Math.sin(a), cz = ux * Math.sin(a) + uz * Math.cos(a);
       const nx = c.x + cx * sp, nz = c.z + cz * sp;
       if (!chickBlocked(nx, nz, T.r, T.h)) { c.x = nx; c.z = nz; moved = true; break; }
+    }
+    // [FIKS] Står fast lenge (ikke flyttet seg 1 m på 15 sek)? Flytt kyllingen til porten.
+    if (c.ax === undefined) { c.ax = c.x; c.az = c.z; c.anchorAt = now; }
+    if (Math.hypot(c.x - c.ax, c.z - c.az) > 1) { c.ax = c.x; c.az = c.z; c.anchorAt = now; }
+    else if (now - c.anchorAt > 15000) {
+      const gz = c.z < 0 ? -19 : 18, gx = -0.5 + (Math.random() - 0.5) * 3;
+      if (!chickBlocked(gx, gz, T.r, T.h)) { c.x = gx; c.z = gz; c.ax = gx; c.az = gz; }
+      c.anchorAt = now;
     }
     if (!moved) {                                                   // står fast: hakk deg gjennom!
       const b = chickBlocked(c.x + ux * (T.r + 0.4), c.z + uz * (T.r + 0.4), T.r, T.h);

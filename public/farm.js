@@ -442,6 +442,7 @@ socket.on('wave', w => {
     bannerTime = 6;
   }
 });
+socket.on('fled', () => { if (farmOn()) { bannerMsg = '&#127939;&#128020; De siste kyllingene flyktet! Neste bølge kommer...'; bannerTime = 3; } });
 socket.on('refill', d => { grenades = d.nades; bazW.mag = 1; bazW.reserve = d.rockets - 1; });
 socket.on('respawn', () => { if (farmOn()) { grenades = 10; bazW.mag = 1; bazW.reserve = 3; } });
 socket.on('welcome', d => { if (d.map === 'farm') { grenades = 10; bazW.mag = 1; bazW.reserve = 3; } });
