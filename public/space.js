@@ -844,7 +844,7 @@ function updateOthersSpace(dt) {
         setFlames(r.fighter, 1);
       }
     }
-    r.body.visible = !inFighter;
+    r.body.visible = !inFighter && r.vehicle !== 9;   // 9 = sitter i doseren på kyllingfarmen
     if (r.tagY0 === undefined) r.tagY0 = r.tag.position.y;
     r.tag.position.y = inFighter ? 3.6 : r.tagY0;
   }

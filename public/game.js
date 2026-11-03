@@ -512,6 +512,7 @@ if (isTouch) {
 
 // ---------- Oppdater spilleren hver ramme ----------
 function updatePlayer(dt) {
+  if (typeof farmVehicleUpdate === 'function' && farmVehicleUpdate(dt)) return;   // [NY] sitter i doseren (farmvehicles.js)
   if (typeof spaceFlyUpdate === 'function' && spaceFlyUpdate(dt)) return;   // [NY] sitter i et jagerfly (space.js)
   // Hvilken vei vil spilleren gå? (fremover/sidelengs, -1 til 1)
   let fwd = touchMove.y, strafe = touchMove.x;
@@ -1345,6 +1346,7 @@ function muzzleWorld() {
 }
 
 function shoot() {
+  if (typeof farmShoot === 'function' && farmShoot()) return;   // [NY] dosertankens kanon / A-10 fra radioen
   if (typeof spaceShoot === 'function' && spaceShoot()) return;   // [NY] laser fra jagerfly / kanontårn
   if (typeof inMortar !== 'undefined' && inMortar) { fireMortar(); return; }   // [NY] står i morteren
   const egg = typeof minigunOn === 'function' && minigunOn();   // [NY] eggmaskingevær (gullegg på kyllingfarmen)
@@ -1474,7 +1476,7 @@ function updateWeapon(dt) {
     window.__scopeBtn.style.display = weapon === sniperW && joined ? 'flex' : 'none';
     window.__scopeBtn.style.background = scoped ? 'rgba(255,150,205,0.6)' : 'rgba(255,255,255,0.3)';
   }
-  gun.visible = alive && joined && !scoped && !(typeof inMortar !== 'undefined' && inMortar) && !(typeof spaceHideGun === 'function' && spaceHideGun());  // [NY] skjul våpenet i menyen, når du er død, i kikkerten og i morteren
+  gun.visible = alive && joined && !scoped && !(typeof inMortar !== 'undefined' && inMortar) && !(typeof spaceHideGun === 'function' && spaceHideGun()) && !(typeof farmHideGun === 'function' && farmHideGun());  // [NY] skjul våpenet i menyen, når du er død, i kikkerten og i morteren
 
   flashTime -= dt;
   flash.visible = flashTime > 0;
@@ -2028,6 +2030,7 @@ function animate(now) {
     if (typeof updateHoly === 'function') updateHoly(dt);       // [NY] den hellige ferskenen
     if (typeof updateSpace === 'function') updateSpace(dt);     // [NY] verdensrommet
     if (typeof updateFarm === 'function') updateFarm(dt);       // [NY] zombie-kyllingfarmen
+    if (typeof updateFarmVehicles === 'function') updateFarmVehicles(dt);   // [NY] doser og A-10
     updateUnderworld(dt);       // [NY] underverdenen (underworld.js)
     updateHud(dt);
   }

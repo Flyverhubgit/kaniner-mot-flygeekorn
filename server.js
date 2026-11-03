@@ -188,7 +188,8 @@ function fleetState() {
   });
   return o;
 }
-function leaveVehicle(p) {                       // ut av jagerfly / kanontårn
+function leaveVehicle(p) {                       // ut av jagerfly / kanontårn / doser
+  if (p.vehicle === 'tank') tankLeave(p);
   if (p.vehicle === 'turret' && fleet[p.team]) {
     const u = fleet[p.team].turrets[p.turret];
     if (u && u.gunner === p.id) u.gunner = null;
@@ -256,17 +257,61 @@ let farm = null, farmRecord = 0, chickSeq = 0, goldSeq = 0;
 function resetFarm() {
   farm = { wave: 0, state: 'prep', until: Date.now() + FARM_PREP_MS, chicks: new Map(), queue: [], nextSpawn: 0,
     barrels: BARREL_SPOTS.map(([x, z], i) => ({ id: i, x: x + 0.5, z: z + 0.5, alive: true })),
-    fire: new Map(), gold: new Map(), lastFire: 0 };
+    fire: new Map(), gold: new Map(), lastFire: 0, tank: newTank(), a10Used: false };
+  Object.values(players).forEach(p => { if (p.vehicle === 'tank') p.vehicle = null; });
   io.emit('barrels', farm.barrels);
   io.emit('gold', { list: [] });
   emitWave();
+}
+// ---------- [NY] BULLDOSER-TANKEN (2 spillere: én kjører, én skyter) ----------
+const TANK_HP = 600, TANK_PARK = { x: -6, z: 0, yaw: Math.PI };
+const TANK_RELOAD_MS = 1800, TANK_SHELL_BLOCKS = 3.2, TANK_SHELL_R = 5, TANK_SHELL_DMG = 220;
+// Myke ting doseren kjører rett gjennom: mais, gjerder, høy, halm, telt, sandsekker, kasser, blader
+const DOZABLE = new Set([FM.T.CORN, FM.T.FENCE, FM.T.HAY, FM.T.STRAW, FM.T.TENT, FM.T.SAND, FM.T.CRATE, FM.T.LEAVES, FM.T.TOMB]);
+function newTank() { return { x: TANK_PARK.x, z: TANK_PARK.z, yaw: TANK_PARK.yaw, ty: TANK_PARK.yaw, tp: 0, spd: 0, hp: TANK_HP, driver: null, gunner: null, alive: true, reloadAt: 0 }; }
+function tankState() { const t = farm && farm.tank; return t ? { x: +t.x.toFixed(2), z: +t.z.toFixed(2), yaw: +t.yaw.toFixed(3), ty: +t.ty.toFixed(3), tp: +t.tp.toFixed(3), hp: t.hp, max: TANK_HP, driver: t.driver, gunner: t.gunner, alive: t.alive } : null; }
+function tankLeave(p) {
+  const t = farm && farm.tank;
+  if (t) { if (t.driver === p.id) t.driver = null; if (t.gunner === p.id) t.gunner = null; }
+  if (p.vehicle === 'tank') p.vehicle = null;
+}
+function damageTank(dmg) {
+  const t = farm.tank;
+  if (!t || !t.alive) return;
+  t.hp = Math.max(0, t.hp - dmg);
+  if (t.hp === 0) {                                  // BOOM – begge faller ut
+    t.alive = false;
+    io.emit('boom', { id: 'tank', p: [t.x, 1.2, t.z], big: 3 });
+    areaHurtChicks(t.x, t.z, 6, 150, null);
+    [t.driver, t.gunner].forEach(id => { const p = players[id]; if (p) { p.vehicle = null; io.to(id).emit('tankOut', {}); } });
+    t.driver = t.gunner = null;
+    io.emit('tankDown', {});
+  }
+}
+// ---------- [NY] A-10 STØTTEANGREP (radio i vakttårnet, ett per bølge) ----------
+const RADIO = { x: -0.5, y: 8, z: -0.5 };
+const A10_DELAY = 3000, A10_LEN = 46, A10_RUN_MS = 1300;
+function a10Strike(p, x, z, yaw) {
+  const dx = -Math.sin(yaw), dz = -Math.cos(yaw), now = Date.now();
+  io.emit('a10', { x, z, dx, dz, at: A10_DELAY, run: A10_RUN_MS, len: A10_LEN, by: p.name });
+  const steps = 20;
+  for (let k = 0; k <= steps; k++) {
+    setTimeout(() => {
+      if (!farmActive()) return;
+      const s = -A10_LEN / 2 + A10_LEN * k / steps, px = x + dx * s, pz = z + dz * s;
+      blastCells(px, 0.6, pz, 1.6);
+      areaHurtChicks(px, pz, 3.2, 320, p);
+      if (k % 3 === 0) igniteAt(px, 0.6, pz, 2.5);
+      chainBarrels(px, pz, 2.5, p);
+    }, A10_DELAY + A10_RUN_MS * k / steps);
+  }
 }
 function farmActive() { return mapName === 'farm' && worldName === 'main' && farm; }
 function farmPlayers() { return Object.values(players); }
 function emitWave(extra) {
   if (!farm) return;
   const left = farm.queue.length + farm.chicks.size;
-  io.emit('wave', Object.assign({ n: farm.wave, total: FARM_WAVES, state: farm.state, left,
+  io.emit('wave', Object.assign({ n: farm.wave, total: FARM_WAVES, state: farm.state, left, a10: !farm.a10Used,
     in: Math.max(0, Math.ceil((farm.until - Date.now()) / 1000)), record: farmRecord }, extra || {}));
 }
 function waveList(n) {
@@ -282,6 +327,7 @@ function waveList(n) {
 function startWave(n) {
   farm.wave = n; farm.state = 'fight'; farm.queue = waveList(n); farm.nextSpawn = Date.now() + 500;
   farm.barrels.forEach(b => { b.alive = true; });                  // nye tønner hver bølge
+  farm.a10Used = false;                                            // ny A-10 hver bølge
   io.emit('barrels', farm.barrels);
   emitWave({ start: true });
 }
@@ -314,6 +360,7 @@ function peckCell(i, dmg) {
 // Skade fra kyllinger, ild og tønner på spillere (gir ingen poeng)
 function chickHurt(t, dmg, who, weapon, fromX, fromZ) {
   if (!t.alive || Date.now() < (t.protectedUntil || 0) || intermission) return;
+  if (t.vehicle === 'tank' && farm && farm.tank && farm.tank.alive) { damageTank(dmg); return; }   // [NY] doseren tar støyten
   t.hp -= dmg;
   if (t.hp <= 0) killByWorld(t, who, weapon);
   else io.to(t.id).emit('damaged', { hp: t.hp, fromX: fromX === undefined ? t.x : fromX, fromZ: fromZ === undefined ? t.z : fromZ });
@@ -439,6 +486,7 @@ function farmTick() {
     if (!farm.queue.length && !farm.chicks.size) {
       if (farm.wave >= FARM_WAVES) { endFarm('win'); return; }
       farm.state = 'break'; farm.until = now + FARM_BREAK_MS;
+      if (!farm.tank.alive) { const keep = farm.tank; farm.tank = newTank(); io.emit('tankBack', {}); } else farm.tank.hp = TANK_HP;   // doseren repareres
       farmRecord = Math.max(farmRecord, farm.wave);
       // Pause: de døde kommer tilbake, alle får fulle granater og raketter
       all.forEach(p => { if (!p.alive) respawn(p); else { p.nades = FARM_NADES; p.rockets = FARM_ROCKETS; } io.to(p.id).emit('refill', { nades: FARM_NADES, rockets: FARM_ROCKETS }); });
@@ -463,7 +511,17 @@ function farmTick() {
       if (Math.hypot(c.x + 0.5, c.z - gzOut) > 2.5 && Math.abs(c.z) > 17) { gx = -0.5; gz = gzOut; } else { gx = -0.5; gz = gzIn; }
       if (Math.abs(c.x + 0.5) < 2 && Math.abs(c.z) < 17) { gx = tgt.x; gz = tgt.z; }
     }
-    const high = tgt.y > 1.2;
+    // Spilleren sitter i doseren? Da hakker kyllingene på doseren i stedet.
+    if (tgt.vehicle === 'tank' && farm.tank.alive) {
+      const tk = farm.tank, td = Math.hypot(tk.x - c.x, tk.z - c.z);
+      if (td < 2.6 + T.r) {
+        if (c.type === 'exploder') { chickExplode(c); damageTank(80); return; }
+        if (now >= c.atkAt) { c.atkAt = now + T.atkMs; damageTank(T.dmg); }
+        c.pecking = 1;
+        return;
+      }
+    }
+    const high = tgt.y > 1.2 && tgt.vehicle !== 'tank';
     const dx = gx - c.x, dz = gz - c.z, dist = Math.hypot(dx, dz);
     c.yaw = Math.atan2(tgt.x - c.x, tgt.z - c.z);
     // Eggkaster: står i avstand og kaster råtne egg
@@ -526,6 +584,19 @@ function farmTick() {
       c.pecking = 1;
     }
   });
+  // Doseren kjører over kyllinger (flate kyllinger!) når den er i fart
+  const tk = farm.tank;
+  if (tk && tk.alive && Math.abs(tk.spd) > 1.2) {
+    const fx = -Math.sin(tk.yaw), fz = -Math.cos(tk.yaw);
+    [...farm.chicks.values()].forEach(c => {
+      const rx = c.x - tk.x, rz = c.z - tk.z, along = rx * fx + rz * fz, side = Math.abs(rx * fz - rz * fx);
+      if (side < 1.6 && along > -2.2 && along < 2.6) {
+        if (c.type === 'king') { c.x += fx * 0.4; c.z += fz * 0.4; hurtChick(c, 25, players[tk.driver]); }
+        else hurtChick(c, 999, players[tk.driver]);
+      }
+    });
+  }
+  if (tk) io.emit('tank', tankState());
   // Skyv kyllinger litt fra hverandre (så de ikke står oppå hverandre)
   for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++) {
     const a = list[i], b = list[j], dx = b.x - a.x, dz = b.z - a.z, d = Math.hypot(dx, dz), min = CHICK[a.type].r + CHICK[b.type].r;
@@ -935,6 +1006,78 @@ io.on('connection', socket => {
     const b = farm.barrels[d.id | 0];
     if (b) explodeBarrel(b, p);
   });
+  // Bulldoser-tanken: inn (sjåfør hvis ledig, ellers skytter), ut, kjøring, sikting, skudd
+  socket.on('tankIn', () => {
+    const p = players[socket.id], t = farm && farm.tank;
+    if (!p || !p.alive || !farmActive() || !t || !t.alive || p.vehicle) return;
+    if (Math.hypot(p.x - t.x, p.z - t.z) > 4.5) return;
+    if (!t.driver) { t.driver = p.id; p.vehicle = 'tank'; socket.emit('tankRole', { role: 'driver' }); }
+    else if (!t.gunner) { t.gunner = p.id; p.vehicle = 'tank'; socket.emit('tankRole', { role: 'gunner' }); }
+    else socket.emit('tankRole', { role: null });
+  });
+  socket.on('tankOut', () => { const p = players[socket.id]; if (p) tankLeave(p); });
+  socket.on('tankMove', d => {
+    const p = players[socket.id], t = farm && farm.tank;
+    if (!p || !t || t.driver !== p.id || !t.alive || !d) return;
+    const x = num(d.x, -79, 79), z = num(d.z, -49, 49), yaw = num(d.yaw, -1e5, 1e5), spd = num(d.spd, -20, 20);
+    if (x === null || z === null || yaw === null || spd === null || Math.hypot(x - t.x, z - t.z) > 6) return;
+    t.x = x; t.z = z; t.yaw = yaw; t.spd = spd;
+  });
+  socket.on('tankAim', d => {
+    const p = players[socket.id], t = farm && farm.tank;
+    if (!p || !t || t.gunner !== p.id || !d) return;
+    const ty = num(d.ty, -1e5, 1e5), tp = num(d.tp, -1, 1);
+    if (ty !== null && tp !== null) { t.ty = ty; t.tp = tp; }
+  });
+  socket.on('doze', d => {                           // doseren kjører gjennom myke klosser
+    const p = players[socket.id], t = farm && farm.tank;
+    if (!p || !t || t.driver !== p.id || !d || !Array.isArray(d.cells)) return;
+    const V = VOX.farm, ok = [];
+    d.cells.slice(0, 30).forEach(i => {
+      if (!Number.isInteger(i) || i < 0 || i >= V.grid.length || !DOZABLE.has(V.grid[i])) return;
+      const x = i % FM.NX + FM.X0, z = Math.floor(i / FM.NX) % FM.NZ + FM.Z0;
+      if (Math.hypot(x + 0.5 - t.x, z + 0.5 - t.z) < 4.5) ok.push(i);
+    });
+    if (ok.length) destroyCells(ok);
+  });
+  socket.on('tankFire', d => {
+    const p = players[socket.id], t = farm && farm.tank, now = Date.now();
+    if (!p || !t || t.gunner !== p.id || !t.alive || now < t.reloadAt || !d || typeof d.id !== 'string' || d.id.length > 40) return;
+    if (!Array.isArray(d.p) || !Array.isArray(d.v)) return;
+    const pos = d.p.map(v => num(v, -100, 100)), vel = d.v.map(v => num(v, -120, 120));
+    if (pos.includes(null) || vel.includes(null)) return;
+    t.reloadAt = now + TANK_RELOAD_MS;
+    p.pending[d.id] = 'shell';
+    socket.broadcast.emit('tankShell', { id: d.id, p: pos, v: vel });
+    socket.emit('tankReload', { ms: TANK_RELOAD_MS });
+  });
+  socket.on('tankBoom', d => {
+    const p = players[socket.id];
+    if (!p || !d || p.pending[d.id] !== 'shell' || !Array.isArray(d.p)) return;
+    delete p.pending[d.id];
+    const pos = d.p.map(v => num(v, -100, 100));
+    if (pos.includes(null)) return;
+    io.emit('boom', { id: d.id, p: pos, big: 2.6 });
+    blastCells(pos[0], pos[1], pos[2], TANK_SHELL_BLOCKS);
+    if (!farmActive()) return;
+    areaHurtChicks(pos[0], pos[2], TANK_SHELL_R, TANK_SHELL_DMG, p);
+    igniteAt(pos[0], pos[1], pos[2], 5);
+    chainBarrels(pos[0], pos[2], 4, p);
+  });
+  socket.on('a10Call', d => {                        // A-10 fra radioen i vakttårnet
+    const p = players[socket.id];
+    if (!p || !p.alive || !farmActive() || !d || farm.a10Used || farm.state !== 'fight') return;
+    const atRadio = q => q.alive && Math.hypot(q.x - RADIO.x, q.z - RADIO.z) < 3.5 && q.y > 6;
+    if (!atRadio(p)) return;
+    // Teamwork: 3 spillere ved radioen (eller alle som lever, hvis dere er færre enn 3)
+    const need = Math.min(3, farmPlayers().filter(q => q.alive).length), have = farmPlayers().filter(atRadio).length;
+    if (have < need) { socket.emit('a10Need', { have, need }); return; }
+    const x = num(d.x, -78, 78), z = num(d.z, -48, 48), yaw = num(d.yaw, -1e5, 1e5);
+    if (x === null || z === null || yaw === null) return;
+    farm.a10Used = true;
+    a10Strike(p, x, z, yaw);
+    emitWave();
+  });
   socket.on('goldGrab', d => {                       // plukket opp et gullegg: eggmaskingevær i 20 sek
     const p = players[socket.id];
     if (!p || !p.alive || !farmActive() || !d) return;
@@ -1084,7 +1227,7 @@ io.on('connection', socket => {
 setInterval(() => {
   const snap = {};
   Object.values(players).forEach(p => {
-    snap[p.id] = [+p.x.toFixed(2), +p.y.toFixed(2), +p.z.toFixed(2), +p.yaw.toFixed(3), +p.pitch.toFixed(3), p.alive ? 1 : 0, p.slide, p.crouch ? 1 : 0, p.glide ? 1 : 0, p.weapon || 0, Date.now() < (p.protectedUntil || 0) ? 1 : 0, p.vehicle === 'fighter' ? 1 : p.vehicle === 'turret' ? 2 + p.turret : 0, +(p.roll || 0).toFixed(2)];
+    snap[p.id] = [+p.x.toFixed(2), +p.y.toFixed(2), +p.z.toFixed(2), +p.yaw.toFixed(3), +p.pitch.toFixed(3), p.alive ? 1 : 0, p.slide, p.crouch ? 1 : 0, p.glide ? 1 : 0, p.weapon || 0, Date.now() < (p.protectedUntil || 0) ? 1 : 0, p.vehicle === 'fighter' ? 1 : p.vehicle === 'turret' ? 2 + p.turret : p.vehicle === 'tank' ? 9 : 0, +(p.roll || 0).toFixed(2)];
   });
   io.emit('snap', snap);
 }, 50);

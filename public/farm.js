@@ -271,7 +271,7 @@ socket.on('fire', d => {
     flames.set(i, s);
   });
   const dist = Math.hypot(farmWorld.cellPos(d.add[0])[0] - player.x, farmWorld.cellPos(d.add[0])[2] - player.z);
-  if (dist < 30 && Math.random() < 0.5) playWhoosh(Math.max(0.03, 0.15 - dist * 0.004));
+  if (dist < 30 && Math.random() < 0.5) playFireWhoosh(Math.max(0.03, 0.15 - dist * 0.004));
 });
 function onCellsRemoved(list) { list.forEach(i => { const f = flames.get(i); if (f) { farmGroup.remove(f); flames.delete(i); } }); }
 function updateFlames() {
@@ -513,7 +513,7 @@ function playSplat(vol) {
   s.buffer = b; f.type = 'lowpass'; f.frequency.value = 700; g.gain.value = vol;
   s.connect(f); f.connect(g); g.connect(audioCtx.destination); s.start(t);
 }
-function playWhoosh(vol) {
+function playFireWhoosh(vol) {
   if (!audioCtx) return;
   const t = audioCtx.currentTime, sr = audioCtx.sampleRate, len = Math.floor(0.6 * sr);
   const b = audioCtx.createBuffer(1, len, sr), d = b.getChannelData(0);
