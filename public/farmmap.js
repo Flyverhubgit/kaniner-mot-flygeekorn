@@ -11,7 +11,7 @@
 
   const T = { HESCO: 1, HESCO_LOW: 2, SAND: 3, STEP: 4, WOOD: 5, PLANK: 6, STAIR: 7, CRATE: 8, TENT: 9,
     RED: 10, ROOF: 11, WHITE: 12, GLASS: 13, METAL: 14, HAY: 15, CORN: 16, FENCE: 17, TRACTOR: 18, BLACK: 19,
-    TOMB: 20, DEADWOOD: 21, LEAVES: 22, STRAW: 23, DIRT: 24 };
+    TOMB: 20, DEADWOOD: 21, LEAVES: 22, STRAW: 23, DIRT: 24, CONTAINER: 25, CONTAINER2: 26 };
   // hp = hvor mange skudd/smell klossen tåler (kyllingene hakker også på dem). step = kan gå rett opp på den.
   const INFO = {
     1: { color: 0xb3a173, hp: 8 },               // Hesco (høy) – sandfarget nettingkasse
@@ -24,7 +24,7 @@
     8: { color: 0x4a5a2e, hp: 3 },               // ammokasse
     9: { color: 0x55663a, hp: 2 },               // telt
     10: { color: 0xa3302a, hp: 3 },              // rød låve
-    11: { color: 0x3a3236, hp: 3 },              // tak
+    11: { color: 0x3a3236, hp: 3, step: true },  // tak (trappet – man kan gå opp til mønet)
     12: { color: 0xd9d4c4, hp: 3 },              // hvitt hus
     13: { color: 0x9fd3ff, hp: 1 },              // vindu
     14: { color: 0x8c99a6, hp: 6 },              // silo (metall)
@@ -37,7 +37,9 @@
     21: { color: 0x3a2e26, hp: 3 },              // død trestamme
     22: { color: 0x3e4a2a, hp: 1 },              // visne blader
     23: { color: 0xc9a85a, hp: 1 },              // halm (fugleskremsel)
-    24: { color: 0x4a3a2c, hp: 0 }               // gravjord (kan ikke ødelegges, flat)
+    24: { color: 0x4a3a2c, hp: 0 },              // gravjord (kan ikke ødelegges, flat)
+    25: { color: 0x8a4a2a, hp: 7 },              // container (rusten)
+    26: { color: 0x3f5a46, hp: 7 }               // container (grønn)
   };
 
   function idx(x, y, z) { return (y * NZ + (z - Z0)) * NX + (x - X0); }
@@ -45,18 +47,25 @@
   // Piggtråd og kamuflasjenett er ikke klosser (man går gjennom dem). Lister med ruter.
   const WIRE = [];      // [x, z]  piggtråd: bremser alle, skader kyllinger
   const NETS = [];      // [x0, x1, z0, z1, y]  kamuflasjenett over hodet (pynt)
+  // Stiger: { x, z, top, nx, nz } – klatreren står i ruta (x, z), veggen ligger i retning (nx, nz). top = høyden du klatrer til.
+  const LADDERS = [];
   const SPAWNS = [[-70, -40], [69, -40], [-70, 39], [69, 39]];   // kirkegårdene
   const START = { x0: -15, x1: 14, z0: -11, z1: 10 };             // spillerne starter inni kampsenteret
 
   function build() {
     const g = new Uint8Array(NX * NY * NZ);
-    WIRE.length = 0; NETS.length = 0;
+    WIRE.length = 0; NETS.length = 0; LADDERS.length = 0;
     function set(x, y, z, t) {
       if (x < X0 || x >= X0 + NX || z < Z0 || z >= Z0 + NZ || y < 0 || y >= NY) return;
       g[idx(x, y, z)] = t;
     }
     function box(x0, x1, y0, y1, z0, z1, t) {
       for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) for (let z = z0; z <= z1; z++) set(x, y, z, t);
+    }
+    // Stige: rydder ruta klatreren står i (helt opp), og husker den
+    function ladder(x, z, top, nx, nz) {
+      box(x, x, 0, top + 1, z, z, 0);
+      LADDERS.push({ x, z, top, nx, nz });
     }
     let seed = 777;
     const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
@@ -73,6 +82,23 @@
       box(x, x + 3, 0, 2, z, z + 3, T.HESCO);
       box(x + 1, x + 2, 3, 3, z + 1, z + 2, 0);                            // liten grop på toppen
     });
+    // Sandsekk-kant på toppen av hjørnetårnene, og stige opp fra innsiden
+    [[-20, -16, 1, 1], [16, -16, -1, 1], [-20, 12, 1, -1], [16, 12, -1, -1]].forEach(([x, z, ix, iz]) => {
+      box(x, x + 3, 3, 3, z, z, T.SAND); box(x, x + 3, 3, 3, z + 3, z + 3, T.SAND);
+      box(x, x, 3, 3, z, z + 3, T.SAND); box(x + 3, x + 3, 3, 3, z, z + 3, T.SAND);
+      const lx = ix > 0 ? x + 2 : x + 1, lz = iz > 0 ? z + 4 : z - 1;      // stigen står foran innsiden
+      set(lx, 3, z + (iz > 0 ? 3 : 0), 0);                                // åpning i kanten der stigen kommer opp
+      ladder(lx, lz, 3, 0, -iz);
+    });
+    // To container-stabler (3 høye) med sandsekker på toppen og stige
+    box(-16, -11, 0, 2, -2, 0, T.CONTAINER); box(10, 15, 0, 2, -1, 1, T.CONTAINER2);
+    box(-16, -11, 3, 3, -2, -2, T.SAND); box(-16, -16, 3, 3, -2, 0, T.SAND);
+    box(10, 15, 3, 3, 1, 1, T.SAND); box(15, 15, 3, 3, -1, 1, T.SAND);
+    ladder(-10, -1, 3, -1, 0); ladder(9, 0, 3, 1, 0);
+    // Broer over portene (planker på murene) – stå oppå og skyt ned. Stige fra innsiden.
+    box(-4, 3, 2, 2, -16, -15, T.PLANK); box(-4, 3, 3, 3, -16, -16, T.SAND);
+    box(-4, 3, 2, 2, 14, 15, T.PLANK); box(-4, 3, 3, 3, 15, 15, T.SAND);
+    ladder(3, -14, 3, 0, -1); ladder(-4, 13, 3, 0, 1);
     // Sikk-sakk med sandsekker innenfor portene (kyllingene kan ikke løpe rett inn)
     box(-5, 4, 0, 0, -11, -11, T.SAND); box(-5, 4, 0, 0, 10, 10, T.SAND);
     // Lave Hesco-skjul og sandsekk-reir rundt i leiren
@@ -116,6 +142,12 @@
       if (r <= 4.6) box(58 + x, 58 + x, 16, 16, 30 + z, 30 + z, T.ROOF);
     }
     box(58, 58, 0, 3, 25, 25, 0);                                            // dør i siloen
+    // Stiger opp på alle byggene
+    ladder(44, -25, 7, 0, -1);        // låvetaket (sørveggen)
+    ladder(-56, 21, 6, 0, 1);         // taket på våningshuset (nordveggen)
+    ladder(53, 30, 17, 1, 0);         // toppen av siloen – supert snikskytter-sted
+    ladder(-4, -1, 8, 1, 0);          // vakttårnet (i tillegg til trappa)
+    set(-3, 8, -1, 0);                // åpning i rekkverket der stigen kommer opp
     // Maisåkre (2 høye rader – god dekning, men kyllingene gjemmer seg der også!)
     for (let z = -44; z <= -24; z += 3) box(-62, -30, 0, 1, z, z, T.CORN);
     for (let z = 22; z <= 42; z += 3) box(18, 44, 0, 1, z, z, T.CORN);
@@ -157,7 +189,7 @@
     return g;
   }
 
-  const api = { NX, NY, NZ, X0, Z0, T, INFO, idx, build, WIRE, NETS, SPAWNS, START };
+  const api = { NX, NY, NZ, X0, Z0, T, INFO, idx, build, WIRE, NETS, LADDERS, SPAWNS, START };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.FarmMap = api;
 })(this);
