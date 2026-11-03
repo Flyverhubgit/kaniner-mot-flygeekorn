@@ -447,7 +447,7 @@ socket.on('roundOver', d => {
   const top = (d.board || []).slice().sort((a, b) => b.kills - a.kills)[0];
   // Morsom statistikk: hvem gjorde mest av hva?
   const st = d.farm.stats || [], best = (key) => { const s = st.slice().sort((a, b) => b[key] - a[key])[0]; return s && s[key] > 0 ? s : null; };
-  const line = (icon, txt, key) => { const s = best(key); return s ? '<br>' + icon + ' ' + txt + ': ' + teamSpan(s.team, esc(s.name)) + ' (' + s[key] + ')' : ''; };
+  const line = (icon, txt, key) => { const s = best(key); return s ? '<br>' + icon + ' ' + txt + ': <b>' + esc(s.name) + '</b> (' + s[key] + ')' : ''; };   // samme farge for alle – vi er ett lag
   roundMsg = (d.farm.result === 'win' ? '&#127881; GÅRDEN ER REDDET! &#127881;' : '&#128020; KYLLINGENE VANT... &#128020;') +
     '<br><span style="font-size:20px">' + (d.farm.result === 'win' ? 'Alle 10 bølgene klart!' : 'Dere kom til bølge ' + d.farm.wave) +
     ' &nbsp; (rekord: ' + d.farm.record + ')' +

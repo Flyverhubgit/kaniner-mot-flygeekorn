@@ -1627,7 +1627,7 @@ function updateHud(dt) {
   const m = Math.floor(timeLeft / 60), s = String(timeLeft % 60).padStart(2, '0');
   topbar.innerHTML = teamSpan('bunny', 'Kaniner ' + score.bunny) + ' &nbsp; ' + m + ':' + s + ' &nbsp; ' + teamSpan('squirrel', score.squirrel + ' Flygeekorn');
   healthEl.innerHTML = '&#9829; ' + Math.max(0, hp) + (performance.now() < myProtectUntil ? ' &#128737;&#65039;' : '') +
-    ' &nbsp; <span style="font-size:16px;opacity:.8">' + (myTeam === 'bunny' ? 'Du er Kanin' : 'Du er Flygeekorn') + '</span>';
+    ' &nbsp; <span style="font-size:16px;opacity:.8">' + ((typeof farmOn === 'function' && farmOn()) ? (myTeam === 'bunny' ? 'Du er en kanin' : 'Du er et flygeekorn') + ' &#129309; alle mot kyllingene' : (myTeam === 'bunny' ? 'Du er Kanin' : 'Du er Flygeekorn')) + '</span>';
 
   damageFlash = Math.max(0, damageFlash - dt * 2);
   hitdirTime = Math.max(0, hitdirTime - dt);
@@ -1701,6 +1701,7 @@ socket.on('disconnect', () => {
 
 socket.on('lobby', c => {
   // [NY] Laget med færrest spillere får "Trenger spillere!"
+  lobbyMap = c.map;
   document.querySelector('.card.bunny').classList.toggle('needs', c.bunny < c.squirrel);
   document.querySelector('.card.squirrel').classList.toggle('needs', c.squirrel < c.bunny);
   el('countBunny').textContent = c.bunny + (c.bunny === 1 ? ' spiller' : ' spillere');
@@ -1712,7 +1713,24 @@ socket.on('lobby', c => {
   else if (!pickedMap && c.map) pickedMap = c.map;
   document.querySelectorAll('.mapPick').forEach(b => b.classList.toggle('on', b.dataset.map === pickedMap));
 });
-let pickedMap = null;
+let pickedMap = null, lobbyMap = null;
+// [NY] Kyllingfarmen: alle er på samme lag – i menyen velger du bare hvilket dyr du vil være
+const coopNote = document.createElement('div');
+coopNote.style.cssText = 'display:none;font:bold 17px sans-serif;color:#ffe9a0;text-align:center;';
+coopNote.innerHTML = '&#128020; Zombie-kyllinger: alle spiller SAMMEN &#129309; Velg bare hvilket dyr du vil være!';
+document.getElementById('cards').insertAdjacentElement('afterend', coopNote);
+function updateMenuMode() {
+  const rowOn = el('mapRow').style.display !== 'none';
+  const coop = (rowOn ? pickedMap : lobbyMap) === 'farm';
+  coopNote.style.display = coop ? 'block' : 'none';
+  document.querySelectorAll('.card').forEach(c => { if (coop) c.classList.remove('needs'); });
+  const btn = el('joinBtn');
+  if (chosenTeam) btn.textContent = coop ? 'Bli med – alle mot kyllingene!' : 'Bli med som ' + (chosenTeam === 'bunny' ? 'Kanin' : 'Flygeekorn') + '!';
+  else btn.textContent = coop ? 'Velg et dyr' : 'Velg et lag';
+  const st = el('status');
+  if (st && st.textContent.startsWith('Tilkoblet')) st.textContent = coop ? 'Tilkoblet. Velg et dyr og trykk Bli med!' : 'Tilkoblet. Velg lag og trykk Bli med!';
+}
+setInterval(() => { if (!joined) updateMenuMode(); }, 300);
 document.querySelectorAll('.mapPick').forEach(b => b.addEventListener('click', () => {
   pickedMap = b.dataset.map;
   document.querySelectorAll('.mapPick').forEach(x => x.classList.toggle('on', x === b));
