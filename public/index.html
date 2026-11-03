@@ -92,6 +92,8 @@
     #joinBtn { font-size: 18px; padding: 8px 30px; }
     #qrImg { width: 80px; height: 80px; }
   }
+  .mapPick { font: bold 16px sans-serif; padding: 8px 12px; border-radius: 10px; border: 3px solid rgba(255,255,255,0.4); background: rgba(0,0,0,0.3); color: #fff; cursor: pointer; }
+  .mapPick.on { border-color: #f2c14e; background: rgba(242,193,78,0.35); }
 </style>
 </head>
 <body>
@@ -129,6 +131,14 @@
       <div class="need">&#128227; Trenger spillere!</div>
     </div>
   </div>
+  <div id="mapRow" style="display:none;text-align:center">
+    <div style="margin-bottom:6px;font-weight:bold">Du er først inne! Velg bane:</div>
+    <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
+      <button class="mapPick" data-map="temple">&#127963; Tempelet</button>
+      <button class="mapPick" data-map="room">&#129528; Barnerommet</button>
+      <button class="mapPick" data-map="castle">&#127984; Klosseslottet</button>
+    </div>
+  </div>
   <div id="sensRow">Sikte-følsomhet <input id="sens" type="range" min="0.3" max="2.5" step="0.1" value="1"> <span id="sensVal">1.0</span></div>
   <button id="joinBtn" disabled>Velg et lag</button>
   <div id="status">Kobler til serveren...</div>
@@ -148,6 +158,7 @@
 <script src="castlemap.js"></script>
 <script src="castle.js"></script>
 <script src="mortar.js"></script>
+<script src="holybomb.js"></script>
 <script src="vote.js"></script>
 </body>
 </html>

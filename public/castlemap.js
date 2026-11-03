@@ -8,7 +8,7 @@
   const NX = 160, NY = 24, NZ = 100, X0 = -80, Z0 = -50;
 
   // Klosstyper. hp 0 = kan ikke ødelegges. step = kan gå rett opp på den (trapp), ellers må man hoppe.
-  const T = { HILL: 1, STONE: 3, DARK: 4, WOOD: 5, LEAVES: 6, ROOF: 7, RED: 8, GREEN: 9, PLANK: 10, GLASS: 11, STAIR: 12 };
+  const T = { HILL: 1, STONE: 3, DARK: 4, WOOD: 5, LEAVES: 6, ROOF: 7, RED: 8, GREEN: 9, PLANK: 10, GLASS: 11, STAIR: 12, HOLY: 13 };
   const INFO = {
     1: { color: 0x5f9e3a, hp: 0, step: true },   // gress-bakke (slottshaugen) – kan ikke ødelegges
     3: { color: 0x9a9a9a, hp: 6 },   // stein
@@ -20,7 +20,8 @@
     9: { color: 0x6b8e23, hp: 2 },   // grønt flagg (flygeekornene)
     10: { color: 0xa67c48, hp: 3, step: true },  // planker (bro)
     11: { color: 0x9fd3ff, hp: 1 },  // vindu
-    12: { color: 0xb8b8b0, hp: 6, step: true }   // trappetrinn
+    12: { color: 0xb8b8b0, hp: 6, step: true },  // trappetrinn
+    13: { color: 0xf3ead2, hp: 0 }   // [NY] det hellige tårnet (marmor) – kan ikke ødelegges
   };
 
   function idx(x, y, z) { return (y * NZ + (z - Z0)) * NX + (x - X0); }
@@ -103,10 +104,19 @@
     // Bro over elva i midten (planker, 1 høy)
     MIR = false;
     box(-3, 2, 0, 0, -3, 2, T.PLANK);
+
+    // [NY] DET HELLIGE TÅRNET midt på broa: 2 x 2 søyle, 21 høy, uten dekning.
+    // Stige på hver lags side (z = +1 og z = -1). Plattform på toppen med hull der stigene kommer opp.
+    // Den hellige ferskenen svever over toppen (se holybomb.js).
+    box(-1, 0, 0, 20, -1, 0, T.HOLY);              // søylen
+    box(-3, 2, 21, 21, -3, 2, T.HOLY);             // plattformen (6 x 6), toppen er y = 22
+    box(-1, 0, 21, 21, 1, 2, 0);                   // hull for stigen (kaninenes side)
+    box(-1, 0, 21, 21, -3, -2, 0);                 // hull for stigen (flygeekornenes side)
     return g;
   }
 
-  const api = { NX, NY, NZ, X0, Z0, T, INFO, idx, build };
+  const TOWER = { top: 22, ladderZ: 1, x0: -1, x1: 1 };   // [NY] tårnet (brukes av holybomb.js og serveren)
+  const api = { NX, NY, NZ, X0, Z0, T, INFO, idx, build, TOWER };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.CastleMap = api;
 })(this);

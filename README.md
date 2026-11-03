@@ -2,7 +2,7 @@
 
 Blokkete flerspiller-FPS i nettleseren. Velg lag, skyt det andre laget. 5 minutter per runde.
 
-Tre baner. Etter hver runde **stemmer** alle på neste bane (12 sekunder, trykk 1/2/3 eller trykk på knappen). Flest stemmer vinner, uavgjort = den som kommer først i rekkefølgen, ingen stemmer = vanlig rekkefølge. Banene: **Tempelet** (med skumfest og hemmelig håndtak), **Kjempe-barnerommet** (stor snikskytterbane med kjempesenger, bok-trapper, alfabetklosser og lego) og **Klosseslottet** (to slott, landsby og trær – ALT kan skytes og sprenges i stykker!).
+Tre baner. Den første som kommer inn på en tom server velger banen. Etter hver runde **stemmer** alle på neste bane (12 sekunder, trykk 1/2/3 eller trykk på knappen). Flest stemmer vinner, uavgjort = den som kommer først i rekkefølgen, ingen stemmer = vanlig rekkefølge. Banene: **Tempelet** (med skumfest og hemmelig håndtak), **Kjempe-barnerommet** (stor snikskytterbane med kjempesenger, bok-trapper, alfabetklosser og lego) og **Klosseslottet** (to slott, landsby og trær – ALT kan skytes og sprenges i stykker!).
 
 ## Spill hjemme (samme WiFi)
 1. Pakk ut zip-filen (høyreklikk → **Pakk ut alle**). Ikke kjør fra inne i zip-filen.
@@ -39,11 +39,12 @@ Tre baner. Etter hver runde **stemmer** alle på neste bane (12 sekunder, trykk 
 - Våpen 3: bazooka (kaniner: gulrot-bazooka, flygeekorn: nøtte-kanon). 2 raketter per liv, stort smell, sprenger store hull i klosseslottet.
 - Uendelig reserve-ammo (AK og snikskytter).
 - Klosseslottet: hvert lag har en MORTER i slottsgården. Gå bort og trykk E (mobil: MORTER). Se opp = lenger, ned = kortere, den røde ringen viser hvor den lander. Skyt! Granaten flyr i 3 sek (fienden ser en oransje varselring), så smeller den og river et stort hull. 5 sek mellom hvert skudd.
+- DEN HELLIGE FERSKENEN 🍑 (klosseslottet): svever på toppen av det høye tårnet midt på kartet. Klatre opp stigen (gå inn i den og hold W / fremover – ingen dekning!) og gå inn i ferskenen. Du får 4 sek skjold, og neste granat-kast (G / GRANAT) er ferskenen. Etter 3,5 sek synger koret HALLELUJA, og den sprenger et halvt slott. Den skader ALLE innenfor 14 m – også ditt eget lag og deg selv! Dør du med den, går den tilbake til tårnet. Ny fersken 60 sek etter smellet.
 - 3 granater per liv. Smeller etter 2 sek, opptil 110 skade innenfor 6 m.
 - HEMMELIG: Et lite gyllent håndtak henger i venstre hus i tempelet. Dra i det (E / TREKK) og alle faller ned i lava-doen! Alle blir zombier, lava deler lagene (lava = død), to broer går over, og granatene er uendelige. Dra i det gylne skyll-håndtaket på deres side for å skylle alle opp igjen (ellers: tilbake ved neste runde).
 - Drap på rad: 3 = KILLINGSPREE!, 5 = USTOPPELIG!, 10 = LEGENDARISK!
 - Skjold i 2 sek etter ny start (blå boble) – forsvinner hvis du skyter.
 - Rød kile ved kanten av skjermen viser hvor du blir skutt fra.
 - Ny start etter 3 sek, med full ammo og granater.
-- Ingen skade på eget lag.
+- Ingen skade på eget lag (unntatt den hellige ferskenen).
 - Ingen juksebeskyttelse – spill med venner.

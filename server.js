@@ -103,6 +103,49 @@ function groundTop(x, z) {
   for (let y = CM.NY - 1; y >= 0; y--) if (castleGrid[CM.idx(ix, y, iz)]) return y + 1;
   return 0;
 }
+// [NY] DEN HELLIGE FERSKENEN: svever på toppen av tårnet midt i klosseslottet.
+// Den som går inn i den får 4 sek skjold, og neste granat-kast er ferskenen.
+// Smeller etter 3,5 sek: sprenger et halvt slott og skader ALLE (også eget lag og deg selv).
+// Ny fersken på toppen 60 sek etter smellet. Dør du med den, går den tilbake til toppen.
+const HOLY_SPOT = { x: 0, y: 22.9, z: 0 };
+const HOLY_SHIELD_MS = 4000, HOLY_BACK_MS = 60000;
+const HOLY_BLOCKS = 9, HOLY_RADIUS = 14, HOLY_MAX_DMG = 400;
+let holy = { state: 'top', holder: null, readyAt: 0 };     // state: top / held / flying / wait
+function holyState() {
+  const h = holy.holder && players[holy.holder];
+  return { state: holy.state, holder: holy.holder, name: h ? h.name : '', team: h ? h.team : '',
+    readyIn: holy.state === 'wait' ? Math.max(0, Math.ceil((holy.readyAt - Date.now()) / 1000)) : 0 };
+}
+function setHoly(state, holder, extra) {
+  holy.state = state; holy.holder = holder || null;
+  if (state === 'wait') holy.readyAt = Date.now() + HOLY_BACK_MS;
+  io.emit('holy', Object.assign(holyState(), extra || {}));
+}
+function dropHoly(t) {                     // døde eller gikk ut med ferskenen: den går tilbake til toppen
+  if (holy.state === 'held' && holy.holder === t.id) setHoly('top', null, { dropped: t.name });
+}
+// Skade på eget lag eller deg selv (bare den hellige ferskenen gjør det). Gir ikke poeng.
+function friendlyHurt(p, t, dmg) {
+  if (!t.alive || Date.now() < (t.protectedUntil || 0)) return;
+  t.hp -= dmg;
+  if (t.hp <= 0) killByWorld(t, p.name, 'holy');
+  else io.to(t.id).emit('damaged', { hp: t.hp, fromX: p.x, fromZ: p.z });
+}
+
+// [NY] Ny runde fra start på valgt bane (når første spiller kommer inn på en tom server)
+let firstPick = null;
+function startFresh(map) {
+  if (intermission) { firstPick = map; return; }   // pausen er i gang: banen brukes når den nye runden starter
+  mapName = map;
+  worldName = 'main';
+  if (mapName === 'castle') resetCastle();
+  holy = { state: 'top', holder: null, readyAt: 0 };
+  foamOn = false; foamHoles = [];
+  score = { bunny: 0, squirrel: 0 };
+  roundEndsAt = Date.now() + ROUND_SECONDS * 1000;
+  console.log('Første spiller valgte banen: ' + map);
+}
+
 const HANDLE = { x: -25, z: -3 };   // håndtaket i bakre hjørne av venstre hus
 const UNDER_HANDLES = [{ x: 0, z: 24 }, { x: 0, z: -24 }];   // skyll-håndtak i underverdenen (ett per lag)
 let roundEndsAt = Date.now() + ROUND_SECONDS * 1000;
@@ -131,7 +174,7 @@ function publicPlayer(p) {
 }
 
 function lobbyCounts() {
-  const c = { bunny: 0, squirrel: 0 };
+  const c = { bunny: 0, squirrel: 0, map: mapName };   // [NY] map: menyen viser hvilken bane som er på
   Object.values(players).forEach(p => c[p.team]++);
   return c;
 }
@@ -153,6 +196,7 @@ function applyDamage(p, t, dmg, head, weapon) {
 
   if (t.hp <= 0) {
     t.alive = false;
+    dropHoly(t);                                       // [NY]
     t.deaths++;
     t.streak = 0;
     p.kills++;
@@ -172,6 +216,7 @@ function killByWorld(t, who, weapon) {
   if (!t.alive) return;
   t.hp = 0;
   t.alive = false;
+  dropHoly(t);                                         // [NY]
   t.deaths++;
   t.streak = 0;
   io.to(t.id).emit('damaged', { hp: 0, fromX: t.x, fromZ: t.z });
@@ -197,6 +242,8 @@ io.on('connection', socket => {
   socket.on('join', data => {
     if (players[socket.id] || !data) return;
     const team = TEAMS.includes(data.team) ? data.team : 'bunny';
+    // [NY] Første spiller på en tom server velger banen, og runden starter på nytt
+    if (Object.keys(players).length === 0 && MAPS.includes(data.map)) startFresh(data.map);
     const name = String(data.name || '').replace(/[<>]/g, '').trim().slice(0, 16) || 'Spiller';
     const sp = spawnFor(team);
     const p = players[socket.id] = {
@@ -214,6 +261,7 @@ io.on('connection', socket => {
       world: worldName, map: mapName, blocksGone: mapName === 'castle' ? castleGone : undefined,
       timeLeft: Math.max(0, Math.ceil((roundEndsAt - Date.now()) / 1000)), intermission
     });
+    socket.emit('holy', holyState());                 // [NY] hvor er ferskenen?
     socket.broadcast.emit('playerJoined', publicPlayer(p));
     io.emit('lobby', lobbyCounts());
     console.log(name + ' ble med som ' + (team === 'bunny' ? 'kanin' : 'flygeekorn'));
@@ -274,6 +322,19 @@ io.on('connection', socket => {
   // Granat kastet: telles ned og vises for de andre
   socket.on('throw', d => {
     const p = players[socket.id];
+    // [NY] Den hellige ferskenen: bare den som har den kan kaste den (teller ikke som granat)
+    if (d && d.holy) {
+      if (!p || !p.alive || holy.state !== 'held' || holy.holder !== socket.id) return;
+      if (typeof d.id !== 'string' || d.id.length > 40 || !Array.isArray(d.p) || !Array.isArray(d.v)) return;
+      const pos = d.p.map(v => num(v, -100, 100)), vel = d.v.map(v => num(v, -40, 40));
+      if (pos.includes(null) || vel.includes(null)) return;
+      p.pending[d.id] = 'holy';
+      p.protectedUntil = Math.min(p.protectedUntil || 0, Date.now() + 3000);   // skjoldet er borte før smellet (3,5 sek)
+      setHoly('flying', null, { thrower: p.name, team: p.team });
+      setTimeout(() => { if (holy.state === 'flying') setHoly('wait'); }, 10000);   // sikkerhet hvis smellet aldri kommer
+      socket.broadcast.emit('nade', { id: d.id, p: pos, v: vel, holy: true });
+      return;
+    }
     // Uendelig med granater i underverdenen
     if (!p || !p.alive || (worldName !== 'underworld' && p.nades <= 0) || !d || typeof d.id !== 'string' || d.id.length > 40) return;
     if (!Array.isArray(d.p) || !Array.isArray(d.v)) return;
@@ -289,10 +350,26 @@ io.on('connection', socket => {
   socket.on('boom', d => {
     const p = players[socket.id];
     if (!p || !d || !p.pending[d.id]) return;
+    const kind = p.pending[d.id];
     delete p.pending[d.id];                           // hver granat kan bare smelle én gang
     if (!Array.isArray(d.p)) return;
     const pos = d.p.map(v => num(v, -100, 100));
     if (pos.includes(null)) return;
+    if (kind === 'holy') {                            // [NY] HALLELUJA
+      io.emit('boom', { id: d.id, p: pos, big: 6, holy: true });
+      if (mapName === 'castle' && worldName === 'main') blastCells(pos[0], pos[1], pos[2], HOLY_BLOCKS);
+      if (holy.state === 'flying') setHoly('wait');
+      if (intermission) return;
+      Object.values(players).forEach(t => {
+        if (!t.alive) return;
+        const dist = Math.hypot(t.x - pos[0], t.y + 0.9 - pos[1], t.z - pos[2]);
+        if (dist >= HOLY_RADIUS) return;
+        const dmg = Math.round(HOLY_MAX_DMG * (1 - dist / HOLY_RADIUS));
+        if (t.team !== p.team) applyDamage(p, t, dmg, false, 'holy');
+        else friendlyHurt(p, t, dmg);                 // eget lag og deg selv også!
+      });
+      return;
+    }
     io.emit('boom', { id: d.id, p: pos });
     if (mapName === 'castle' && worldName === 'main') blastCells(pos[0], pos[1], pos[2], 3);   // granaten sprenger klosser
     if (foamOn && pos[1] < 3) foamHoles.push([pos[0], pos[2]]);   // hullet i skummet blir stående
@@ -302,6 +379,16 @@ io.on('connection', socket => {
       const dist = Math.hypot(t.x - pos[0], t.y + 0.9 - pos[1], t.z - pos[2]);
       if (dist < NADE_RADIUS) applyDamage(p, t, Math.round(NADE_MAX_DMG * (1 - dist / NADE_RADIUS)), false, 'nade');
     });
+  });
+
+  // [NY] Går inn i den hellige ferskenen på toppen av tårnet
+  socket.on('holyGrab', () => {
+    const p = players[socket.id];
+    if (!p || !p.alive || intermission || mapName !== 'castle' || worldName !== 'main' || holy.state !== 'top') return;
+    if (Math.hypot(p.x - HOLY_SPOT.x, p.y + 0.9 - HOLY_SPOT.y, p.z - HOLY_SPOT.z) > 2) return;
+    p.protectedUntil = Date.now() + HOLY_SHIELD_MS;   // 4 sek skjold så du ikke blir skutt med en gang
+    setHoly('held', p.id);
+    console.log(p.name + ' tok den hellige ferskenen!');
   });
 
   // Skjult håndtak: alle faller ned i underverdenen
@@ -423,6 +510,7 @@ io.on('connection', socket => {
     if (votes[socket.id]) { delete votes[socket.id]; io.emit('votes', voteCounts()); }
     if (!players[socket.id]) return;
     console.log(players[socket.id].name + ' forlot spillet');
+    dropHoly(players[socket.id]);                     // [NY]
     delete players[socket.id];
     io.emit('playerLeft', { id: socket.id });
     io.emit('lobby', lobbyCounts());
@@ -449,9 +537,12 @@ setInterval(() => {
     setTimeout(() => {
       score = { bunny: 0, squirrel: 0 };
       if (worldName !== 'main') { worldName = 'main'; io.emit('world', { name: 'main' }); }
-      mapName = nextMap();                                           // ny bane: flest stemmer, ellers vanlig rekkefølge
+      mapName = firstPick || nextMap();                              // ny bane: flest stemmer, ellers vanlig rekkefølge
+      firstPick = null;
       votes = {};
       if (mapName === 'castle') resetCastle();                       // nytt, helt slott
+      holy = { state: 'top', holder: null, readyAt: 0 };             // [NY] ny fersken på toppen
+      io.emit('holy', holyState());
       io.emit('map', { name: mapName });
       Object.values(players).forEach(p => { p.kills = 0; p.deaths = 0; p.streak = 0; respawn(p); });
       roundEndsAt = Date.now() + ROUND_SECONDS * 1000;
@@ -462,6 +553,7 @@ setInterval(() => {
       io.emit('roundStart', { score });
     }, BREAK_SECONDS * 1000);
   }
+  if (holy.state === 'wait' && now >= holy.readyAt) setHoly('top', null, { back: true });   // [NY] ny fersken
   io.emit('tick', {
     timeLeft: intermission ? 0 : Math.max(0, Math.ceil((roundEndsAt - now) / 1000)),
     score, intermission, board: board()

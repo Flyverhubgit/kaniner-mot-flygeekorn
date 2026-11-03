@@ -562,8 +562,11 @@ function updatePlayer(dt) {
   // Tyngdekraft og høyde
   const oldFeet = player.feetY;
   player.vy -= GRAVITY * dt;
+  // [NY] Stige (det hellige tårnet): W = klatre opp, S = ned, ingenting = heng fast
+  const climbV = (typeof ladderClimbV === 'function') ? ladderClimbV(fwd) : null;
+  if (climbV !== null) player.vy = climbV;
   // [NY] Flygeekornet svever sakte ned mens du holder inne hopp i lufta
-  gliding = myTeam === 'squirrel' && !player.onGround && player.vy < 0 && !!(keys['Space'] || touchJumpHeld);
+  gliding = climbV === null && myTeam === 'squirrel' && !player.onGround && player.vy < 0 && !!(keys['Space'] || touchJumpHeld);
   if (gliding) player.vy = Math.max(player.vy, -GLIDE_FALL);
   let newFeet = oldFeet + player.vy * dt;
 
@@ -859,11 +862,11 @@ function nadeHits(x, y, z) {
   return false;
 }
 
-function spawnNade(id, mine, p, v) {
-  const mesh = buildNadeMesh();
+function spawnNade(id, mine, p, v, holy) {
+  const mesh = holy ? buildHolyPeach() : buildNadeMesh();   // [NY] hellig fersken
   mesh.position.set(p[0], p[1], p[2]);
   scene.add(mesh);
-  nades.push({ id, mine, mesh, x: p[0], y: p[1], z: p[2], vx: v[0], vy: v[1], vz: v[2], t: 0 });
+  nades.push({ id, mine, mesh, x: p[0], y: p[1], z: p[2], vx: v[0], vy: v[1], vz: v[2], t: 0, holy: !!holy, fuse: holy ? HOLY_FUSE : NADE_FUSE });
 }
 
 function removeNade(id) {
@@ -874,6 +877,7 @@ function removeNade(id) {
 }
 
 function throwNade() {
+  if (typeof holyThrow === 'function' && holyThrow()) return;   // [NY] har du den hellige ferskenen, kastes den
   if (!joined || !alive || (!underNow() && grenades <= 0) || nadeCooldown > 0) return;
   if (!underNow()) grenades--;            // [NY] uendelig med granater i underverdenen
   myProtectUntil = 0;
@@ -911,13 +915,13 @@ function updateNades(dt) {
       if (nadeHits(n.x, n.y, nz)) n.vz *= -0.4; else n.z = nz;
     }
     n.mesh.position.set(n.x, n.y, n.z);
-    n.mesh.rotation.x += dt * 9;
-    n.mesh.rotation.z += dt * 5;
+    if (n.holy) { n.mesh.rotation.y += dt * 4; if (typeof holyTick === 'function') holyTick(n, dt); }   // [NY] ferskenen snurrer rolig og synger
+    else { n.mesh.rotation.x += dt * 9; n.mesh.rotation.z += dt * 5; }
 
-    if (n.mine && n.t >= NADE_FUSE) {
+    if (n.mine && n.t >= n.fuse) {
       socket.emit('boom', { id: n.id, p: [+n.x.toFixed(2), +n.y.toFixed(2), +n.z.toFixed(2)] });
       removeNade(n.id);
-    } else if (!n.mine && n.t >= NADE_FUSE + 1.5) {
+    } else if (!n.mine && n.t >= n.fuse + 1.5) {
       removeNade(n.id);              // smellet kom aldri – rydd opp
     }
   }
@@ -1472,7 +1476,7 @@ function updateWeapon(dt) {
 
   const wIcon = weapon === sniperW ? (myTeam === 'bunny' ? '🥕 ' : '🌰 ') : weapon === bazW ? '🚀 ' : 'AK ';   // [NY] gulrot / nøtt / bazooka
   hud.textContent = wIcon + (reloading > 0 ? 'LADER...' : weapon.mag + ' / ' + (weapon.reserve === Infinity ? '∞' : weapon.reserve)) +
-    '   💣 ' + (underNow() ? '∞' : grenades);   // [NY] viser granater også (uendelig i underverdenen)
+    '   💣 ' + (underNow() ? '∞' : grenades) + (window.holyMine ? '   🍑 HELLIG FERSKEN (G)' : '');   // [NY] viser granater også (uendelig i underverdenen)
 }
 
 // ===================================================================
@@ -1641,7 +1645,7 @@ function updateHud(dt) {
 
 function addKillfeed(d) {
   const div = document.createElement('div');
-  div.innerHTML = teamSpan(d.killerTeam, esc(d.killerName)) + (d.weapon === 'nade' ? ' &#128163; ' : d.weapon === 'lava' ? ' &#127755; ' : d.weapon === 'fart' ? ' &#128168; ' : d.weapon === 'rocket' ? ' &#128640; ' : d.weapon === 'mortar' ? ' &#128163;&#128163; ' : d.weapon === 'sniper' ? (d.killerTeam === 'bunny' ? ' &#129365;' : ' &#127792;') + (d.head ? '&#127919; ' : ' ') : (d.head ? ' &#127919; ' : ' &#10140; ')) + teamSpan(d.victimTeam, esc(d.victimName));
+  div.innerHTML = teamSpan(d.killerTeam, esc(d.killerName)) + (d.weapon === 'nade' ? ' &#128163; ' : d.weapon === 'lava' ? ' &#127755; ' : d.weapon === 'fart' ? ' &#128168; ' : d.weapon === 'rocket' ? ' &#128640; ' : d.weapon === 'mortar' ? ' &#128163;&#128163; ' : d.weapon === 'holy' ? ' &#127825;&#10024; ' : d.weapon === 'sniper' ? (d.killerTeam === 'bunny' ? ' &#129365;' : ' &#127792;') + (d.head ? '&#127919; ' : ' ') : (d.head ? ' &#127919; ' : ' &#10140; ')) + teamSpan(d.victimTeam, esc(d.victimName));
   killfeed.prepend(div);
   while (killfeed.children.length > 5) killfeed.lastChild.remove();
   setTimeout(() => div.remove(), 6000);
@@ -1669,7 +1673,18 @@ socket.on('lobby', c => {
   document.querySelector('.card.squirrel').classList.toggle('needs', c.squirrel < c.bunny);
   el('countBunny').textContent = c.bunny + (c.bunny === 1 ? ' spiller' : ' spillere');
   el('countSquirrel').textContent = c.squirrel + (c.squirrel === 1 ? ' spiller' : ' spillere');
+  // [NY] Ingen andre inne? Da velger du banen.
+  const empty = c.bunny + c.squirrel === 0;
+  el('mapRow').style.display = empty && !joined ? 'block' : 'none';
+  if (!empty) pickedMap = null;
+  else if (!pickedMap && c.map) pickedMap = c.map;
+  document.querySelectorAll('.mapPick').forEach(b => b.classList.toggle('on', b.dataset.map === pickedMap));
 });
+let pickedMap = null;
+document.querySelectorAll('.mapPick').forEach(b => b.addEventListener('click', () => {
+  pickedMap = b.dataset.map;
+  document.querySelectorAll('.mapPick').forEach(x => x.classList.toggle('on', x === b));
+}));
 
 socket.on('welcome', d => {
   myId = d.id;
@@ -1729,12 +1744,13 @@ socket.on('shot', d => {
 });
 
 // [NY] Granater fra andre spillere, og smell fra serveren
-socket.on('nade', d => spawnNade(d.id, false, d.p, d.v));
+socket.on('nade', d => spawnNade(d.id, false, d.p, d.v, d.holy));
 socket.on('rocket', d => { spawnRocket(d.id, d.team, false, d.p, d.v); });   // [NY] andres raketter
 socket.on('boom', d => {
   removeNade(d.id);
   removeRocket(d.id);                                 // [NY] rakett
   explode(d.p, d.big);
+  if (d.holy && typeof holyBoomFx === 'function') holyBoomFx(d.p);   // [NY] hvitt lys og mye fyll
   if (foamOn && d.p[1] < 3) cutHole(d.p[0], d.p[2]);   // [NY] granaten blåser bort skummet
 });
 
@@ -1926,6 +1942,7 @@ el('joinBtn').addEventListener('click', () => {
   myTeam = chosenTeam;
   unlockAudio();
   lastJoin = { name, team: chosenTeam };
+  if (pickedMap && el('mapRow').style.display !== 'none') lastJoin.map = pickedMap;   // [NY] første spiller velger bane
   socket.emit('join', lastJoin);
   nameInput.blur();
   if (!isTouch) {
@@ -1979,6 +1996,7 @@ function animate(now) {
     updateFoamBeacon();         // [NY] rosa boble over pyramiden
     if (typeof updateCastle === 'function') updateCastle(dt);   // [NY] flyvende kloss-biter
     if (typeof updateMortar === 'function') updateMortar(dt);   // [NY] morterer
+    if (typeof updateHoly === 'function') updateHoly(dt);       // [NY] den hellige ferskenen
     updateUnderworld(dt);       // [NY] underverdenen (underworld.js)
     updateHud(dt);
   }
