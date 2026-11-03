@@ -2051,6 +2051,7 @@ function animate(now) {
     if (typeof updateSpace === 'function') updateSpace(dt);     // [NY] verdensrommet
     if (typeof updateFarm === 'function') updateFarm(dt);       // [NY] zombie-kyllingfarmen
     if (typeof updateFarmVehicles === 'function') updateFarmVehicles(dt);   // [NY] doser og A-10
+    if (typeof updateEasterEggs === 'function') updateEasterEggs(dt);       // [NY] påskeegget
     if (typeof updateFun === 'function') updateFun(dt);         // [NY] fyrverkeri
     updateUnderworld(dt);       // [NY] underverdenen (underworld.js)
     updateHud(dt);

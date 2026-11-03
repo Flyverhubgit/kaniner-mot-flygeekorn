@@ -262,7 +262,7 @@ let farm = null, farmRecord = 0, chickSeq = 0, goldSeq = 0;
 function resetFarm() {
   farm = { wave: 0, state: 'prep', until: Date.now() + FARM_PREP_MS, chicks: new Map(), queue: [], nextSpawn: 0,
     barrels: BARREL_SPOTS.map(([x, z], i) => ({ id: i, x: x + 0.5, z: z + 0.5, alive: true })),
-    fire: new Map(), gold: new Map(), lastFire: 0, tank: newTank(), a10Used: false };
+    fire: new Map(), gold: new Map(), lastFire: 0, tank: newTank(), a10Used: false, ebunny: null, ebunnyUsed: false };
   Object.values(players).forEach(p => { if (p.vehicle === 'tank') p.vehicle = null; p.egged = 0; p.flat = 0; p.ownBlocks = 0; p.barrels = 0; });
   io.emit('barrels', farm.barrels);
   io.emit('gold', { list: [] });
@@ -310,6 +310,70 @@ function a10Strike(p, x, z, yaw) {
       chainBarrels(px, pz, 2.5, p);
     }, A10_DELAY + A10_RUN_MS * k / steps);
   }
+}
+// ---------- [NY] PÅSKEEGGET: bordet med panikk-knappene i våningshuset ----------
+// To knapper PÅ bordet er lurerier (gummikylling-regn / 5 ekstra zombie-kyllinger).
+// Den ekte knappen sitter UNDER bordet (må dukke): DEN KJEMPESTORE PÅSKEHAREN – én gang per runde.
+const EGG_TABLE = { x: -54.5, z: 30.5 };
+const EBUNNY_MS = 30000;
+function pressEggButton(p, b) {
+  const now = Date.now();
+  if (b === 'red') {
+    if (now < (farm.redAt || 0)) return;
+    farm.redAt = now + 15000;
+    io.emit('rubberRain', { by: p.name });
+  } else if (b === 'yellow') {
+    if (now < (farm.yellowAt || 0)) return;
+    farm.yellowAt = now + 20000;
+    for (let k = 0; k < 5; k++) {
+      const c = { id: ++chickSeq, type: 'walker', t: 0, x: -51 + (Math.random() - 0.5) * 6, z: 18 + Math.random() * 2, yaw: 0, hp: CHICK.walker.hp, max: CHICK.walker.hp,
+        atkAt: 0, peckAt: 0, pecking: 0, throwAt: now + 99999, slamAt: now + 99999 };
+      farm.chicks.set(c.id, c);
+    }
+    io.emit('siren', { by: p.name });
+  } else if (b === 'under') {
+    if (farm.ebunny || farm.ebunnyUsed) return;
+    farm.ebunnyUsed = true;
+    farm.ebunny = { x: -51, z: 16, y: 0, until: now + EBUNNY_MS, hopFrom: null, hopTo: null, hopT: 0, eggAt: now + 1500, by: p };
+    io.emit('ebunnyStart', { by: p.name, ms: EBUNNY_MS });
+  }
+}
+// Påskeharen hopper mot kyllingene, tramper dem flate og kaster eksploderende påskeegg
+function ebunnyTick(now, dt) {
+  const B = farm.ebunny;
+  if (!B) return;
+  if (now > B.until) { farm.ebunny = null; io.emit('ebunnyEnd', {}); return; }
+  const list = [...farm.chicks.values()];
+  if (!B.hopTo) {
+    let tgt = null, best = 1e9;
+    list.forEach(c => { const d = Math.hypot(c.x - B.x, c.z - B.z); if (d < best) { best = d; tgt = c; } });
+    const tx = tgt ? tgt.x : Math.max(-70, Math.min(70, B.x + (Math.random() - 0.5) * 20)), tz = tgt ? tgt.z : Math.max(-42, Math.min(42, B.z + (Math.random() - 0.5) * 20));
+    const d = Math.hypot(tx - B.x, tz - B.z), step = Math.min(12, d);
+    B.hopFrom = [B.x, B.z];
+    B.hopTo = d > 0.1 ? [B.x + (tx - B.x) / d * step, B.z + (tz - B.z) / d * step] : [B.x, B.z];
+    B.hopT = 0;
+  }
+  B.hopT += dt / 0.75;
+  const k = Math.min(1, B.hopT);
+  B.x = B.hopFrom[0] + (B.hopTo[0] - B.hopFrom[0]) * k;
+  B.z = B.hopFrom[1] + (B.hopTo[1] - B.hopFrom[1]) * k;
+  B.y = Math.sin(k * Math.PI) * 7;
+  if (k >= 1) {                                         // landing: TRAMP!
+    B.hopTo = null;
+    io.emit('ebunnyStomp', { p: [+B.x.toFixed(1), 0, +B.z.toFixed(1)] });
+    list.forEach(c => { if (Math.hypot(c.x - B.x, c.z - B.z) < 4.2) hurtChick(c, c.type === 'king' ? 250 : 999, players[B.by.id]); });
+  }
+  if (now >= B.eggAt) {                                 // kaster et påskeegg på nærmeste kylling
+    B.eggAt = now + 1200;
+    let tgt = null, best = 1e9;
+    list.forEach(c => { const d = Math.hypot(c.x - B.x, c.z - B.z); if (d < best && d < 30) { best = d; tgt = c; } });
+    if (tgt) {
+      const to = [+tgt.x.toFixed(1), 0.5, +tgt.z.toFixed(1)];
+      io.emit('ebunnyEgg', { from: [+B.x.toFixed(1), B.y + 9, +B.z.toFixed(1)], to, ms: 800 });
+      setTimeout(() => { if (farmActive()) { areaHurtChicks(to[0], to[2], 3.5, 140, players[B.by.id]); io.emit('eggPop', { p: to }); } }, 800);
+    }
+  }
+  io.emit('ebunny', [+B.x.toFixed(2), +B.y.toFixed(2), +B.z.toFixed(2), Math.max(0, Math.ceil((B.until - now) / 1000))]);
 }
 function farmActive() { return mapName === 'farm' && worldName === 'main' && farm; }
 function farmPlayers() { return Object.values(players); }
@@ -479,6 +543,7 @@ function farmTick() {
     return;
   }
   if (now - farm.lastFire >= 500) { farm.lastFire = now; fireTick(now); }
+  ebunnyTick(now, dt);                               // [NY] påskeharen
   farm.gold.forEach((g, id) => { if (now > g.until) { farm.gold.delete(id); io.emit('gold', { remove: id }); } });
   if (farm.state === 'prep' || farm.state === 'break') {
     if (now >= farm.until) startWave(farm.wave === 0 && process.env.FARM_START_WAVE ? +process.env.FARM_START_WAVE : farm.wave + 1);   // (FARM_START_WAVE er for testing)
@@ -1083,6 +1148,13 @@ io.on('connection', socket => {
     farm.a10Used = true;
     a10Strike(p, x, z, yaw);
     emitWave();
+  });
+  socket.on('eggButton', d => {                     // [NY] påskeegget: knappene på (og under) bordet
+    const p = players[socket.id];
+    if (!p || !p.alive || !farmActive() || !d || !['red', 'yellow', 'under'].includes(d.b)) return;
+    if (Math.hypot(p.x - EGG_TABLE.x, p.z - EGG_TABLE.z) > 2.6 || p.y > 1) return;
+    if (d.b === 'under' && !p.crouch && !d.crouch) return;   // den ekte knappen når du bare når du dukker under bordet
+    pressEggButton(p, d.b);
   });
   socket.on('goldGrab', d => {                       // plukket opp et gullegg: eggmaskingevær i 20 sek
     const p = players[socket.id];
