@@ -55,6 +55,7 @@ Fem baner. Den første som kommer inn på en tom server velger banen. Etter hver
   - Stiger på tårn, containere, portbroer, låve, våningshus og silo (W = opp, S = ned). Piggtråd gir halv fart.
   - BULLDOSER-TANKEN 🚜 (2 spillere): gå til doseren i leiren og trykk E (mobil: DOSER). Første blir sjåfør (W/A/S/D), andre styrer kanonen (sikt + skyt). Bladet kjører over kyllinger og rett gjennom mais, gjerder, høy og sandsekker. Kyllingene hakker på doseren – blir den ødelagt, faller dere ut. Repareres etter hver bølge.
   - A-10 LUFTSTØTTE ✈️: radioen oppe i vakttårnet. 3 spillere må stå ved radioen (eller alle som lever, hvis dere er færre). Trykk E (mobil: RADIO), sikt – den røde streken går dit du ser – og skyt. BRRRRRT! Én per bølge.
+  - Moro: stor hane galer KYKELIKYYY før hver bølge, fjærhauger blir liggende der kyllinger dør, morsom statistikk etter runden (flest kyllinger, mest egget, flest flate kyllinger, flest tønner, sprengte mest av sin egen leir, døde mest) og morsomme dødsmeldinger.
 - 3 granater per liv. Smeller etter 2 sek, opptil 110 skade innenfor 6 m.
 - HEMMELIG: Et lite gyllent håndtak henger i venstre hus i tempelet. Dra i det (E / TREKK) og alle faller ned i lava-doen! Alle blir zombier, lava deler lagene (lava = død), to broer går over, og granatene er uendelige. Dra i det gylne skyll-håndtaket på deres side for å skylle alle opp igjen (ellers: tilbake ved neste runde).
 - Drap på rad: 3 = KILLINGSPREE!, 5 = USTOPPELIG!, 10 = LEGENDARISK!
@@ -62,4 +63,5 @@ Fem baner. Den første som kommer inn på en tom server velger banen. Etter hver
 - Rød kile ved kanten av skjermen viser hvor du blir skutt fra.
 - Ny start etter 3 sek, med full ammo og granater.
 - Ingen skade på eget lag (unntatt den hellige ferskenen).
+- Fyrverkeri når et lag vinner (og når gården er reddet). "Pop" når du treffer i hodet.
 - Ingen juksebeskyttelse – spill med venner.

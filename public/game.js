@@ -1394,6 +1394,7 @@ function shoot() {
 
   if (chick) {
     socket.emit('chickenHit', { id: chick.id, head: chick.head, w: egg ? 'egg' : weapon.id });
+    if (chick.head && typeof playPop === 'function') playPop();   // [NY] pop på hodeskudd
     addStuffing(end);                                             // fjær!
     hitmarkTime = 0.1;
   } else if (barrelHit) {
@@ -1642,7 +1643,8 @@ function updateHud(dt) {
     deathTimer = Math.max(0, deathTimer - dt);
     centerEl.style.display = 'block';
     const farmTxt = typeof farmDeathText === 'function' ? farmDeathText() : null;   // [NY] kyllingfarmen: vent til bølgen er over
-    centerEl.innerHTML = 'Du ble tatt av ' + esc(killerName) + '<br><span style="font-size:20px">' + (farmTxt || 'Tilbake om ' + Math.ceil(deathTimer) + '...') + '</span>';
+    const funny = typeof funnyDeath === 'function' ? funnyDeath() : null;   // [NY] morsomme dødsmeldinger
+    centerEl.innerHTML = (funny || 'Du ble tatt av ' + esc(killerName)) + '<br><span style="font-size:20px">' + (farmTxt || 'Tilbake om ' + Math.ceil(deathTimer) + '...') + '</span>';
   } else if (bannerTime > 0) {
     centerEl.style.display = 'block';           // [NY] skumfest-melding
     centerEl.innerHTML = bannerMsg;
@@ -2031,6 +2033,7 @@ function animate(now) {
     if (typeof updateSpace === 'function') updateSpace(dt);     // [NY] verdensrommet
     if (typeof updateFarm === 'function') updateFarm(dt);       // [NY] zombie-kyllingfarmen
     if (typeof updateFarmVehicles === 'function') updateFarmVehicles(dt);   // [NY] doser og A-10
+    if (typeof updateFun === 'function') updateFun(dt);         // [NY] fyrverkeri
     updateUnderworld(dt);       // [NY] underverdenen (underworld.js)
     updateHud(dt);
   }

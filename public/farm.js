@@ -122,6 +122,7 @@ const chicks = new Map();          // id -> { m, t, cur, tgt, peck, hp, phase }
 let waveInfo = { n: 0, total: 10, state: 'prep', left: 0, in: 0, record: 0 };
 let kingId = null;
 function farmClearAll() {
+  clearFeathers();
   chicks.forEach(c => farmGroup.remove(c.m));
   chicks.clear();
   flames.forEach(f => farmGroup.remove(f));
@@ -151,6 +152,7 @@ socket.on('chickDie', d => {
   const c = chicks.get(d.id);
   const y = d.t === 4 ? 2 : 0.7;
   if (c) { farmGroup.remove(c.m); chicks.delete(d.id); }
+  addFeatherPile(d.x, d.z, d.t === 4 ? 14 : 4);       // fjærhauger blir liggende
   // Fjær-eksplosjon (hvite dotter som daler ned)
   for (let k = 0; k < (d.t === 4 ? 6 : 2); k++) addStuffing(new THREE.Vector3(d.x + (Math.random() - 0.5), y + Math.random(), d.z + (Math.random() - 0.5)));
   const dist = Math.hypot(d.x - player.x, d.z - player.z);
@@ -204,6 +206,27 @@ function farmRayTest(o, d, maxT) {
   });
   return best;
 }
+
+// ---------- Fjærhauger 🪶 (blir liggende på bakken hele runden) ----------
+const FEATHER_MAX = 2400;
+const featherMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(0.22, 0.03, 0.09), new THREE.MeshStandardMaterial({ color: 0xf2efe6, roughness: 1 }), FEATHER_MAX);
+featherMesh.count = 0; featherMesh.raycast = () => {}; featherMesh.receiveShadow = true;
+farmGroup.add(featherMesh);
+const fdummy = new THREE.Object3D();
+let featherNext = 0;
+function addFeatherPile(x, z, n) {
+  for (let k = 0; k < n * 6; k++) {
+    const a = Math.random() * Math.PI * 2, r = Math.random() * 0.7 * (n > 6 ? 2.5 : 1);
+    fdummy.position.set(x + Math.cos(a) * r, 0.02 + Math.random() * 0.06, z + Math.sin(a) * r);
+    fdummy.rotation.set((Math.random() - 0.5) * 0.4, Math.random() * Math.PI, (Math.random() - 0.5) * 0.4);
+    fdummy.updateMatrix();
+    featherMesh.setMatrixAt(featherNext, fdummy.matrix);
+    featherNext = (featherNext + 1) % FEATHER_MAX;
+    featherMesh.count = Math.max(featherMesh.count, featherNext === 0 ? FEATHER_MAX : featherNext);
+  }
+  featherMesh.instanceMatrix.needsUpdate = true;
+}
+function clearFeathers() { featherMesh.count = 0; featherNext = 0; }
 
 // ===================================================================
 //  Tønner med gjødsel 🛢️
@@ -402,7 +425,8 @@ socket.on('wave', w => {
   if (w.start) {
     bannerMsg = '&#128020; BØLGE ' + w.n + (w.n === w.total ? ' – SISTE BØLGE!' : '') + ' &#128020;<br><span style="font-size:20px">' + w.left + ' zombie-kyllinger kommer...</span>';
     bannerTime = 3;
-    playHorn();
+    playRooster();                                     // KYKELIKYYY!
+    setTimeout(playHorn, 1300);
   } else if (w.cleared) {
     bannerMsg = '&#9989; BØLGE ' + w.n + ' KLART!<br><span style="font-size:20px">Fulle granater &#128163; – de døde er tilbake. Neste bølge om ' + w.in + ' sek</span>';
     bannerTime = 4;
@@ -421,10 +445,18 @@ socket.on('map', d => { farmClearAll(); minigunUntil = 0; if (d.name === 'farm')
 socket.on('roundOver', d => {
   if (!d.farm) return;
   const top = (d.board || []).slice().sort((a, b) => b.kills - a.kills)[0];
+  // Morsom statistikk: hvem gjorde mest av hva?
+  const st = d.farm.stats || [], best = (key) => { const s = st.slice().sort((a, b) => b[key] - a[key])[0]; return s && s[key] > 0 ? s : null; };
+  const line = (icon, txt, key) => { const s = best(key); return s ? '<br>' + icon + ' ' + txt + ': ' + teamSpan(s.team, esc(s.name)) + ' (' + s[key] + ')' : ''; };
   roundMsg = (d.farm.result === 'win' ? '&#127881; GÅRDEN ER REDDET! &#127881;' : '&#128020; KYLLINGENE VANT... &#128020;') +
-    '<br><span style="font-size:22px">' + (d.farm.result === 'win' ? 'Alle 10 bølgene klart!' : 'Dere kom til bølge ' + d.farm.wave) +
+    '<br><span style="font-size:20px">' + (d.farm.result === 'win' ? 'Alle 10 bølgene klart!' : 'Dere kom til bølge ' + d.farm.wave) +
     ' &nbsp; (rekord: ' + d.farm.record + ')' +
-    (top && top.kills > 0 ? '<br>Flest kyllinger: ' + esc(top.name) + ' (' + top.kills + ')' : '') +
+    line('&#129351;', 'Flest kyllinger', 'kills') +
+    line('&#129370;', 'Mest egget', 'egged') +
+    line('&#128668;', 'Flest flate kyllinger', 'flat') +
+    line('&#128738;', 'Flest tønner sprengt', 'barrels') +
+    line('&#128165;', 'Sprengte mest av sin egen leir', 'own') +
+    line('&#128128;', 'Døde mest', 'deaths') +
     '<br>Stem på neste bane!</span>';
   farmClearAll();
 });
@@ -482,6 +514,21 @@ function playBawk(vol, big) {          // zombie-kakling: "bøk-bøk-BAAAWK"
     g.gain.setValueAtTime(vol, t + dt); g.gain.exponentialRampToValueAtTime(0.001, t + dt + (i === 2 ? 0.32 : 0.1));
     o.connect(f); f.connect(g); g.connect(audioCtx.destination);
     o.start(t + dt); o.stop(t + dt + 0.35);
+  });
+}
+function playRooster() {              // KYKELIKYYY! (stor hane før hver bølge)
+  if (!audioCtx) return;
+  const t = audioCtx.currentTime;
+  const notes = [[0, 0.16, 620, 700], [0.18, 0.16, 700, 820], [0.36, 0.2, 820, 900], [0.6, 0.75, 1000, 760]];
+  notes.forEach(([st, len, f0, f1]) => {
+    const o = audioCtx.createOscillator(), vib = audioCtx.createOscillator(), vg = audioCtx.createGain(), bp = audioCtx.createBiquadFilter(), g = audioCtx.createGain();
+    o.type = 'sawtooth'; o.frequency.setValueAtTime(f0, t + st); o.frequency.linearRampToValueAtTime(f1, t + st + len);
+    vib.frequency.value = 24; vg.gain.value = 22; vib.connect(vg); vg.connect(o.frequency);
+    bp.type = 'bandpass'; bp.frequency.value = 1500; bp.Q.value = 1.3;
+    g.gain.setValueAtTime(0.0001, t + st); g.gain.exponentialRampToValueAtTime(0.22, t + st + 0.03);
+    g.gain.setValueAtTime(0.22, t + st + len - 0.05); g.gain.exponentialRampToValueAtTime(0.0001, t + st + len);
+    o.connect(bp); bp.connect(g); g.connect(audioCtx.destination);
+    o.start(t + st); vib.start(t + st); o.stop(t + st + len + 0.02); vib.stop(t + st + len + 0.02);
   });
 }
 function playSquawk(vol, big) {        // dødsskrik

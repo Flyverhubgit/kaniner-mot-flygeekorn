@@ -76,6 +76,7 @@ resetVox('castle'); resetVox('farm');
 function resetCastle() { resetVox('castle'); }
 function vox() { return worldName === 'main' ? VOX[mapName] || null : null; }   // klosse-banen som gjelder nå
 // Fjern klosser og si fra til alle
+let blastOwner = null;                              // [NY] hvem sitt smell er det? (morsom statistikk på kyllingfarmen)
 function destroyCells(list) {
   const V = vox();
   if (!V) return;
@@ -85,6 +86,10 @@ function destroyCells(list) {
     if (!t || V.LIB.INFO[t].hp === 0) return;     // tom, eller bakke som ikke kan ødelegges
     V.grid[i] = 0;
     gone.push(i);
+    if (blastOwner && mapName === 'farm') {         // sprengte du din egen leir?
+      const x = i % FM.NX + FM.X0, z = Math.floor(i / FM.NX) % FM.NZ + FM.Z0;
+      if (Math.abs(x + 0.5) <= 21 && z >= -17 && z <= 16) blastOwner.ownBlocks = (blastOwner.ownBlocks || 0) + 1;
+    }
   });
   if (gone.length) { V.gone.push(...gone); io.emit('blocks', { gone }); }
 }
@@ -258,7 +263,7 @@ function resetFarm() {
   farm = { wave: 0, state: 'prep', until: Date.now() + FARM_PREP_MS, chicks: new Map(), queue: [], nextSpawn: 0,
     barrels: BARREL_SPOTS.map(([x, z], i) => ({ id: i, x: x + 0.5, z: z + 0.5, alive: true })),
     fire: new Map(), gold: new Map(), lastFire: 0, tank: newTank(), a10Used: false };
-  Object.values(players).forEach(p => { if (p.vehicle === 'tank') p.vehicle = null; });
+  Object.values(players).forEach(p => { if (p.vehicle === 'tank') p.vehicle = null; p.egged = 0; p.flat = 0; p.ownBlocks = 0; p.barrels = 0; });
   io.emit('barrels', farm.barrels);
   io.emit('gold', { list: [] });
   emitWave();
@@ -408,7 +413,8 @@ function explodeBarrel(b, p) {
   b.alive = false;
   io.emit('barrelBoom', { id: b.id, p: [b.x, 0.8, b.z] });
   io.emit('boom', { id: 'b' + b.id, p: [b.x, 0.8, b.z], big: 2.4 });
-  blastCells(b.x, 0.8, b.z, 2.6);
+  blastOwner = p || null; blastCells(b.x, 0.8, b.z, 2.6); blastOwner = null;
+  if (p) p.barrels = (p.barrels || 0) + 1;
   igniteAt(b.x, 0.8, b.z, 5);
   areaHurtChicks(b.x, b.z, 6, 150, p);
   farmPlayers().forEach(t => {
@@ -531,7 +537,7 @@ function farmTick() {
         const to = [tgt.x + (Math.random() - 0.5) * 1.2, tgt.y + 1, tgt.z + (Math.random() - 0.5) * 1.2];
         io.emit('egg', { from: [+c.x.toFixed(1), 1.2, +c.z.toFixed(1)], to: to.map(v => +v.toFixed(1)), ms: 1100 });
         setTimeout(() => {
-          farmPlayers().forEach(t => { if (Math.hypot(t.x - to[0], t.y + 1 - to[1], t.z - to[2]) < 1.8) { chickHurt(t, T.dmg, 'Eggkaster-kylling', 'egg', c.x, c.z); io.to(t.id).emit('egged'); } });
+          farmPlayers().forEach(t => { if (Math.hypot(t.x - to[0], t.y + 1 - to[1], t.z - to[2]) < 1.8) { chickHurt(t, T.dmg, 'Eggkaster-kylling', 'egg', c.x, c.z); t.egged = (t.egged || 0) + 1; io.to(t.id).emit('egged'); } });
         }, 1100);
       }
       return;
@@ -592,7 +598,7 @@ function farmTick() {
       const rx = c.x - tk.x, rz = c.z - tk.z, along = rx * fx + rz * fz, side = Math.abs(rx * fz - rz * fx);
       if (side < 1.6 && along > -2.2 && along < 2.6) {
         if (c.type === 'king') { c.x += fx * 0.4; c.z += fz * 0.4; hurtChick(c, 25, players[tk.driver]); }
-        else hurtChick(c, 999, players[tk.driver]);
+        else { const dr = players[tk.driver]; if (dr && farm.chicks.has(c.id)) dr.flat = (dr.flat || 0) + 1; hurtChick(c, 999, dr); }
       }
     });
   }
@@ -885,7 +891,7 @@ io.on('connection', socket => {
       return;
     }
     io.emit('boom', { id: d.id, p: pos });
-    blastCells(pos[0], pos[1], pos[2], 3);                         // granaten sprenger klosser (klosse-baner)
+    blastOwner = p; blastCells(pos[0], pos[1], pos[2], 3); blastOwner = null;   // granaten sprenger klosser (klosse-baner)
     if (foamOn && pos[1] < 3) foamHoles.push([pos[0], pos[2]]);   // hullet i skummet blir stående
     if (intermission) return;
     if (farmActive()) {                               // [NY] kyllingfarmen: skader kyllinger, tenner på høy, smeller tønner
@@ -1058,7 +1064,7 @@ io.on('connection', socket => {
     const pos = d.p.map(v => num(v, -100, 100));
     if (pos.includes(null)) return;
     io.emit('boom', { id: d.id, p: pos, big: 2.6 });
-    blastCells(pos[0], pos[1], pos[2], TANK_SHELL_BLOCKS);
+    blastOwner = p; blastCells(pos[0], pos[1], pos[2], TANK_SHELL_BLOCKS); blastOwner = null;
     if (!farmActive()) return;
     areaHurtChicks(pos[0], pos[2], TANK_SHELL_R, TANK_SHELL_DMG, p);
     igniteAt(pos[0], pos[1], pos[2], 5);
@@ -1136,7 +1142,7 @@ io.on('connection', socket => {
     const pos = d.p.map(v => num(v, -100, 100));
     if (pos.includes(null)) return;
     io.emit('boom', { id: d.id, p: pos, big: 1.6 });
-    blastCells(pos[0], pos[1], pos[2], ROCKET_BLOCKS);
+    blastOwner = p; blastCells(pos[0], pos[1], pos[2], ROCKET_BLOCKS); blastOwner = null;
     if (intermission) return;
     if (farmActive()) {                               // [NY] kyllingfarmen
       areaHurtChicks(pos[0], pos[2], ROCKET_RADIUS, ROCKET_MAX_DMG, p);
@@ -1245,7 +1251,8 @@ setInterval(() => {
     Object.values(players).forEach(leaveVehicle);
     let farmResult = null;
     if (mapName === 'farm' && farm) {              // [NY] kyllingfarmen: seier eller tap for alle sammen
-      farmResult = { result: farm.state === 'win' ? 'win' : 'lose', wave: farm.wave, record: farmRecord };
+      farmResult = { result: farm.state === 'win' ? 'win' : 'lose', wave: farm.wave, record: farmRecord,
+        stats: Object.values(players).map(q => ({ name: q.name, team: q.team, kills: q.kills, deaths: q.deaths, egged: q.egged || 0, flat: q.flat || 0, own: q.ownBlocks || 0, barrels: q.barrels || 0 })) };
       winner = 'farm';
       farm.chicks.clear(); io.emit('chix', []);
     }
