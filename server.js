@@ -253,7 +253,7 @@ const WAVE_SECONDS = n => (35 + n * 4) * (+process.env.FARM_WAVE_SCALE || 1);   
 const FARM_PREP_MS = +process.env.FARM_PREP || 15000;             // tid før første bølge
 const FARM_BREAK_MS = +process.env.FARM_BREAK || 8000;            // pause hvis dere rydder en bølge tidlig
 const FARM_NADES = 10, FARM_ROCKETS = 4;                           // mer granater i kyllingkaoset
-const CHICK_CAP = 60;                                              // maks levende kyllinger samtidig
+const CHICK_CAP = 100;                                             // maks levende kyllinger samtidig
 const GOLD_CHANCE = +process.env.GOLD_CHANCE || 0.05;             // sjanse for gullegg når en kylling dør
 const BURNABLE = new Set([FM.T.HAY, FM.T.CORN, FM.T.STRAW, FM.T.TENT]);
 const WIRE_SET = new Set(FM.WIRE.map(([x, z]) => x + ',' + z));
@@ -389,7 +389,7 @@ function emitWave(extra) {
 }
 function waveList(n) {
   const np = Math.max(1, farmPlayers().length), k = 1 + 0.45 * (np - 1);
-  const total = Math.round((5 + n * 3) * k * 3), list = [];   // 3x så mange kyllinger (ønske fra spillerne)
+  const total = Math.round((5 + n * 3) * k * 6), list = [];   // [NY] 6x så mange kyllinger (for lett før)
   for (let i = 0; i < total; i++) {
     const r = Math.random();
     list.push(n >= 4 && r < 0.12 ? 'exploder' : n >= 3 && r < 0.27 ? 'thrower' : n >= 2 && r < 0.47 ? 'runner' : 'walker');
@@ -578,7 +578,7 @@ function farmTick() {
     if (now - (farm.lastWaveEmit || 0) >= 1000) { farm.lastWaveEmit = now; emitWave(); }
     if (farm.queue.length && now >= farm.nextSpawn && farm.chicks.size < CHICK_CAP) {
       spawnChick(farm.queue.shift());
-      farm.nextSpawn = now + Math.max(120, 300 - farm.wave * 15);   // kryper fortere opp (det er 3x så mange)
+      farm.nextSpawn = now + Math.max(70, 180 - farm.wave * 12);   // kryper fortere opp (det er 6x så mange)
     }
     if (!farm.queue.length && !farm.chicks.size) {
       if (farm.wave >= FARM_WAVES) { endFarm('win'); return; }
