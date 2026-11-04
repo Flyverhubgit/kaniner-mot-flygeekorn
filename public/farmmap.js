@@ -146,6 +146,10 @@
     ladder(44, -25, 7, 0, -1);        // låvetaket (sørveggen)
     ladder(-56, 21, 6, 0, 1);         // taket på våningshuset (nordveggen)
     ladder(53, 30, 17, 1, 0);         // toppen av siloen – supert snikskytter-sted
+    // [FIKS] Vakttårn-stigen sto mot ingenting (åpent under plattformen) og sandsekkene sperret toppen.
+    // Nå: en planke bak stigen å klatre mot, og en åpning i rekkverket øverst.
+    box(-3, -3, 0, 6, -1, -1, T.WOOD);
+    box(-3, -3, 8, 8, -1, -1, 0);
     ladder(-4, -1, 8, 1, 0);          // vakttårnet (i tillegg til trappa)
     set(-3, 8, -1, 0);                // åpning i rekkverket der stigen kommer opp
     // Maisåkre (2 høye rader – god dekning, men kyllingene gjemmer seg der også!)
