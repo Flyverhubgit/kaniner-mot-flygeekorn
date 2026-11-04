@@ -597,7 +597,15 @@ function farmTick() {
     const T = CHICK[c.type];
     // Nærmeste levende spiller
     let tgt = null, best = 1e9;
-    alive.forEach(p => { const d = Math.hypot(p.x - c.x, p.z - c.z); if (d < best) { best = d; tgt = p; } });
+    // [NY] Ca. 1 av 5 kyllinger er "jegere": de velger en tilfeldig spiller og følger ham til han dør.
+    // Da dukker det opp kyllinger bak den som føler seg trygg – pass på hverandre!
+    if (c.hunter === undefined) c.hunter = alive.length > 1 && Math.random() < 0.2;
+    if (c.hunter) {
+      let prey = alive.find(p => p.id === c.prey);
+      if (!prey) { prey = alive[Math.floor(Math.random() * alive.length)]; c.prey = prey && prey.id; }
+      if (prey) { tgt = prey; best = Math.hypot(prey.x - c.x, prey.z - c.z); }
+    }
+    if (!tgt) alive.forEach(p => { const d = Math.hypot(p.x - c.x, p.z - c.z); if (d < best) { best = d; tgt = p; } });
     c.pecking = 0;
     if (!tgt) return;
     let gx = tgt.x, gz = tgt.z;
