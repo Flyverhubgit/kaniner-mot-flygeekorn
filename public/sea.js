@@ -102,8 +102,7 @@ function seaBaseHud(w) {
 }
 function seaWave(w, prev) {
   if (w.start) {
-    bannerMsg = '&#127754; BØLGE ' + w.n + (w.n === w.total ? ' – SISTE BØLGE!' : '') + ' &#127754;<br><span style="font-size:20px">' + w.left + ' havmonstre kommer...</span>';
-    bannerTime = 3; playSonar(); setTimeout(playHorn, 900);
+    playSonar(); setTimeout(playHorn, 900);          // [NY] ingen melding – lyden og linja øverst holder
   } else if (w.cleared) {
     bannerMsg = '&#9989; BØLGE ' + w.n + ' KLART!<br><span style="font-size:20px">Reparer basen! Neste bølge om ' + w.in + ' sek</span>';
     bannerTime = 4;

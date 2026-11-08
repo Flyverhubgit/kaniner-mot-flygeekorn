@@ -440,9 +440,7 @@ socket.on('wave', w => {
   if (seaOn()) { if (typeof seaWave === 'function') seaWave(w, prev); return; }   // [NY] dyphavet har egne meldinger (sea.js)
   if (!farmOn()) return;
   if (w.start) {
-    bannerMsg = '&#128020; BØLGE ' + w.n + (w.n === w.total ? ' – SISTE BØLGE!' : '') + ' &#128020;<br><span style="font-size:20px">' + w.left + ' zombie-kyllinger kommer...</span>';
-    bannerTime = 3;
-    playRooster();                                     // KYKELIKYYY!
+    playRooster();                                     // [NY] ingen melding – lyden og linja øverst holder                                     // KYKELIKYYY!
     setTimeout(playHorn, 1300);
   } else if (w.cleared) {
     bannerMsg = '&#9989; BØLGE ' + w.n + ' KLART – RASKT!<br><span style="font-size:20px">Kort pause: de døde er tilbake. Neste bølge om ' + w.in + ' sek</span>';
