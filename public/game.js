@@ -30,7 +30,28 @@ camera.position.set(0, 1.7, 18);
 // ---------- Renderer (pikseltetthet begrenset for mobil) ----------
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+// [NY] Ytelse: høyst 1,5x oppløsning (før 2x = mye tyngre på mobil). Går det tregt (under 40 bilder/sek),
+// senkes oppløsningen automatisk i små steg ned til 1x.
+let pixelRatio = Math.min(window.devicePixelRatio, 1.5);
+renderer.setPixelRatio(pixelRatio);
+(function fpsWatch() {
+  let n = 0, t0 = performance.now(), last = t0;
+  function tick(t) {
+    if (t - last > 500) { n = 0; t0 = t; }        // fanen var skjult / spillet sto – ikke tell det
+    last = t; n++;
+    if (t - t0 > 3000) {
+      const fps = n * 1000 / (t - t0);
+      if (fps < 40 && pixelRatio > 1 && typeof joined !== 'undefined' && joined) {
+        pixelRatio = Math.max(1, pixelRatio - 0.25);
+        renderer.setPixelRatio(pixelRatio);
+        console.log('Lav FPS (' + fps.toFixed(0) + ') – oppløsning senket til ' + pixelRatio + 'x');
+      }
+      n = 0; t0 = t;
+    }
+    requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+})();
 renderer.shadowMap.enabled = true;
 renderer.setClearColor(0x87a7c4);
 document.body.appendChild(renderer.domElement);
@@ -305,6 +326,7 @@ const TEAM_NAME = { bunny: 'Kaniner', squirrel: 'Flygeekorn' };
 // [FIKS] Bærbare PC-er med berøringsskjerm fikk mobilkontroller. Nå sjekkes om
 // hovedpekeren er en finger ("coarse") i stedet for om skjermen tåler berøring.
 const isTouch = window.matchMedia('(pointer: coarse)').matches;
+if (isTouch) sun.shadow.mapSize.set(512, 512);   // [NY] ytelse: billigere skygger på mobil
 const keys = {};
 let jumpQueued = false;
 const touchMove = { x: 0, y: 0 };

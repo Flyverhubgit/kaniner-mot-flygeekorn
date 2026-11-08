@@ -125,6 +125,7 @@ function applyMap() {
   hemi.intensity = sea ? 0.55 : farm ? 0.42 : 0.7;
   sun.color.setHex(sea ? 0x7fd6ff : farm ? 0xa9bcff : 0xffffff);
   sun.intensity = sea ? 0.6 : farm ? 0.55 : 0.8;
+  sun.castShadow = !sea;                    // [NY] ytelse: ingen skygger under vann (synes knapt i mørket)
   scene.background.setHex(sky);
   scene.fog.color.setHex(sky);
   scene.fog.near = sea ? 14 : farm ? 30 : space ? 450 : big ? 140 : 70;      // [NY] dyphavet: tett tåke, ser ikke langt

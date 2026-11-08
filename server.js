@@ -11,6 +11,7 @@ const FM = require('./public/farmmap.js');     // [NY] zombie-kyllingfarmen (sam
 const SM = require('./public/seamap.js');      // [NY] dyphavsbasen (samme klosse-system)
 
 const app = express();
+app.use(require('compression')());                // [NY] pakker filene (ca. 1 MB -> 250 KB) – raskere lasting på mobil
 app.use(express.static(path.join(__dirname, 'public')));
 const server = http.createServer(app);
 const io = new Server(server);
