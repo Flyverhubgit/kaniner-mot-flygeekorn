@@ -29,7 +29,7 @@ function buildSeaMonster(type) {
   const g = new THREE.Group(), body = new THREE.Group(), head = new THREE.Group();
   g.add(body); body.add(head);
   const add = (parent, w, h, d, x, y, z, mat, rx, ry, rz) => {
-    const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+    const m = new THREE.Mesh(monsterBox(w, h, d), mat);   // [NY] myke klosser (bryter: SOFT_BLOCKS i models.js)
     m.position.set(x, y, z); m.rotation.set(rx || 0, ry || 0, rz || 0);
     m.castShadow = true; m.raycast = () => {};
     parent.add(m); return m;

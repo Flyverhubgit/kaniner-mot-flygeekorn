@@ -17,7 +17,7 @@ function buildZombieChicken(type) {
   const M = (c, o) => new THREE.MeshStandardMaterial(Object.assign({ color: c, roughness: 0.9 }, o || {}));
   const glowMat = c => new THREE.MeshBasicMaterial({ color: c });
   const add = (parent, w, h, d, x, y, z, mat, rx, ry, rz) => {
-    const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+    const m = new THREE.Mesh(monsterBox(w, h, d), mat);   // [NY] myke klosser (bryter: SOFT_BLOCKS i models.js)
     m.position.set(x, y, z);
     m.rotation.set(rx || 0, ry || 0, rz || 0);
     m.castShadow = true;

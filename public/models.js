@@ -6,9 +6,40 @@ const PLUSH = 0x8d8479;        // hovedfarge (fra kosekluten)
 const PLUSH_FLAT = 0x80776d;   // litt mørkere (flyveskinn, glatte felt)
 const PLUSH_LIGHT = 0x9d9489;  // litt lysere (mage)
 
+// [NY] Myke klosser: samme form, men avrundede kanter (som LEGO / kosedyr). Formene gjenbrukes (cache).
+// ANGRE: sett SOFT_BLOCKS = false -> alle figurer (spillere, kyllinger, havmonstre) blir blokkete igjen.
+let SOFT_BLOCKS = true;
+const softCache = new Map();
+function softBox(w, h, d, seg) {
+  seg = seg || 4;                                 // flere ledd = rundere (spillere 4, monstre 2–3)
+  const key = w.toFixed(3) + ',' + h.toFixed(3) + ',' + d.toFixed(3) + ',' + seg;
+  if (softCache.has(key)) return softCache.get(key);
+  const r = Math.min(w, h, d) * 0.28;             // hvor runde kantene er
+  const geo = new THREE.BoxGeometry(w, h, d, seg, seg, seg);
+  const P = geo.attributes.position, N = geo.attributes.normal, v = new THREE.Vector3(), c = new THREE.Vector3();
+  const hx = w / 2 - r, hy = h / 2 - r, hz = d / 2 - r;
+  for (let i = 0; i < P.count; i++) {
+    v.fromBufferAttribute(P, i);
+    c.set(Math.max(-hx, Math.min(hx, v.x)), Math.max(-hy, Math.min(hy, v.y)), Math.max(-hz, Math.min(hz, v.z)));
+    v.sub(c);
+    if (v.lengthSq() > 1e-12) { v.normalize(); N.setXYZ(i, v.x, v.y, v.z); v.multiplyScalar(r); }   // lyset følger rundingen
+    v.add(c);
+    P.setXYZ(i, v.x, v.y, v.z);
+  }
+  softCache.set(key, geo);
+  return geo;
+}
+// Monstrene (opptil 100 samtidig): litt færre ledd, og enda færre på mobil
+const MONSTER_SEG = window.matchMedia('(pointer: coarse)').matches ? 2 : 3;
+function monsterBox(w, h, d) {
+  if (!SOFT_BLOCKS) return new THREE.BoxGeometry(w, h, d);
+  const g = softBox(w, h, d, MONSTER_SEG).clone();
+  g.type = 'BoxGeometry';                         // [FIKS] kopien mistet merkelappen -> bitene ble ikke limt sammen (treigt)
+  return g;
+}
 function blk(parent, w, h, d, x, y, z, color, rot) {
   const m = new THREE.Mesh(
-    new THREE.BoxGeometry(w, h, d),
+    SOFT_BLOCKS ? softBox(w, h, d) : new THREE.BoxGeometry(w, h, d),
     new THREE.MeshStandardMaterial({ color, roughness: 0.95 })
   );
   m.position.set(x, y, z);
