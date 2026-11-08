@@ -731,8 +731,9 @@ function buildBazView(team) {
   if (bazView) gun.remove(bazView);
   bazView = buildBazooka(team);
   bazView.rotation.y = Math.PI;
-  bazView.scale.setScalar(0.6);               // mindre, så bladene ikke fyller skjermen
-  bazView.position.set(0.03, 0.05, -0.3);
+  // [NY] På skulderen: stor, høyt oppe til høyre, røret går fra bak øret og fremover
+  bazView.scale.setScalar(0.62);
+  bazView.position.set(0.05, 0.15, 0.2);
   bazView.traverse(o => { o.layers.set(2); o.castShadow = false; o.receiveShadow = false; });
   gun.add(bazView);
   showWeaponModel();
@@ -761,13 +762,49 @@ const dartView = buildDartGun();
 dartView.visible = false;
 dartView.traverse(o => { o.layers.set(2); o.castShadow = false; o.receiveShadow = false; });
 gun.add(dartView);
+// [NY] ARMER i første person: kosedyr-armer som holder våpenet (høyre pote på grepet, venstre foran),
+// med et svettebånd i lagfargen (rødt = kanin, grønt = flygeekorn). Henger på våpenet, så de følger rekylen.
+const ARM_FUR = new THREE.MeshStandardMaterial({ color: 0x8d8479, roughness: 0.95 });
+const ARM_PAW = new THREE.MeshStandardMaterial({ color: 0x9d9489, roughness: 0.95 });
+const ARM_BAND = new THREE.MeshStandardMaterial({ color: 0xb3261e, roughness: 0.9 });
+function limb(parent, from, to, w, mat) {         // en avlang "myk kloss" fra et punkt til et annet
+  const a = new THREE.Vector3(...from), b = new THREE.Vector3(...to);
+  const len = a.distanceTo(b);
+  const m = new THREE.Mesh(typeof softBox === 'function' && SOFT_BLOCKS ? softBox(w, w, len) : new THREE.BoxGeometry(w, w, len), mat);
+  m.position.copy(a).add(b).multiplyScalar(0.5);
+  m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), b.clone().sub(a).normalize());   // pek fra a mot b
+  parent.add(m);
+  return m;
+}
+const arms = new THREE.Group();
+function buildArms() {
+  // Høyre: poten rundt grepet, underarmen ned mot høyre hjørne
+  const R = new THREE.Group(); arms.add(R); arms.userData.R = R;
+  limb(R, [0.01, -0.11, 0.15], [0.14, -0.34, 0.48], 0.085, ARM_FUR);
+  limb(R, [0.025, -0.135, 0.2], [0.04, -0.165, 0.25], 0.098, ARM_BAND);
+  const rp = new THREE.Mesh(softBox(0.085, 0.09, 0.095), ARM_PAW); rp.position.set(0, -0.085, 0.13); R.add(rp);
+  // Venstre: poten under håndbeskyttelsen, underarmen ned mot midten
+  const L = new THREE.Group(); arms.add(L); arms.userData.L = L;
+  limb(L, [-0.02, -0.07, -0.17], [-0.27, -0.33, 0.16], 0.085, ARM_FUR);
+  limb(L, [-0.06, -0.11, -0.12], [-0.09, -0.14, -0.08], 0.098, ARM_BAND);
+  const lp = new THREE.Mesh(softBox(0.09, 0.075, 0.1), ARM_PAW); lp.position.set(0, -0.045, -0.2); L.add(lp);
+  arms.traverse(o => { o.layers.set(2); o.castShadow = false; o.receiveShadow = false; o.raycast = () => {}; });
+}
+buildArms();
+gun.add(arms);
 function showWeaponModel() {
   const sn = weapon === sniperW, bz = weapon === bazW, dart = akW.id === 'dart';
+  ARM_BAND.color.setHex(myTeam === 'squirrel' ? 0x556b2f : 0xb3261e);   // lagfarge på svettebåndet
+  // Gulrot/nøtt-snikskytteren og bazookaen sitter lenger frem: flytt potene dit
+  const far = sn || bz;
+  // Bazookaen ligger på skulderen: potene opp til de to grepene under røret
+  arms.userData.R.position.set(bz ? 0.05 : 0, bz ? 0.154 : sn ? 0.05 : 0, bz ? 0.039 : sn ? -0.24 : 0);
+  arms.userData.L.position.set(bz ? 0.05 : 0, bz ? 0.12 : sn ? 0.03 : 0, bz ? 0.214 : sn ? -0.3 : 0);
   akParts.forEach(c => { c.visible = !sn && !bz && !dart; });
   dartView.visible = !sn && !bz && dart;
   if (sniperView) sniperView.visible = sn;
   if (bazView) bazView.visible = bz;
-  flash.position.set(0, bz ? 0.06 : 0.012, sn ? -0.8 : bz ? -0.65 : -0.56);
+  flash.position.set(bz ? 0.05 : 0, bz ? 0.15 : 0.012, sn ? -0.8 : bz ? -0.2 : -0.56);   // [NY] bazooka-munningen er på skulderen   // [NY] bazooka-munningen er på skulderen
 }
 function switchWeapon(w) {
   if (!joined || weapon === w) return;
@@ -1671,8 +1708,7 @@ function addOther(p) {
   heldSniper.visible = false;
   body.add(heldSniper);
   const heldBaz = buildBazooka(p.team);           // [NY] bazooka i hånden
-  heldBaz.position.copy(body.userData.gun.position);
-  heldBaz.position.y += 0.08;
+  heldBaz.position.set(0.36, 1.1, 0.08);          // [NY] på høyre skulder (ikke i hånden)
   heldBaz.visible = false;
   body.add(heldBaz);
   // [NY] Blå skjold-boble når spilleren nettopp har startet på nytt (kan ikke skades)
@@ -2125,6 +2161,7 @@ el('joinBtn').addEventListener('click', () => {
   const name = nameInput.value.trim() || 'Spiller' + Math.floor(Math.random() * 1000);
   try { localStorage.setItem('kmf-name', name); } catch (err) {}
   myTeam = chosenTeam;
+  if (typeof showWeaponModel === 'function') showWeaponModel();   // [NY] lagfarge på armbåndet
   unlockAudio();
   lastJoin = { name, team: chosenTeam };
   if (pickedMap && el('mapRow').style.display !== 'none') lastJoin.map = pickedMap;   // [NY] første spiller velger bane
