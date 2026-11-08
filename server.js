@@ -1051,7 +1051,7 @@ io.on('connection', socket => {
     const to = d.to.map(v => num(v, -500, 500));
     if (to.includes(null)) return;
     p.protectedUntil = 0;                 // skyter du, er beskyttelsen over
-    socket.broadcast.emit('shot', { id: socket.id, to, w: d.w === 'sniper' ? 'sniper' : 'ak' });
+    socket.broadcast.emit('shot', { id: socket.id, to, w: d.w === 'sniper' ? 'sniper' : d.w === 'dart' ? 'dart' : 'ak' });   // [NY] pilgevær under vann
   });
 
   // Treff: klienten sier hvem den traff
@@ -1243,12 +1243,13 @@ io.on('connection', socket => {
     if (!p || !p.alive || !farmActive() || !d) return;
     const c = farm.chicks.get(d.id);
     if (!c) return;
-    const now = Date.now(), w = d.w === 'sniper' ? 'sniper' : d.w === 'egg' ? 'egg' : 'ak';
+    const now = Date.now(), w = d.w === 'sniper' ? 'sniper' : d.w === 'egg' ? 'egg' : d.w === 'dart' && mapName === 'sea' ? 'dart' : 'ak';
     if (w === 'egg' && now > (p.minigunUntil || 0)) return;
-    const key = 'lastChick_' + w, min = w === 'sniper' ? SNIPER_MIN_MS : w === 'egg' ? 35 : MIN_HIT_MS;
+    // [NY] Pilgeværet (dyphavet): 5 skudd i sekundet, men dobbel skade per pil
+    const key = 'lastChick_' + w, min = w === 'sniper' ? SNIPER_MIN_MS : w === 'egg' ? 35 : w === 'dart' ? 170 : MIN_HIT_MS;
     if (now - (p[key] || 0) < min) return;
     p[key] = now;
-    const base = w === 'sniper' ? 60 : w === 'egg' ? 15 : DMG_BODY;
+    const base = w === 'sniper' ? 60 : w === 'egg' ? 15 : w === 'dart' ? DMG_BODY * 2 : DMG_BODY;
     hurtChick(c, d.head ? base * 2 : base, p);
   });
   socket.on('barrelHit', d => {                      // skjøt en tønne

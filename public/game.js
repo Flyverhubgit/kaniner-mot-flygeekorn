@@ -715,9 +715,34 @@ function buildBazView(team) {
   gun.add(bazView);
   showWeaponModel();
 }
+// [NY] PILGEVÆR (dyphavet): langt, tynt løp, bredt flatt magasin og trådkolbe – skyter stålpiler under vann.
+// AK-en (våpen 1) blir byttet ut med dette når du er på dyphavsbasen.
+function buildDartGun() {
+  const g = new THREE.Group();
+  const steel = new THREE.MeshStandardMaterial({ color: 0x5c656e, metalness: 0.6, roughness: 0.4 });
+  const black = new THREE.MeshStandardMaterial({ color: 0x1a1c1f });
+  const yellow = new THREE.MeshStandardMaterial({ color: 0xd8b02a });
+  const part = (w, h, d, x, y, z, mat, rx) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat); m.position.set(x, y, z); if (rx) m.rotation.x = rx; g.add(m); };
+  part(0.055, 0.07, 0.3, 0, 0, 0, black);              // kasse
+  part(0.02, 0.02, 0.42, 0, 0.01, -0.36, steel);       // langt, tynt løp
+  part(0.035, 0.035, 0.05, 0, 0.01, -0.56, steel);     // munning
+  part(0.02, 0.2, 0.11, 0, -0.13, -0.08, black, 0.15); // bredt, flatt pilmagasin
+  part(0.022, 0.03, 0.09, 0, -0.04, -0.1, yellow);     // pilspisser som stikker opp
+  part(0.035, 0.09, 0.045, 0, -0.08, 0.1, black, -0.3);// grep
+  part(0.012, 0.012, 0.25, 0.02, -0.01, 0.27, steel);  // trådkolbe
+  part(0.012, 0.012, 0.25, -0.02, -0.01, 0.27, steel);
+  part(0.05, 0.06, 0.015, 0, -0.01, 0.4, steel);
+  part(0.012, 0.035, 0.012, 0, 0.05, -0.5, steel);     // siktekorn
+  return g;
+}
+const dartView = buildDartGun();
+dartView.visible = false;
+dartView.traverse(o => { o.layers.set(2); o.castShadow = false; o.receiveShadow = false; });
+gun.add(dartView);
 function showWeaponModel() {
-  const sn = weapon === sniperW, bz = weapon === bazW;
-  akParts.forEach(c => { c.visible = !sn && !bz; });
+  const sn = weapon === sniperW, bz = weapon === bazW, dart = akW.id === 'dart';
+  akParts.forEach(c => { c.visible = !sn && !bz && !dart; });
+  dartView.visible = !sn && !bz && dart;
   if (sniperView) sniperView.visible = sn;
   if (bazView) bazView.visible = bz;
   flash.position.set(0, bz ? 0.06 : 0.012, sn ? -0.8 : bz ? -0.65 : -0.56);
@@ -1434,10 +1459,11 @@ function shoot() {
   fireCooldown = egg ? 0.06 : weapon.fireDelay;
   myProtectUntil = 0;                             // [NY] skyter du, er skjoldet borte
   const sn = weapon === sniperW && !egg;         // [NY] snikskytter?
-  recoil = sn ? 1.5 : Math.min(recoil + 0.7, 1.5);
-  flashTime = sn ? 0.07 : 0.04;
+  const dart = weapon === akW && akW.id === 'dart' && !egg;   // [NY] pilgevær under vann
+  recoil = sn ? 1.5 : Math.min(recoil + (dart ? 1 : 0.7), 1.5);
+  flashTime = sn ? 0.07 : dart ? 0 : 0.04;        // ingen munningsflamme under vann
   flash.rotation.z = Math.random() * Math.PI;
-  if (sn) playShot(0.55, 650); else playShot();  // [NY] dypere og høyere smell
+  if (sn) playShot(0.55, 650); else if (dart && typeof playDart === 'function') playDart(0.3); else playShot();  // [NY] dypere og høyere smell
 
   // Skuddet går rett ut fra midten av skjermen
   // [NY] Snikskytter uten kikkert sprer mye – bruk siktet!
@@ -1489,7 +1515,8 @@ function shoot() {
     const n = h.face ? h.face.normal.clone().transformDirection(h.object.matrixWorld) : new THREE.Vector3(0, 1, 0);
     addImpact(h.point, n);
   }
-  addTracer(muzzleWorld(), end);
+  if (dart && typeof dartFx === 'function') dartFx(muzzleWorld(), end, !chick && !target, d);   // [NY] synlig pil som blir sittende fast
+  else addTracer(muzzleWorld(), end);
   if (egg && typeof eggShotFx === 'function') eggShotFx(muzzleWorld(), end);
   socket.emit('shot', { to: [+end.x.toFixed(2), +end.y.toFixed(2), +end.z.toFixed(2)], w: weapon.id });
 
@@ -1582,7 +1609,7 @@ function updateWeapon(dt) {
     if (s.life <= 0) s.mesh.visible = false;
   });
 
-  const wIcon = weapon === sniperW ? (myTeam === 'bunny' ? '🥕 ' : '🌰 ') : weapon === bazW ? '🚀 ' : 'AK ';   // [NY] gulrot / nøtt / bazooka
+  const wIcon = weapon === sniperW ? (myTeam === 'bunny' ? '🥕 ' : '🌰 ') : weapon === bazW ? '🚀 ' : akW.id === 'dart' ? 'PIL ' : 'AK ';   // [NY] pilgevær   // [NY] gulrot / nøtt / bazooka
   hud.textContent = wIcon + (reloading > 0 ? 'LADER...' : weapon.mag + ' / ' + (weapon.reserve === Infinity ? '∞' : weapon.reserve)) +
     '   💣 ' + (underNow() || (typeof hordeOn === 'function' && hordeOn()) ? '∞' : grenades) + (window.holyMine ? '   🍑 HELLIG FERSKEN (G)' : '');   // [NY] viser granater også (uendelig i underverdenen)
 }
@@ -1866,8 +1893,14 @@ socket.on('shot', d => {
   if (!r) return;
   r.root.updateMatrixWorld(true);
   const from = r.root.localToWorld(new THREE.Vector3(0.24, 0.9, 0.95));
-  addTracer(from, new THREE.Vector3(d.to[0], d.to[1], d.to[2]));
   const dist = Math.hypot(r.cur.x - player.x, r.cur.z - player.z);
+  if (d.w === 'dart' && typeof dartFx === 'function') {         // [NY] andres piler under vann
+    const to = new THREE.Vector3(d.to[0], d.to[1], d.to[2]);
+    dartFx(from, to, true, to.clone().sub(from).normalize());
+    playDart(Math.max(0.03, 0.25 - dist * 0.006));
+    return;
+  }
+  addTracer(from, new THREE.Vector3(d.to[0], d.to[1], d.to[2]));
   if (d.w === 'sniper') playShot(Math.max(0.06, 0.5 - dist * 0.006), 650);   // [NY] snikskytter smeller høyere
   else playShot(Math.max(0.03, 0.3 - dist * 0.006));
 });

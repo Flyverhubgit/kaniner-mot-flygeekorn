@@ -213,11 +213,79 @@ function zapAt(p) {
 function zapped() { zapT = 0.8; playZap(0.35); }
 
 // ===================================================================
+//  [NY] PILGEVÆRET: AK-en byttes ut under vann. Pilene synes og blir sittende fast.
+// ===================================================================
+let dartGunOn = false;
+function setDartGun(on) {
+  if (on === dartGunOn) return;
+  dartGunOn = on;
+  akW.id = on ? 'dart' : 'ak';
+  akW.fireDelay = on ? 0.2 : 0.1;                  // 5 piler i sekundet (men dobbel skade)
+  if (typeof showWeaponModel === 'function') showWeaponModel();
+}
+const dartMat = new THREE.MeshStandardMaterial({ color: 0xb8c4cc, metalness: 0.7, roughness: 0.3 });
+const dartFinMat = new THREE.MeshStandardMaterial({ color: 0xd8b02a });
+function buildDart() {
+  const g = new THREE.Group();
+  const shaft = new THREE.Mesh(new THREE.BoxGeometry(0.014, 0.014, 0.32), dartMat);
+  const tip = new THREE.Mesh(new THREE.ConeGeometry(0.012, 0.05, 5), dartMat);
+  tip.rotation.x = Math.PI / 2; tip.position.z = 0.18;
+  const fin = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.04, 0.05), dartFinMat);
+  fin.position.z = -0.15;
+  g.add(shaft, tip, fin);
+  g.traverse(o => { o.raycast = () => {}; });
+  return g;
+}
+const flyingDarts = [], stuckDarts = [];
+const DART_SPEED = 90;
+function dartFx(from, to, stick, dir) {
+  if (!seaOn()) return;
+  const m = buildDart();
+  m.position.copy(from);
+  m.lookAt(to);
+  seaGroup.add(m);
+  const len = from.distanceTo(to);
+  flyingDarts.push({ m, from: from.clone(), to: to.clone(), len, t: 0, stick, bub: 0 });
+}
+function updateDarts(dt) {
+  for (let i = flyingDarts.length - 1; i >= 0; i--) {
+    const d = flyingDarts[i];
+    d.t += dt * DART_SPEED;
+    const k = Math.min(1, d.t / Math.max(d.len, 0.01));
+    d.m.position.lerpVectors(d.from, d.to, k);
+    d.bub -= dt;
+    if (d.bub <= 0) { d.bub = 0.02; addBubble(d.m.position.x, d.m.position.y, d.m.position.z, 0.012 + Math.random() * 0.015); }
+    if (k >= 1) {
+      flyingDarts.splice(i, 1);
+      if (d.stick && d.len < 150) {                // blir sittende fast i vegg, stein og havbunn
+        const back = d.to.clone().sub(d.from).normalize().multiplyScalar(0.12);
+        d.m.position.copy(d.to).sub(back);
+        stuckDarts.push({ m: d.m, life: 10 });
+        if (stuckDarts.length > 40) { const o = stuckDarts.shift(); seaGroup.remove(o.m); }
+      } else seaGroup.remove(d.m);
+    }
+  }
+  for (let i = stuckDarts.length - 1; i >= 0; i--) {
+    const s = stuckDarts[i]; s.life -= dt;
+    if (s.life <= 0) { seaGroup.remove(s.m); stuckDarts.splice(i, 1); }
+  }
+}
+function playDart(vol) {                   // "thwip" – pilen skytes ut med trykkluft
+  if (!audioCtx) return;
+  const t = audioCtx.currentTime, o = audioCtx.createOscillator(), g = audioCtx.createGain();
+  o.type = 'triangle'; o.frequency.setValueAtTime(1400, t); o.frequency.exponentialRampToValueAtTime(260, t + 0.09);
+  g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
+  o.connect(g); g.connect(audioCtx.destination); o.start(t); o.stop(t + 0.13);
+  seaNoise(0.1, 'bandpass', 1800, vol * 0.7, 2);
+}
+
+// ===================================================================
 //  Oppdatering hver bilde-ramme
 // ===================================================================
 let bubbleT = 0;
 function updateSea(dt) {
   const on = seaOn();
+  setDartGun(on);                                  // [NY] AK under vann = pilgevær
   helmet.style.display = on && joined ? 'block' : 'none';
   repairBtn.style.display = on && isTouch && canRepair() ? 'block' : 'none';
   seaRepairing = on && repairHold && canRepair();
@@ -251,6 +319,7 @@ function updateSea(dt) {
   repairSendT -= dt;
   if (seaRepairing && repairSendT <= 0) { repairSendT = 0.2; socket.emit('repair'); if (Math.random() < 0.6) playWeld(); }
   weldFx(dt);
+  updateDarts(dt);
   // Alarm (rødt blink) og strøm-sjokk
   seaAlarmT = Math.max(0, seaAlarmT - dt); zapT = Math.max(0, zapT - dt); fleeT = Math.max(0, fleeT - dt);
   alarmFlash.style.opacity = seaAlarmT > 0 ? (Math.sin(t * 12) > 0 ? 0.9 : 0) : 0;
