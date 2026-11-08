@@ -127,8 +127,8 @@ function applyMap() {
   sun.intensity = sea ? 0.6 : farm ? 0.55 : 0.8;
   scene.background.setHex(sky);
   scene.fog.color.setHex(sky);
-  scene.fog.near = sea ? 6 : farm ? 30 : space ? 450 : big ? 140 : 70;      // [NY] dyphavet: tett tåke, ser ikke langt
-  scene.fog.far = sea ? 55 : farm ? 125 : space ? 1500 : big ? 340 : 150;
+  scene.fog.near = sea ? 14 : farm ? 30 : space ? 450 : big ? 140 : 70;      // [NY] dyphavet: tett tåke, ser ikke langt
+  scene.fog.far = sea ? 85 : farm ? 125 : space ? 1500 : big ? 340 : 150;
   renderer.setClearColor(sky);
   camera.far = space ? 2000 : big ? 400 : 200;
   camera.updateProjectionMatrix();

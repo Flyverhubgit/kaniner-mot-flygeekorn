@@ -432,7 +432,7 @@ function updateEggShots(dt) {
 //  Bølger, skjerm og runde-slutt
 // ===================================================================
 const farmHud = document.createElement('div');
-farmHud.style.cssText = 'position:fixed;left:50%;top:10px;transform:translateX(-50%);color:#fff;font:bold 20px sans-serif;text-shadow:0 0 5px #000;z-index:4;pointer-events:none;display:none;white-space:nowrap;text-align:center;';
+farmHud.style.cssText = 'position:fixed;left:50%;top:8px;transform:translateX(-50%);color:#fff;font:bold 15px sans-serif;text-shadow:0 0 3px #000;z-index:4;pointer-events:none;display:none;white-space:nowrap;text-align:center;opacity:0.9;';   // [NY] mindre
 document.body.appendChild(farmHud);
 socket.on('wave', w => {
   const prev = waveInfo;
@@ -492,7 +492,7 @@ function updateFarmHud() {
   topbar.style.visibility = on ? 'hidden' : '';
   farmHud.style.display = on ? 'block' : 'none';
   if (!on) return;
-  const w = waveInfo, rec = w.record ? ' &nbsp;<span style="font-size:15px;opacity:.8">&#127942; rekord ' + w.record + '</span>' : '';
+  const w = waveInfo, rec = w.record ? ' &nbsp;<span style="font-size:12px;opacity:.8">&#127942; rekord ' + w.record + '</span>' : '';
   let txt;
   const ic = seaOn() ? '&#128025;' : '&#128020;';      // [NY] blekksprut-ikon i dyphavet
   if (w.state === 'prep') txt = ic + ' Gjør dere klare! Første bølge om ' + w.in;
@@ -502,8 +502,8 @@ function updateFarmHud() {
   else txt = w.state === 'win' ? '&#127881; SEIER!' : seaOn() ? '&#128025; Havmonstrene vant' : '&#128020; Kyllingene vant';
   if (seaOn() && typeof seaBaseHud === 'function') txt += seaBaseHud(w);   // [NY] livet til basene
   const king = kingId && chicks.get(kingId);
-  if (king) txt += '<br><span style="font-size:15px">' + (seaOn() ? '&#128025; Kjempeblekkspruten ' : '&#128081; Kong Klukk ') + '<span style="color:#ff5a4a">' + '█'.repeat(Math.ceil((king.hp || 0) * 12)) + '</span><span style="opacity:.3">' + '█'.repeat(12 - Math.ceil((king.hp || 0) * 12)) + '</span></span>';
-  if (minigunOn()) txt += '<br><span style="font-size:16px;color:#ffe14a">&#129370; EGG-MASKINGEVÆR ' + Math.ceil((minigunUntil - performance.now()) / 1000) + 's</span>';
+  if (king) txt += '<br><span style="font-size:12px">' + (seaOn() ? '&#128025; Kjempeblekkspruten ' : '&#128081; Kong Klukk ') + '<span style="color:#ff5a4a">' + '█'.repeat(Math.ceil((king.hp || 0) * 12)) + '</span><span style="opacity:.3">' + '█'.repeat(12 - Math.ceil((king.hp || 0) * 12)) + '</span></span>';
+  if (minigunOn()) txt += '<br><span style="font-size:12px;color:#ffe14a">&#129370; EGG-MASKINGEVÆR ' + Math.ceil((minigunUntil - performance.now()) / 1000) + 's</span>';
   farmHud.innerHTML = txt + rec;
 }
 // Nedtelling lokalt mellom serverens oppdateringer

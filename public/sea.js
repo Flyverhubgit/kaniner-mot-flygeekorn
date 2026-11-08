@@ -24,10 +24,10 @@ const softTex = (() => {
 })();
 (function seaScenery() {
   const add = (geo, mat, x, y, z) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.raycast = () => {}; seaGroup.add(m); return m; };
-  const sand = add(new THREE.BoxGeometry(150, 0.2, 70), new THREE.MeshStandardMaterial({ color: 0x8a7d5a, roughness: 1 }), 0, -0.1, 0);
+  const sand = add(new THREE.BoxGeometry(232, 0.2, 112), new THREE.MeshStandardMaterial({ color: 0x8a7d5a, roughness: 1 }), 0, -0.1, 0);
   sand.receiveShadow = true;
   // Sti av lysere sand mellom basene
-  add(new THREE.BoxGeometry(100, 0.03, 3), new THREE.MeshStandardMaterial({ color: 0xa69a72, roughness: 1 }), 0, 0.01, 0);
+  add(new THREE.BoxGeometry(160, 0.03, 3), new THREE.MeshStandardMaterial({ color: 0xa69a72, roughness: 1 }), 0, 0.01, 0);
   // Gulv inni basene (metallplater) og lys fra taket
   SMAP.BASES.forEach(b => {
     add(new THREE.BoxGeometry(b.x1 - b.x0 - 1, 0.03, b.z1 - b.z0 - 1), new THREE.MeshStandardMaterial({ color: 0x46525e, roughness: 0.6, metalness: 0.4 }), b.x + 0, 0.02, 0);
@@ -36,12 +36,12 @@ const softTex = (() => {
   });
   // Lysstråler som faller ned fra overflaten (gjennomsiktige, myke)
   const rayMat = new THREE.MeshBasicMaterial({ color: 0x9fe8ff, transparent: true, opacity: 0.07, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false });
-  for (let i = 0; i < 14; i++) {
-    const r = add(new THREE.PlaneGeometry(3 + Math.random() * 3, 40), rayMat, -60 + i * 9 + Math.random() * 4, 18, -20 + Math.random() * 40);
+  for (let i = 0; i < 26; i++) {
+    const r = add(new THREE.PlaneGeometry(3 + Math.random() * 3, 40), rayMat, -105 + i * 8.4 + Math.random() * 4, 18, -40 + Math.random() * 80);
     r.rotation.set(0, Math.random() * Math.PI, 0.25);
   }
   // Kantmurer (usynlige) rundt kartet
-  [[0, 30.5, 142, 1], [0, -30.5, 142, 1], [70.5, 0, 1, 62], [-70.5, 0, 1, 62]].forEach(([x, z, w, d]) =>
+  [[0, 50.5, 222, 1], [0, -50.5, 222, 1], [110.5, 0, 1, 102], [-110.5, 0, 1, 102]].forEach(([x, z, w, d]) =>
     seaColliders.push({ minX: x - w / 2, maxX: x + w / 2, minY: 0, maxY: 20, minZ: z - d / 2, maxZ: z + d / 2 }));
   // Stiger opp på basetakene
   const lm = new THREE.MeshStandardMaterial({ color: 0xc8c070, metalness: 0.5 });
@@ -93,12 +93,12 @@ let seaAlarmT = 0, zapT = 0, lastActive = 0, fleeT = 0;
 function seaBaseHud(w) {
   if (!w.bases) return '';
   const max = w.baseMax || 3000;
-  return '<br><span style="font-size:15px">' + w.bases.map((hp, i) => {
+  return '<br><span style="font-size:12px">' + w.bases.map((hp, i) => {
     const lost = i < w.active, act = i === w.active, k = Math.max(0, Math.min(1, hp / max)), n = Math.ceil(k * 8);
     const col = lost ? '#777' : k > 0.5 ? '#5aff9a' : k > 0.25 ? '#ffd23a' : '#ff5a4a';
     return '<span style="' + (act ? '' : 'opacity:.55;') + '">' + (lost ? '&#10060;' : act ? '&#127968;' : '&#9898;') + ' Base ' + (i + 1) + ' ' +
       (lost ? '<s>tapt</s>' : '<span style="color:' + col + '">' + '█'.repeat(n) + '</span><span style="opacity:.3">' + '█'.repeat(8 - n) + '</span>') + '</span>';
-  }).join(' &nbsp; ') + '</span>' + (canRepair() ? '<br><span style="font-size:14px;color:#9fe8ff">&#128295; ' + (isTouch ? 'Hold REPARER' : 'Hold E') + ' for å reparere basen</span>' : '');
+  }).join(' &nbsp; ') + '</span>' + (canRepair() ? '<br><span style="font-size:12px;color:#9fe8ff">&#128295; ' + (isTouch ? 'Hold REPARER' : 'Hold E') + ' for å reparere basen</span>' : '');
 }
 function seaWave(w, prev) {
   if (w.start) {
@@ -136,7 +136,7 @@ function fleeText() {
   const a = Math.atan2(B.x - player.x, B.z - player.z) - Math.atan2(-Math.sin(player.yaw), -Math.cos(player.yaw));
   const arrows = ['&#11014;&#65039;', '&#8599;&#65039;', '&#10145;&#65039;', '&#8600;&#65039;', '&#11015;&#65039;', '&#8601;&#65039;', '&#11013;&#65039;', '&#8598;&#65039;'];
   const idx = ((Math.round(-a / (Math.PI / 4)) % 8) + 8) % 8;
-  return '<br><span style="font-size:18px;color:#9fe8ff">' + arrows[idx] + ' Base ' + (w.active + 1) + ' – ' + d + ' m</span>';
+  return '<br><span style="font-size:14px;color:#9fe8ff">' + arrows[idx] + ' Base ' + (w.active + 1) + ' – ' + d + ' m</span>';
 }
 
 // ===================================================================

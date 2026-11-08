@@ -792,7 +792,7 @@ const scopeEl = document.getElementById('scope');        // [NY] kikkert-ring
 const crosshairEl = document.getElementById('crosshair');
 // ---------- Ammo-visning ----------
 const hud = document.createElement('div');
-hud.style.cssText = 'position:fixed;right:20px;top:15px;color:#fff;font:bold 22px sans-serif;text-shadow:0 0 4px #000;z-index:4;pointer-events:none;text-align:right;';
+hud.style.cssText = 'position:fixed;right:16px;top:12px;color:#fff;font:bold 16px sans-serif;text-shadow:0 0 3px #000;z-index:4;pointer-events:none;text-align:right;opacity:0.9;';   // [NY] mindre
 document.body.appendChild(hud);
 
 // ---------- [NY] Kulespor (tynn strek fra munningen til treffpunktet) ----------
