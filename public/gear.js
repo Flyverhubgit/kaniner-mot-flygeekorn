@@ -183,11 +183,22 @@ gearBox.id = 'gearBox';
 gearBox.style.cssText = 'margin:8px auto 4px;max-width:520px;text-align:center;font:14px sans-serif;color:#fff;';
 const joinBtnEl = document.getElementById('joinBtn');
 joinBtnEl.parentNode.insertBefore(gearBox, joinBtnEl);
+let gearOpen = false;                              // [NY] sammenslått som standard (tar lite plass, spesielt på mobil)
 function renderGearMenu() {
   const L = myLevel(), cur = profile.xp - xpFor(L), need = xpFor(L + 1) - xpFor(L);
   const k = Math.max(0, Math.min(1, cur / need));
-  let h = '<div style="font-weight:bold;margin-bottom:4px">⭐ Nivå ' + L + ' <span style="opacity:.7;font-weight:normal">(' + Math.floor(profile.xp) + ' XP)</span></div>' +
-    '<div style="height:8px;background:rgba(255,255,255,.2);border-radius:4px;overflow:hidden;margin:0 auto 6px;max-width:300px"><div style="height:100%;width:' + (k * 100).toFixed(0) + '%;background:#ffd23a"></div></div>' +
+  const worn = myWear().map(id => GEAR.find(g => g.id === id).icon).join('');
+  let h = '<div id="gearHead" style="cursor:pointer;user-select:none;display:inline-flex;align-items:center;gap:8px;padding:4px 12px;border-radius:10px;background:rgba(0,0,0,.25)">' +
+    '<b>⭐ Nivå ' + L + '</b>' + (worn ? ' <span>' + worn + '</span>' : '') +
+    '<span style="display:inline-block;width:70px;height:6px;background:rgba(255,255,255,.2);border-radius:3px;overflow:hidden"><span style="display:block;height:100%;width:' + (k * 100).toFixed(0) + '%;background:#ffd23a"></span></span>' +
+    '<span style="opacity:.8">Utstyr ' + (gearOpen ? '▴' : '▾') + '</span></div>';
+  if (!gearOpen) {
+    gearBox.innerHTML = h;
+    document.getElementById('gearHead').addEventListener('click', () => { gearOpen = true; renderGearMenu(); });
+    if (typeof previews !== 'undefined') { applyGear(previews[0].fig, 'bunny', myWear()); applyGear(previews[1].fig, 'squirrel', myWear()); }
+    return;
+  }
+  h += '<div style="font-size:12px;opacity:.7;margin:4px 0">' + Math.floor(profile.xp) + ' XP – neste nivå om ' + Math.ceil(xpFor(L + 1) - profile.xp) + ' XP</div>' +
     '<div style="display:flex;flex-wrap:wrap;gap:5px;justify-content:center">';
   GEAR.forEach(g => {
     const open = g.level <= L, on = open && profile.wear.includes(g.id);
@@ -201,6 +212,7 @@ function renderGearMenu() {
   // Vis utstyret på figurene i menyen også
   if (typeof previews !== 'undefined') { applyGear(previews[0].fig, 'bunny', myWear()); applyGear(previews[1].fig, 'squirrel', myWear()); }
   gearBox.querySelectorAll('.gearBtn').forEach(b => b.addEventListener('click', () => toggleGear(b.dataset.id)));
+  document.getElementById('gearHead').addEventListener('click', () => { gearOpen = false; renderGearMenu(); });
   document.getElementById('codeBtn').addEventListener('click', useCode);
 }
 function toggleGear(id) {
