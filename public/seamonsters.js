@@ -2,7 +2,7 @@
 //  [NY] HAVMONSTRENE 🦀🐟🪼🐡🐙 (modellene) – dyphavsbasen
 //  Blokkete og litt skumle, samme stil som zombie-kyllingene:
 //   walker   – ZOMBIE-KRABBE: seig, store klør, øyne på stilker
-//   runner   – PIRAJA-FISK: liten, rask, masse tenner
+//   runner   – BARRAKUDA: lang, slank og sølvblank, underbitt med hoggtenner, rask
 //   thrower  – BRENNMANET: svever og skyter strømkuler
 //   exploder – KULEFISK: blåser seg opp og smeller
 //   king     – KJEMPEBLEKKSPRUTEN: sjefen (bølge 5 og 10), 8 armer
@@ -14,7 +14,7 @@ const SEA_M = (() => {
   const M = (c, o) => new THREE.MeshStandardMaterial(Object.assign({ color: c, roughness: 0.8 }, o || {}));
   return {
     crab: M(0xc4472e), crab2: M(0x8a2f22), rot: M(0x5f8a3a), shell: M(0xe0b090),
-    fish: M(0x7f9aac), fishBelly: M(0xe0503c), fin: M(0x4a6070), tooth: M(0xf4f0e0),
+    fish: M(0xb8c4cc, { metalness: 0.5, roughness: 0.35 }), fishBack: M(0x4a5a68), fishBelly: M(0xe8eef2), fishBar: M(0x2a3440), fin: M(0x6a7a88), tooth: M(0xf4f0e0),
     jelly: new THREE.MeshStandardMaterial({ color: 0xc070ff, emissive: 0x5a1a90, transparent: true, opacity: 0.55, roughness: 0.3, depthWrite: false }),
     jellyCore: new THREE.MeshBasicMaterial({ color: 0xffa0ff }),
     tentacle: new THREE.MeshBasicMaterial({ color: 0xd890ff, transparent: true, opacity: 0.6, depthWrite: false }),
@@ -62,19 +62,27 @@ function buildSeaMonster(type) {
       const bot = grp(C, 0, -0.05, 0.38); add(bot, 0.2, 0.1, 0.3, 0, -0.05, 0.1, K.crab2);
       u.wings.push(C); u.parts.push(top, bot);
     });
-  } else if (type === 'runner') {                 // ===== PIRAJA-FISK =====
+  } else if (type === 'runner') {                 // ===== BARRAKUDA =====
     body.position.y = 0.95;
-    add(body, 0.42, 0.62, 0.95, 0, 0, 0, K.fish);
-    add(body, 0.38, 0.28, 0.7, 0, -0.22, 0.05, K.fishBelly);
-    add(body, 0.06, 0.3, 0.4, 0, 0.42, -0.05, K.fin);              // ryggfinne
-    add(head, 0.4, 0.5, 0.3, 0, 0, 0.58, K.fish);                  // hode med stor kjeve
-    add(head, 0.42, 0.18, 0.32, 0, -0.24, 0.62, K.fishBelly);
-    for (let i = 0; i < 4; i++) { add(head, 0.06, 0.1, 0.06, -0.15 + i * 0.1, -0.1, 0.76, K.tooth); add(head, 0.06, 0.08, 0.06, -0.15 + i * 0.1, -0.2, 0.77, K.tooth); }
-    [-0.2, 0.2].forEach(x => add(head, 0.06, 0.12, 0.12, x, 0.12, 0.62, K.eyeY));
-    const tail = grp(body, 0, 0, -0.5);
-    add(tail, 0.06, 0.6, 0.4, 0, 0, -0.2, K.fin);
+    add(body, 0.28, 0.34, 1.1, 0, 0, 0, K.fish);                    // lang, slank kropp
+    add(body, 0.24, 0.09, 1.0, 0, 0.19, -0.02, K.fishBack);         // mørk rygg
+    add(body, 0.24, 0.08, 0.9, 0, -0.18, 0.04, K.fishBelly);        // lys buk
+    for (let i = 0; i < 4; i++) add(body, 0.29, 0.2, 0.05, 0, 0.06, -0.38 + i * 0.22, K.fishBar);   // mørke striper
+    add(body, 0.04, 0.2, 0.16, 0, 0.3, 0.12, K.fin);               // to ryggfinner
+    add(body, 0.04, 0.14, 0.12, 0, 0.27, -0.32, K.fin);
+    // Hode: spisst, med underbitt og hoggtenner
+    add(head, 0.24, 0.26, 0.28, 0, 0.02, 0.68, K.fish);
+    add(head, 0.17, 0.15, 0.26, 0, 0.0, 0.92, K.fish);              // snute
+    add(head, 0.19, 0.07, 0.4, 0, -0.1, 0.9, K.fishBelly);         // underkjeven stikker frem
+    for (let i = 0; i < 4; i++) { add(head, 0.035, 0.08, 0.035, -0.07 + (i % 2) * 0.14, -0.03, 0.8 + Math.floor(i / 2) * 0.16, K.tooth); }
+    add(head, 0.035, 0.09, 0.035, 0, -0.03, 1.08, K.tooth);         // stor tann helt foran
+    [-0.13, 0.13].forEach(x => { add(head, 0.04, 0.09, 0.09, x, 0.08, 0.74, K.eyeY); add(head, 0.045, 0.04, 0.04, x, 0.08, 0.76, K.black); });
+    // Gaffelhale
+    const tail = grp(body, 0, 0, -0.55);
+    add(tail, 0.04, 0.24, 0.16, 0, 0.1, -0.12, K.fin, 0.55);
+    add(tail, 0.04, 0.24, 0.16, 0, -0.1, -0.12, K.fin, -0.55);
     u.parts.push(tail);
-    [-1, 1].forEach(s => { const f = grp(body, s * 0.22, -0.1, 0.1); add(f, 0.25, 0.04, 0.2, s * 0.12, 0, 0, K.fin); u.wings.push(f); });
+    [-1, 1].forEach(s => { const f = grp(body, s * 0.15, -0.08, 0.3); add(f, 0.2, 0.03, 0.12, s * 0.1, 0, 0, K.fin); u.wings.push(f); });
   } else if (type === 'thrower') {                // ===== BRENNMANET =====
     body.position.y = 1.35;
     const bell = new THREE.Mesh(new THREE.SphereGeometry(0.5, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2), K.jelly);

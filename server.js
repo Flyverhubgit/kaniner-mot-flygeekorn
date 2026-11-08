@@ -264,7 +264,7 @@ const CHICK_CAP = 100;
 const BASE_HP = +process.env.BASE_HP || 3000;                      // liv per base
 const BASE_DMG = 0.4;                                              // monstrene gjør 40 % av vanlig skade på basen
 const REPAIR_HP = 10, REPAIR_MS = 200;                             // hold E: +50 liv i sekundet per spiller
-const SEA_NAMES = { walker: 'Zombie-krabbe', runner: 'Piraja-fisk', thrower: 'Brennmanet', exploder: 'Kulefisk', king: 'Kjempeblekkspruten' };
+const SEA_NAMES = { walker: 'Zombie-krabbe', runner: 'Barrakuda', thrower: 'Brennmanet', exploder: 'Kulefisk', king: 'Kjempeblekkspruten' };
 const FARM_NAMES = { walker: 'Zombie-kylling', runner: 'Zombie-kylling', thrower: 'Eggkaster-kylling', exploder: 'Eksplosiv kylling', king: 'Kong Klukk' };
 function cname(type) { return (mapName === 'sea' ? SEA_NAMES : FARM_NAMES)[type]; }                                             // maks levende kyllinger samtidig
 const GOLD_CHANCE = +process.env.GOLD_CHANCE || 0.05;             // sjanse for gullegg når en kylling dør
