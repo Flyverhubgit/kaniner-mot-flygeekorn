@@ -1726,6 +1726,7 @@ function addOther(p) {
     cur: { x: p.x, y: p.y, z: p.z, yaw: p.yaw },
     target: { x: p.x, y: p.y, z: p.z, yaw: p.yaw }
   };
+  if (typeof gearOther === 'function') gearOther(p.id, p.level, p.wear);   // [NY] hatter osv. + nivå på navneskiltet
 }
 
 function removeOther(id) {
@@ -2164,6 +2165,7 @@ el('joinBtn').addEventListener('click', () => {
   if (typeof showWeaponModel === 'function') showWeaponModel();   // [NY] lagfarge på armbåndet
   unlockAudio();
   lastJoin = { name, team: chosenTeam };
+  if (typeof myLevel === 'function') { lastJoin.level = myLevel(); lastJoin.wear = myWear(); }   // [NY] nivå + utstyr
   if (pickedMap && el('mapRow').style.display !== 'none') lastJoin.map = pickedMap;   // [NY] første spiller velger bane
   socket.emit('join', lastJoin);
   nameInput.blur();
@@ -2217,6 +2219,7 @@ function animate(now) {
     if (typeof updateSpace === 'function') updateSpace(dt);     // [NY] verdensrommet
     if (typeof updateFarm === 'function') updateFarm(dt);       // [NY] zombie-kyllingfarmen
     if (typeof updateSea === 'function') updateSea(dt);         // [NY] dyphavsbasen
+    if (typeof updateGear === 'function') updateGear(dt);       // [NY] glorien snurrer
     if (typeof updateFarmVehicles === 'function') updateFarmVehicles(dt);   // [NY] doser og A-10
     if (typeof updateEasterEggs === 'function') updateEasterEggs(dt);       // [NY] påskeegget
     if (typeof updateFun === 'function') updateFun(dt);         // [NY] fyrverkeri

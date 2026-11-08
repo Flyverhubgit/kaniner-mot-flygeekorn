@@ -317,7 +317,7 @@ function updateSea(dt) {
   }
   // Reparasjon: send til serveren 5 ganger i sekundet
   repairSendT -= dt;
-  if (seaRepairing && repairSendT <= 0) { repairSendT = 0.2; socket.emit('repair'); if (Math.random() < 0.6) playWeld(); }
+  if (seaRepairing && repairSendT <= 0) { repairSendT = 0.2; socket.emit('repair'); if (Math.random() < 0.6) playWeld(); if (typeof gainXP === 'function') gainXP(0.2); }   // [NY] XP for reparasjon
   weldFx(dt);
   updateDarts(dt);
   // Alarm (rødt blink) og strøm-sjokk

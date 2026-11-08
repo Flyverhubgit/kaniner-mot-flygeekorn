@@ -485,7 +485,7 @@ function hurtChick(c, dmg, p) {
 function killChick(c, p) {
   farm.chicks.delete(c.id);
   if (p) { p.kills++; if (players[p.id]) io.to(p.id).emit('hitConfirm', { head: false, kill: true }); }
-  io.emit('chickDie', { id: c.id, x: +c.x.toFixed(1), z: +c.z.toFixed(1), t: c.t });
+  io.emit('chickDie', { id: c.id, x: +c.x.toFixed(1), z: +c.z.toFixed(1), t: c.t, by: p ? p.id : null });   // [NY] by = hvem drepte (XP)
   if (c.type === 'exploder') chickExplode(c);
   if (c.type === 'king' || Math.random() < GOLD_CHANCE) {            // gullegg!
     const g = { id: ++goldSeq, x: c.x, z: c.z, until: Date.now() + 30000 };
@@ -916,7 +916,15 @@ function spawnFor(team) {
 }
 
 function publicPlayer(p) {
-  return { id: p.id, name: p.name, team: p.team, x: p.x, y: p.y, z: p.z, yaw: p.yaw, alive: p.alive, kills: p.kills, deaths: p.deaths };
+  return { id: p.id, name: p.name, team: p.team, x: p.x, y: p.y, z: p.z, yaw: p.yaw, alive: p.alive, kills: p.kills, deaths: p.deaths,
+    level: p.level || 1, wear: p.wear || [] };          // [NY] nivå og utstyr (hatter osv.)
+}
+// [NY] Nivå og utstyr kommer fra spilleren (lagret i nettleseren). Bare lovlige verdier slipper gjennom.
+const GEAR_IDS = ['shades', 'cap', 'pirate', 'goldband', 'mask', 'viking', 'tophat', 'crown', 'halo', 'goldfur'];
+function cleanProfile(d) {
+  const level = Math.max(1, Math.min(99, (d && d.level) | 0));
+  const wear = Array.isArray(d && d.wear) ? d.wear.filter(w => GEAR_IDS.includes(w)).slice(0, 3) : [];
+  return { level, wear };
 }
 
 function lobbyCounts() {
@@ -1001,7 +1009,8 @@ io.on('connection', socket => {
       x: sp.x, y: 0, z: sp.z, yaw: sp.yaw, pitch: 0, slide: 0,
       hp: MAX_HP, alive: true, kills: 0, deaths: 0, lastHit: 0,
       nades: NADES_PER_LIFE, rockets: ROCKETS_PER_LIFE, pending: {},
-      streak: 0, protectedUntil: Date.now() + SPAWN_PROTECT_MS
+      streak: 0, protectedUntil: Date.now() + SPAWN_PROTECT_MS,
+      ...cleanProfile(data)                            // [NY] nivå + utstyr
     };
     const others = {};
     Object.values(players).forEach(o => { if (o.id !== socket.id) others[o.id] = publicPlayer(o); });
@@ -1021,6 +1030,14 @@ io.on('connection', socket => {
     socket.broadcast.emit('playerJoined', publicPlayer(p));
     io.emit('lobby', lobbyCounts());
     console.log(name + ' ble med som ' + (team === 'bunny' ? 'kanin' : 'flygeekorn'));
+  });
+
+  // [NY] Nytt nivå eller nytt utstyr midt i spillet: si fra til de andre
+  socket.on('profile', d => {
+    const p = players[socket.id];
+    if (!p) return;
+    Object.assign(p, cleanProfile(d));
+    socket.broadcast.emit('profile', { id: p.id, level: p.level, wear: p.wear });
   });
 
   // Posisjon fra klienten: [x, føtter-y, z, yaw, pitch, slide]
