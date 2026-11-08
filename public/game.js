@@ -893,11 +893,45 @@ function nadeHits(x, y, z) {
   return false;
 }
 
-function spawnNade(id, mine, p, v, holy) {
-  const mesh = holy ? buildHolyPeach() : buildNadeMesh();   // [NY] hellig fersken
+// [NY] Under vann: mini-torpedo i stedet for granat. Grå kropp, rød nese, finner og propell. Ser mot +z.
+const TORP_SPEED = 16, TORP_GRAVITY = 0.4, TORP_FUSE = 3;   // synker bare litt (nesten rett frem)
+function buildTorpMesh() {
+  const g = new THREE.Group();
+  const grey = new THREE.MeshStandardMaterial({ color: 0x8a96a2, metalness: 0.6, roughness: 0.35 });
+  const red = new THREE.MeshStandardMaterial({ color: 0xd8382a });
+  const dark = new THREE.MeshStandardMaterial({ color: 0x2a3038 });
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.075, 0.5, 10), grey);
+  body.rotation.x = Math.PI / 2; g.add(body);
+  const nose = new THREE.Mesh(new THREE.ConeGeometry(0.075, 0.16, 10), red);
+  nose.rotation.x = Math.PI / 2; nose.position.z = 0.33; g.add(nose);
+  [[0.13, 0.015], [0.015, 0.13]].forEach(([w, h]) => { const f = new THREE.Mesh(new THREE.BoxGeometry(w * 2, h * 2, 0.1), dark); f.position.z = -0.21; g.add(f); });
+  const prop = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.03, 0.02), dark);
+  prop.position.z = -0.27; g.add(prop);
+  g.userData.prop = prop;
+  g.traverse(o => { o.castShadow = true; o.raycast = () => {}; });
+  return g;
+}
+// Tare stopper ikke torpedoen (den glir rett gjennom)
+function inKelp(x, y, z) {
+  if (typeof SeaMap === 'undefined' || typeof seaWorld === 'undefined' || !seaWorld || y < 0) return false;
+  const ix = Math.floor(x), iy = Math.floor(y), iz = Math.floor(z), L = SeaMap;
+  if (ix < L.X0 || ix >= L.X0 + L.NX || iz < L.Z0 || iz >= L.Z0 + L.NZ || iy >= L.NY) return false;
+  return seaWorld.grid[L.idx(ix, iy, iz)] === L.T.KELP;
+}
+// Traff torpedoen et monster? (kyllingene/havmonstrene i farm.js)
+function torpHitsMonster(x, y, z) {
+  if (typeof chicks === 'undefined') return false;
+  for (const c of chicks.values()) {
+    const S = CSCALE[c.t] || 1;
+    if (Math.hypot(c.cur.x - x, c.cur.z - z) < 0.45 * S + 0.25 && y < 1.7 * S) return true;
+  }
+  return false;
+}
+function spawnNade(id, mine, p, v, holy, torp) {
+  const mesh = holy ? buildHolyPeach() : torp ? buildTorpMesh() : buildNadeMesh();   // [NY] hellig fersken / torpedo
   mesh.position.set(p[0], p[1], p[2]);
   scene.add(mesh);
-  nades.push({ id, mine, mesh, x: p[0], y: p[1], z: p[2], vx: v[0], vy: v[1], vz: v[2], t: 0, holy: !!holy, fuse: holy ? HOLY_FUSE : NADE_FUSE });
+  nades.push({ id, mine, mesh, x: p[0], y: p[1], z: p[2], vx: v[0], vy: v[1], vz: v[2], t: 0, holy: !!holy, torp: !!torp, fuse: holy ? HOLY_FUSE : torp ? TORP_FUSE : NADE_FUSE });
 }
 
 function removeNade(id) {
@@ -921,9 +955,11 @@ function throwNade() {
   start.y -= 0.15;
   if (nadeHits(start.x, start.y, start.z)) start = camera.position.clone();
   const p = [+start.x.toFixed(2), +start.y.toFixed(2), +start.z.toFixed(2)];
-  const v = [+(dir.x * NADE_SPEED).toFixed(2), +(dir.y * NADE_SPEED + 3.5).toFixed(2), +(dir.z * NADE_SPEED).toFixed(2)];
+  const torp = typeof seaOn === 'function' && seaOn();      // [NY] under vann: torpedo rett frem dit du sikter
+  const v = torp ? [+(dir.x * TORP_SPEED).toFixed(2), +(dir.y * TORP_SPEED).toFixed(2), +(dir.z * TORP_SPEED).toFixed(2)]
+    : [+(dir.x * NADE_SPEED).toFixed(2), +(dir.y * NADE_SPEED + 3.5).toFixed(2), +(dir.z * NADE_SPEED).toFixed(2)];
   const id = myId + ':' + (++nadeSeq);
-  spawnNade(id, true, p, v);
+  spawnNade(id, true, p, v, false, torp);
   socket.emit('throw', { id, p, v });
 }
 
@@ -934,6 +970,24 @@ function updateNades(dt) {
   for (let i = nades.length - 1; i >= 0; i--) {
     const n = nades[i];
     n.t += dt;
+    if (n.torp) {                                      // [NY] torpedo: rett frem, smeller når den treffer noe
+      let hit = false;
+      const steps = Math.max(1, Math.ceil(Math.hypot(n.vx, n.vy, n.vz) * dt / 0.08)), h = dt / steps;
+      for (let s = 0; s < steps && !hit; s++) {
+        n.vy -= TORP_GRAVITY * h;
+        const nx = n.x + n.vx * h, ny = n.y + n.vy * h, nz = n.z + n.vz * h;
+        if ((nadeHits(nx, ny, nz) && !inKelp(nx, ny, nz)) || torpHitsMonster(nx, ny, nz)) hit = true; else { n.x = nx; n.y = ny; n.z = nz; }
+      }
+      n.mesh.position.set(n.x, n.y, n.z);
+      n.mesh.lookAt(n.x + n.vx, n.y + n.vy, n.z + n.vz);
+      n.mesh.userData.prop.rotation.z += dt * 40;
+      if (typeof addBubble === 'function' && Math.random() < 0.6) addBubble(n.x - n.vx * 0.02, n.y, n.z - n.vz * 0.02, 0.02 + Math.random() * 0.03);
+      if (hit || n.t >= n.fuse) {
+        if (n.mine) socket.emit('boom', { id: n.id, p: [+n.x.toFixed(2), +n.y.toFixed(2), +n.z.toFixed(2)] });
+        removeNade(n.id);
+      }
+      continue;
+    }
     const steps = Math.max(1, Math.ceil(Math.hypot(n.vx, n.vy, n.vz) * dt / 0.08));
     const h = dt / steps;
     for (let s = 0; s < steps; s++) {
@@ -1819,7 +1873,7 @@ socket.on('shot', d => {
 });
 
 // [NY] Granater fra andre spillere, og smell fra serveren
-socket.on('nade', d => spawnNade(d.id, false, d.p, d.v, d.holy));
+socket.on('nade', d => spawnNade(d.id, false, d.p, d.v, d.holy, d.torp));   // [NY] torp = torpedo under vann
 socket.on('rocket', d => { spawnRocket(d.id, d.team, false, d.p, d.v); });   // [NY] andres raketter
 socket.on('boom', d => {
   removeNade(d.id);

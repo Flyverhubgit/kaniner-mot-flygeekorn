@@ -1103,12 +1103,12 @@ io.on('connection', socket => {
     const endless = worldName === 'underworld' || hordeMap();   // [NY] uendelig i underverdenen og på kyllingfarmen
     if (!p || !p.alive || (!endless && p.nades <= 0) || !d || typeof d.id !== 'string' || d.id.length > 40) return;
     if (!Array.isArray(d.p) || !Array.isArray(d.v)) return;
-    const pos = d.p.map(v => num(v, -100, 100)), vel = d.v.map(v => num(v, -40, 40));
+    const pos = d.p.map(v => num(v, -250, 250)), vel = d.v.map(v => num(v, -40, 40));   // [FIKS] dyphavet er 220 m bredt
     if (pos.includes(null) || vel.includes(null)) return;
     if (!endless) p.nades--;
     p.protectedUntil = 0;
     p.pending[d.id] = Date.now();
-    socket.broadcast.emit('nade', { id: d.id, p: pos, v: vel });
+    socket.broadcast.emit('nade', { id: d.id, p: pos, v: vel, torp: mapName === 'sea' });   // [NY] under vann: mini-torpedo
   });
 
   // Granaten smalt: skade på fiender innenfor radiusen
@@ -1118,7 +1118,7 @@ io.on('connection', socket => {
     const kind = p.pending[d.id];
     delete p.pending[d.id];                           // hver granat kan bare smelle én gang
     if (!Array.isArray(d.p)) return;
-    const pos = d.p.map(v => num(v, -100, 100));
+    const pos = d.p.map(v => num(v, -250, 250));        // [FIKS] dyphavet er 220 m bredt
     if (pos.includes(null)) return;
     if (kind === 'holy') {                            // [NY] HALLELUJA
       io.emit('boom', { id: d.id, p: pos, big: 6, holy: true });
