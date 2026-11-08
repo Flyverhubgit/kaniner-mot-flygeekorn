@@ -281,7 +281,8 @@ function castleOn() {
 }
 // [NY] Er vi på en klosse-bane (klosseslottet eller kyllingfarmen)?
 function voxelOn() {
-  return typeof currentMap !== 'undefined' && (currentMap === 'castle' || (currentMap === 'farm' && typeof farmWorld !== 'undefined' && farmWorld)) && !underNow() && typeof castleBlocked === 'function';
+  return typeof currentMap !== 'undefined' && (currentMap === 'castle' || (currentMap === 'farm' && typeof farmWorld !== 'undefined' && farmWorld) ||
+    (currentMap === 'sea' && typeof seaWorld !== 'undefined' && seaWorld)) && !underNow() && typeof castleBlocked === 'function';   // [NY] + dyphavet
 }
 
 // Høyden på bakken (eller trinnet) under spilleren
@@ -579,12 +580,14 @@ function updatePlayer(dt) {
   if (!blocked(player.x, player.z + dz, player.feetY)) player.z += dz;
 
   // Hopp
-  if (jumpQueued && player.onGround) { player.vy = myTeam === 'bunny' ? BUNNY_JUMP : JUMP; player.onGround = false; }   // [NY] kaninen hopper høyere
+  const underwater = typeof seaOn === 'function' && seaOn();   // [NY] dyphavet: svevende hopp, sakte fall
+  if (jumpQueued && player.onGround) { player.vy = (myTeam === 'bunny' ? BUNNY_JUMP : JUMP) * (underwater ? 0.65 : 1); player.onGround = false; }   // [NY] kaninen hopper høyere
   jumpQueued = false;
 
   // Tyngdekraft og høyde
   const oldFeet = player.feetY;
-  player.vy -= GRAVITY * dt;
+  player.vy -= GRAVITY * (underwater ? 0.35 : 1) * dt;
+  if (underwater) player.vy = Math.max(player.vy, -6);     // synker sakte
   // [NY] Stige (det hellige tårnet): W = klatre opp, S = ned, ingenting = heng fast
   let climbV = (typeof ladderClimbV === 'function') ? ladderClimbV(fwd) : null;
   if (climbV === null && typeof farmLadderV === 'function') climbV = farmLadderV(fwd);   // [NY] stiger på kyllingfarmen
@@ -907,7 +910,7 @@ function removeNade(id) {
 function throwNade() {
   if (typeof spaceThrow === 'function' && spaceThrow()) return;   // [NY] torpedo fra jagerflyet
   if (typeof holyThrow === 'function' && holyThrow()) return;   // [NY] har du den hellige ferskenen, kastes den
-  const endless = underNow() || (typeof farmOn === 'function' && farmOn());   // [NY] uendelig i underverdenen og på kyllingfarmen
+  const endless = underNow() || (typeof hordeOn === 'function' && hordeOn());   // [NY] uendelig i underverdenen og på kyllingfarmen
   if (!joined || !alive || (!endless && grenades <= 0) || nadeCooldown > 0) return;
   if (!endless) grenades--;            // [NY] uendelig med granater i underverdenen
   myProtectUntil = 0;
@@ -993,7 +996,7 @@ function updateNades(dt) {
   // Skjelving når et smell er nært
   shake = Math.max(0, shake - dt * 2.5);
   // [FIKS] Kyllingfarmen: smell hele tiden – mye mindre risting, ellers hopper bildet rundt når du sikter
-  if (typeof farmOn === 'function' && farmOn()) shake = Math.min(shake, 0.25);
+  if (typeof hordeOn === 'function' && hordeOn()) shake = Math.min(shake, 0.25);
   if (shake > 0 && alive && joined) {
     camera.rotation.x += (Math.random() - 0.5) * shake * 0.08;
     camera.rotation.y += (Math.random() - 0.5) * shake * 0.08;
@@ -1112,7 +1115,7 @@ function removeRocket(id) {
 }
 function fireRocket() {
   if (weapon.mag <= 0) return;
-  if (typeof farmOn === 'function' && farmOn()) bazW.reserve = 9;   // [NY] kyllingfarmen: uendelig med raketter (men du lader om)
+  if (typeof hordeOn === 'function' && hordeOn()) bazW.reserve = 9;   // [NY] kyllingfarmen: uendelig med raketter (men du lader om)
   weapon.mag--;
   fireCooldown = weapon.fireDelay;
   recoil = 1.5;
@@ -1367,12 +1370,13 @@ function muzzleWorld() {
 }
 
 function shoot() {
+  if (typeof seaRepairing !== 'undefined' && seaRepairing) return;   // [NY] reparerer basen: hendene er opptatt
   if (typeof farmShoot === 'function' && farmShoot()) return;   // [NY] dosertankens kanon / A-10 fra radioen
   if (typeof spaceShoot === 'function' && spaceShoot()) return;   // [NY] laser fra jagerfly / kanontårn
   if (typeof inMortar !== 'undefined' && inMortar) { fireMortar(); return; }   // [NY] står i morteren
   const egg = typeof minigunOn === 'function' && minigunOn();   // [NY] eggmaskingevær (gullegg på kyllingfarmen)
   if (weapon === bazW && !egg) { fireRocket(); return; }   // [NY] bazooka skyter en rakett i stedet for en kule
-  if (!egg && !(typeof farmOn === 'function' && farmOn())) weapon.mag--;   // [NY] kyllingfarmen: bunnløst magasin
+  if (!egg && !(typeof hordeOn === 'function' && hordeOn())) weapon.mag--;   // [NY] kyllingfarmen: bunnløst magasin
   fireCooldown = egg ? 0.06 : weapon.fireDelay;
   myProtectUntil = 0;                             // [NY] skyter du, er skjoldet borte
   const sn = weapon === sniperW && !egg;         // [NY] snikskytter?
@@ -1526,7 +1530,7 @@ function updateWeapon(dt) {
 
   const wIcon = weapon === sniperW ? (myTeam === 'bunny' ? '🥕 ' : '🌰 ') : weapon === bazW ? '🚀 ' : 'AK ';   // [NY] gulrot / nøtt / bazooka
   hud.textContent = wIcon + (reloading > 0 ? 'LADER...' : weapon.mag + ' / ' + (weapon.reserve === Infinity ? '∞' : weapon.reserve)) +
-    '   💣 ' + (underNow() || (typeof farmOn === 'function' && farmOn()) ? '∞' : grenades) + (window.holyMine ? '   🍑 HELLIG FERSKEN (G)' : '');   // [NY] viser granater også (uendelig i underverdenen)
+    '   💣 ' + (underNow() || (typeof hordeOn === 'function' && hordeOn()) ? '∞' : grenades) + (window.holyMine ? '   🍑 HELLIG FERSKEN (G)' : '');   // [NY] viser granater også (uendelig i underverdenen)
 }
 
 // ===================================================================
@@ -1648,7 +1652,7 @@ function updateHud(dt) {
   const m = Math.floor(timeLeft / 60), s = String(timeLeft % 60).padStart(2, '0');
   topbar.innerHTML = teamSpan('bunny', 'Kaniner ' + score.bunny) + ' &nbsp; ' + m + ':' + s + ' &nbsp; ' + teamSpan('squirrel', score.squirrel + ' Flygeekorn');
   healthEl.innerHTML = '&#9829; ' + Math.max(0, hp) + (performance.now() < myProtectUntil ? ' &#128737;&#65039;' : '') +
-    ' &nbsp; <span style="font-size:16px;opacity:.8">' + ((typeof farmOn === 'function' && farmOn()) ? (myTeam === 'bunny' ? 'Du er en kanin' : 'Du er et flygeekorn') + ' &#129309; alle mot kyllingene' : (myTeam === 'bunny' ? 'Du er Kanin' : 'Du er Flygeekorn')) + '</span>';
+    ' &nbsp; <span style="font-size:16px;opacity:.8">' + ((typeof hordeOn === 'function' && hordeOn()) ? (myTeam === 'bunny' ? 'Du er en kanin' : 'Du er et flygeekorn') + ' &#129309; alle mot ' + (currentMap === 'sea' ? 'havmonstrene' : 'kyllingene') : (myTeam === 'bunny' ? 'Du er Kanin' : 'Du er Flygeekorn')) + '</span>';
 
   damageFlash = Math.max(0, damageFlash - dt * 2);
   hitdirTime = Math.max(0, hitdirTime - dt);
@@ -1742,7 +1746,7 @@ coopNote.innerHTML = '&#128020; Zombie-kyllinger: alle spiller SAMMEN &#129309; 
 document.getElementById('cards').insertAdjacentElement('afterend', coopNote);
 function updateMenuMode() {
   const rowOn = el('mapRow').style.display !== 'none';
-  const coop = (rowOn ? pickedMap : lobbyMap) === 'farm';
+  const coop = ['farm', 'sea'].includes(rowOn ? pickedMap : lobbyMap);   // [NY] dyphavet er også samarbeid
   coopNote.style.display = coop ? 'block' : 'none';
   document.querySelectorAll('.card').forEach(c => { if (coop) c.classList.remove('needs'); });
   const btn = el('joinBtn');
@@ -2066,6 +2070,7 @@ function animate(now) {
     if (typeof updateHoly === 'function') updateHoly(dt);       // [NY] den hellige ferskenen
     if (typeof updateSpace === 'function') updateSpace(dt);     // [NY] verdensrommet
     if (typeof updateFarm === 'function') updateFarm(dt);       // [NY] zombie-kyllingfarmen
+    if (typeof updateSea === 'function') updateSea(dt);         // [NY] dyphavsbasen
     if (typeof updateFarmVehicles === 'function') updateFarmVehicles(dt);   // [NY] doser og A-10
     if (typeof updateEasterEggs === 'function') updateEasterEggs(dt);       // [NY] påskeegget
     if (typeof updateFun === 'function') updateFun(dt);         // [NY] fyrverkeri

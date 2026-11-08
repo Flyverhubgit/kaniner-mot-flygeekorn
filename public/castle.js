@@ -79,8 +79,13 @@ function makeVoxelWorld(LIB, group) {
 }
 const castleWorld = makeVoxelWorld(CM, castleGroup);
 let farmWorld = null;                    // lages av farm.js
+let seaWorld = null;                     // [NY] lages av sea.js (dyphavsbasen)
 // Hvilken klosse-verden gjelder nå?
-function voxWorld() { return (typeof currentMap !== 'undefined' && currentMap === 'farm' && farmWorld) ? farmWorld : castleWorld; }
+function voxWorld() {
+  if (typeof currentMap !== 'undefined' && currentMap === 'farm' && farmWorld) return farmWorld;
+  if (typeof currentMap !== 'undefined' && currentMap === 'sea' && seaWorld) return seaWorld;   // [NY]
+  return castleWorld;
+}
 // Gamle navn (brukes av morteren og testene): klosseslottets rutenett
 const grid = castleWorld.grid, pristineGrid = castleWorld.pristine;
 function cellPos(i) { return voxWorld().cellPos(i); }
@@ -201,7 +206,7 @@ function updateCastle(dt) {
 
 // ---------- Meldinger fra serveren ----------
 socket.on('blocks', d => removeCells(d.gone));
-function worldFor(name) { return name === 'castle' ? castleWorld : (name === 'farm' ? farmWorld : null); }
+function worldFor(name) { return name === 'castle' ? castleWorld : name === 'farm' ? farmWorld : name === 'sea' ? seaWorld : null; }
 socket.on('map', d => { const W = worldFor(d.name); if (W) W.reset(); });
 socket.on('welcome', d => {
   const W = worldFor(d.map);

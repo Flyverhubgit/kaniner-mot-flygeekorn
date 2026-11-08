@@ -9,7 +9,8 @@ const VOTE_MAPS = [
   { id: 'room', name: 'Barnerommet', icon: '&#129528;' },
   { id: 'castle', name: 'Klosseslottet', icon: '&#127984;' },
   { id: 'space', name: 'Verdensrommet', icon: '&#128640;' },
-  { id: 'farm', name: 'Zombie-kyllinger', icon: '&#128020;' }
+  { id: 'farm', name: 'Zombie-kyllinger', icon: '&#128020;' },
+  { id: 'sea', name: 'Dyphavsbasen', icon: '&#128025;' }
 ];
 let voteOpen = false, myVote = null;
 
@@ -54,7 +55,7 @@ socket.on('roundOver', d => {
   voteOpen = true;
   myVote = null;
   votePanel.style.display = 'block';
-  showVotes(d.votes || { temple: 0, room: 0, castle: 0, space: 0, farm: 0 });
+  showVotes(d.votes || { temple: 0, room: 0, castle: 0, space: 0, farm: 0, sea: 0 });
 });
 socket.on('votes', c => showVotes(c));
 socket.on('roundStart', () => { voteOpen = false; votePanel.style.display = 'none'; });

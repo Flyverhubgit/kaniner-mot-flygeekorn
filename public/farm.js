@@ -13,6 +13,11 @@ scene.add(farmGroup);
 const farmColliders = [];
 farmWorld = makeVoxelWorld(FM, farmGroup);       // klossene (samme motor som klosseslottet)
 function farmOn() { return typeof currentMap !== 'undefined' && currentMap === 'farm' && !underNow(); }
+// [NY] Horde-baner: kyllingfarmen ELLER dyphavsbasen (samme bølger og monster-system)
+function seaOn() { return typeof currentMap !== 'undefined' && currentMap === 'sea' && !underNow(); }
+function hordeOn() { return farmOn() || seaOn(); }
+const hordeGroup = new THREE.Group();            // monstrene, egg, gull osv. (vises på begge banene)
+scene.add(hordeGroup);
 
 // ---------- Bakke, veier, kantmurer, måne ----------
 (function scenery() {
@@ -96,10 +101,11 @@ const wireSet = new Set(FM.WIRE.map(([x, z]) => x + ',' + z));
 
 // Stiger: stå i stige-ruta. W = opp, S = ned, ellers heng fast (kalles fra updatePlayer i game.js)
 function farmLadderV(fwd) {
-  if (!farmOn() || !alive) return null;
+  if (!hordeOn() || !alive) return null;
+  const LIB = seaOn() ? SeaMap : FM;               // [NY] stiger på dyphavsbasen også
   // [FIKS] Bare klatre når du SER mot veggen stigen står på – ellers ble du "dratt opp" når du gikk forbi
   const lookX = -Math.sin(player.yaw), lookZ = -Math.cos(player.yaw);
-  for (const l of FM.LADDERS) {
+  for (const l of LIB.LADDERS) {
     if (Math.abs(player.x - (l.x + 0.5)) < 0.62 && Math.abs(player.z - (l.z + 0.5)) < 0.62 && player.feetY < l.top + 0.2) {
       const facing = lookX * l.nx + lookZ * l.nz > 0.5;
       if (!facing && player.feetY < 0.05) return null;          // står på bakken og ser en annen vei: bare gå videre
@@ -112,6 +118,7 @@ function farmLadderV(fwd) {
 }
 // Piggtråd: halv fart for spillere
 function wireSlow(px, pz) {
+  if (seaOn()) return 0.68;                        // [NY] under vann: tunge, langsomme skritt
   if (!farmOn()) return 1;
   return wireSet.has(Math.floor(px) + ',' + Math.floor(pz)) ? 0.5 : 1;
 }
@@ -127,35 +134,36 @@ let waveInfo = { n: 0, total: 10, state: 'prep', left: 0, in: 0, record: 0 };
 let kingId = null;
 function farmClearAll() {
   clearFeathers();
-  chicks.forEach(c => farmGroup.remove(c.m));
+  chicks.forEach(c => hordeGroup.remove(c.m));
   chicks.clear();
   flames.forEach(f => farmGroup.remove(f));
   flames.clear();
-  golds.forEach(g => farmGroup.remove(g.m));
+  golds.forEach(g => hordeGroup.remove(g.m));
   golds.clear();
   kingId = null;
 }
 socket.on('chix', list => {
-  if (!farmOn()) return;
+  if (!hordeOn()) return;
   const seen = new Set();
   list.forEach(([id, t, x, z, yaw, peck, hpf]) => {
     seen.add(id);
     let c = chicks.get(id);
     if (!c) {
-      const m = buildZombieChicken(CTYPE_NAMES[t]);
+      const m = seaOn() ? buildSeaMonster(CTYPE_NAMES[t]) : buildZombieChicken(CTYPE_NAMES[t]);   // [NY] sjømonstre i dyphavet
       m.position.set(x, 0, z);
-      farmGroup.add(m);
-      c = { m, t, cur: { x, z, yaw }, tgt: { x, z, yaw }, phase: Math.random() * 10, rise: 1 };
+      hordeGroup.add(m);
+      c = { m, t, cur: { x, z, yaw }, tgt: { x, z, yaw }, phase: Math.random() * 10, rise: seaOn() ? 0 : 1 };
       chicks.set(id, c);
     }
     c.tgt.x = x; c.tgt.z = z; c.tgt.yaw = yaw; c.peck = peck; c.hp = hpf;
   });
-  chicks.forEach((c, id) => { if (!seen.has(id)) { farmGroup.remove(c.m); chicks.delete(id); } });
+  chicks.forEach((c, id) => { if (!seen.has(id)) { hordeGroup.remove(c.m); chicks.delete(id); } });
 });
 socket.on('chickDie', d => {
   const c = chicks.get(d.id);
   const y = d.t === 4 ? 2 : 0.7;
-  if (c) { farmGroup.remove(c.m); chicks.delete(d.id); }
+  if (c) { hordeGroup.remove(c.m); chicks.delete(d.id); }
+  if (seaOn()) { if (typeof seaDeathFx === 'function') seaDeathFx(d); return; }   // [NY] dyphavet: bobler og blekk i stedet
   addFeatherPile(d.x, d.z, d.t === 4 ? 14 : 4);       // fjærhauger blir liggende
   // Fjær-eksplosjon (hvite dotter som daler ned)
   for (let k = 0; k < (d.t === 4 ? 6 : 2); k++) addStuffing(new THREE.Vector3(d.x + (Math.random() - 0.5), y + Math.random(), d.z + (Math.random() - 0.5)));
@@ -165,6 +173,7 @@ socket.on('chickDie', d => {
 });
 socket.on('king', d => {
   kingId = d.id;
+  if (seaOn()) { bannerMsg = '&#128025; KJEMPEBLEKKSPRUTEN ER HER! &#128025;<br><span style="font-size:20px">Den vil knuse basen – skyt alt dere har!</span>'; bannerTime = 4; if (typeof playSeaRoar === 'function') playSeaRoar(); return; }
   if (!farmOn()) return;
   bannerMsg = '&#128081;&#128020; KONG KLUKK ER HER! &#128020;&#128081;<br><span style="font-size:20px">Den kjempestore sjefskyllingen – skyt alt dere har!</span>';
   bannerTime = 4;
@@ -181,19 +190,21 @@ function updateChicks(dt) {
     c.rise = Math.max(0, c.rise - dt * 1.5);                    // kryper opp av bakken
     c.m.position.set(c.cur.x, -c.rise * 1.6 * CSCALE[c.t], c.cur.z);
     c.m.rotation.y = c.cur.yaw;
-    animateZombieChicken(c.m, now + c.phase, Math.min(1.5, moved / Math.max(dt, 0.001) / 3));
-    if (c.peck) { c.m.userData.head.rotation.x = 0.7 + Math.sin(now * 22 + c.phase) * 0.5; c.m.userData.body.rotation.x = 0.35; }
+    if (c.m.userData.sea) animateSeaMonster(c.m, now + c.phase, Math.min(1.5, moved / Math.max(dt, 0.001) / 3), c.peck);   // [NY]
+    else animateZombieChicken(c.m, now + c.phase, Math.min(1.5, moved / Math.max(dt, 0.001) / 3));
+    if (c.m.userData.sea) { /* sjømonstrene animerer angrep selv */ }
+    else if (c.peck) { c.m.userData.head.rotation.x = 0.7 + Math.sin(now * 22 + c.phase) * 0.5; c.m.userData.body.rotation.x = 0.35; }
     else c.m.userData.body.rotation.x = 0;
     // Kakling fra kyllinger i nærheten (ikke for ofte)
     if (clucks < 1 && Math.random() < dt * 0.25) {
       const dist = Math.hypot(c.cur.x - player.x, c.cur.z - player.z);
-      if (dist < 25) { playBawk(Math.max(0.02, 0.16 - dist * 0.006), c.t === 4); clucks++; }
+      if (dist < 25) { if (c.m.userData.sea) { if (typeof playGurgle === 'function') playGurgle(Math.max(0.02, 0.12 - dist * 0.005), c.t === 4); } else playBawk(Math.max(0.02, 0.16 - dist * 0.006), c.t === 4); clucks++; }
     }
   });
 }
 // Treffer skuddet en kylling eller en tønne før det treffer noe annet? (kalles fra shoot() i game.js)
 function farmRayTest(o, d, maxT) {
-  if (!farmOn()) return null;
+  if (!hordeOn()) return null;
   let best = null;
   chicks.forEach((c, id) => {
     const S = CSCALE[c.t], x = c.cur.x, z = c.cur.z;
@@ -312,10 +323,11 @@ function updateFlames() {
 const flyingEggs = [];
 const rotEggMat = new THREE.MeshStandardMaterial({ color: 0x9adf4a, emissive: 0x2a5a10 });
 socket.on('egg', d => {
-  if (!farmOn()) return;
-  const m = new THREE.Mesh(new THREE.SphereGeometry(0.14, 8, 6), rotEggMat);
-  m.scale.y = 1.3; m.raycast = () => {};
-  farmGroup.add(m);
+  if (!hordeOn()) return;
+  const m = seaOn() && typeof zapBall === 'function' ? zapBall() : new THREE.Mesh(new THREE.SphereGeometry(0.14, 8, 6), rotEggMat);   // [NY] brennmanet: strømkule
+  if (!seaOn()) m.scale.y = 1.3;
+  m.raycast = () => {};
+  hordeGroup.add(m);
   flyingEggs.push({ m, from: new THREE.Vector3(...d.from), to: new THREE.Vector3(...d.to), t: 0, dur: d.ms / 1000 });
 });
 function updateEggs(dt) {
@@ -327,8 +339,8 @@ function updateEggs(dt) {
     e.m.position.y += Math.sin(k * Math.PI) * 3;
     e.m.rotation.x += dt * 10;
     if (k >= 1) {
-      farmGroup.remove(e.m); flyingEggs.splice(i, 1);
-      splatAt(e.to);
+      hordeGroup.remove(e.m); flyingEggs.splice(i, 1);
+      if (seaOn()) { if (typeof zapAt === 'function') zapAt(e.to); } else splatAt(e.to);
     }
   }
 }
@@ -336,8 +348,8 @@ const splatMat = new THREE.MeshBasicMaterial({ color: 0x8acf3a, transparent: tru
 function splatAt(p) {
   const m = new THREE.Mesh(new THREE.CircleGeometry(0.6, 10), splatMat);
   m.rotation.x = -Math.PI / 2; m.position.set(p.x, 0.03, p.z); m.raycast = () => {};
-  farmGroup.add(m);
-  setTimeout(() => farmGroup.remove(m), 6000);
+  hordeGroup.add(m);
+  setTimeout(() => hordeGroup.remove(m), 6000);
   const dist = Math.hypot(p.x - player.x, p.z - player.z);
   if (dist < 25) playSplat(Math.max(0.03, 0.25 - dist * 0.008));
 }
@@ -347,11 +359,11 @@ goo.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:3;opacit
   'background:radial-gradient(circle at 30% 35%, rgba(140,210,60,0.85) 0 9%, transparent 10%),radial-gradient(circle at 70% 60%, rgba(120,190,40,0.8) 0 12%, transparent 13%),radial-gradient(circle at 45% 75%, rgba(150,220,70,0.75) 0 7%, transparent 8%),radial-gradient(circle at 80% 25%, rgba(130,200,50,0.7) 0 6%, transparent 7%);';
 document.body.appendChild(goo);
 let gooT = 0;
-socket.on('egged', () => { gooT = 2.5; playSplat(0.4); });
+socket.on('egged', () => { if (seaOn()) { if (typeof zapped === 'function') zapped(); return; } gooT = 2.5; playSplat(0.4); });
 
 // Kong Klukk slår i bakken
 socket.on('slam', d => {
-  if (!farmOn()) return;
+  if (!hordeOn()) return;
   const dist = Math.hypot(d.p[0] - player.x, d.p[2] - player.z);
   shake = Math.max(shake, 1.6 - dist / 20);
   playBoom(Math.max(0.1, 0.6 - dist * 0.01));
@@ -372,16 +384,16 @@ function addGold(id, x, z) {
   glow.scale.set(1.2, 1.6, 1); g.add(glow);
   g.position.set(x, 0.6, z);
   g.traverse(o => { o.raycast = () => {}; });
-  farmGroup.add(g);
+  hordeGroup.add(g);
   golds.set(id, { m: g, x, z });
 }
 socket.on('gold', d => {
-  if (d.list) { golds.forEach(g => farmGroup.remove(g.m)); golds.clear(); d.list.forEach(([id, x, z]) => addGold(id, x, z)); }
+  if (d.list) { golds.forEach(g => hordeGroup.remove(g.m)); golds.clear(); d.list.forEach(([id, x, z]) => addGold(id, x, z)); }
   if (d.add) addGold(d.add[0], d.add[1], d.add[2]);
-  if (d.remove !== undefined) { const g = golds.get(d.remove); if (g) { farmGroup.remove(g.m); golds.delete(d.remove); } }
+  if (d.remove !== undefined) { const g = golds.get(d.remove); if (g) { hordeGroup.remove(g.m); golds.delete(d.remove); } }
 });
 let minigunUntil = 0, goldGrabT = 0;
-function minigunOn() { return farmOn() && performance.now() < minigunUntil; }
+function minigunOn() { return hordeOn() && performance.now() < minigunUntil; }
 socket.on('minigun', d => {
   minigunUntil = performance.now() + d.ms;
   bannerMsg = '&#129370;&#10024; EGG-MASKINGEVÆR! &#10024;&#129370;<br><span style="font-size:20px">Hold inne skyt i ' + Math.round(d.ms / 1000) + ' sekunder!</span>';
@@ -425,6 +437,7 @@ document.body.appendChild(farmHud);
 socket.on('wave', w => {
   const prev = waveInfo;
   waveInfo = w;
+  if (seaOn()) { if (typeof seaWave === 'function') seaWave(w, prev); return; }   // [NY] dyphavet har egne meldinger (sea.js)
   if (!farmOn()) return;
   if (w.start) {
     bannerMsg = '&#128020; BØLGE ' + w.n + (w.n === w.total ? ' – SISTE BØLGE!' : '') + ' &#128020;<br><span style="font-size:20px">' + w.left + ' zombie-kyllinger kommer...</span>';
@@ -444,20 +457,22 @@ socket.on('wave', w => {
 });
 socket.on('fled', () => { if (farmOn()) { bannerMsg = '&#127939;&#128020; De siste kyllingene flyktet! Neste bølge kommer...'; bannerTime = 3; } });
 socket.on('refill', d => { grenades = d.nades; bazW.mag = 1; bazW.reserve = d.rockets - 1; });
-socket.on('respawn', () => { if (farmOn()) { grenades = 10; bazW.mag = 1; bazW.reserve = 3; } });
-socket.on('welcome', d => { if (d.map === 'farm') { grenades = 10; bazW.mag = 1; bazW.reserve = 3; } });
-socket.on('map', d => { farmClearAll(); minigunUntil = 0; if (d.name === 'farm') { grenades = 10; bazW.mag = 1; bazW.reserve = 3; } });
+socket.on('respawn', () => { if (hordeOn()) { grenades = 10; bazW.mag = 1; bazW.reserve = 3; } });
+socket.on('welcome', d => { if (d.map === 'farm' || d.map === 'sea') { grenades = 10; bazW.mag = 1; bazW.reserve = 3; } });
+socket.on('map', d => { farmClearAll(); minigunUntil = 0; if (d.name === 'farm' || d.name === 'sea') { grenades = 10; bazW.mag = 1; bazW.reserve = 3; } });
 socket.on('roundOver', d => {
   if (!d.farm) return;
   const top = (d.board || []).slice().sort((a, b) => b.kills - a.kills)[0];
   // Morsom statistikk: hvem gjorde mest av hva?
   const st = d.farm.stats || [], best = (key) => { const s = st.slice().sort((a, b) => b[key] - a[key])[0]; return s && s[key] > 0 ? s : null; };
   const line = (icon, txt, key) => { const s = best(key); return s ? '<br>' + icon + ' ' + txt + ': <b>' + esc(s.name) + '</b> (' + s[key] + ')' : ''; };   // samme farge for alle – vi er ett lag
-  roundMsg = (d.farm.result === 'win' ? '&#127881; GÅRDEN ER REDDET! &#127881;' : '&#128020; KYLLINGENE VANT... &#128020;') +
+  const sea = currentMap === 'sea';                 // [NY] dyphavet
+  roundMsg = (sea ? (d.farm.result === 'win' ? '&#127881; BASEN ER REDDET! &#127881;' : '&#128025; HAVMONSTRENE VANT... &#127754;')
+    : (d.farm.result === 'win' ? '&#127881; GÅRDEN ER REDDET! &#127881;' : '&#128020; KYLLINGENE VANT... &#128020;')) +
     '<br><span style="font-size:20px">' + (d.farm.result === 'win' ? 'Alle 10 bølgene klart!' : 'Dere kom til bølge ' + d.farm.wave) +
     ' &nbsp; (rekord: ' + d.farm.record + ')' +
-    line('&#129351;', 'Flest kyllinger', 'kills') +
-    line('&#129370;', 'Mest egget', 'egged') +
+    line('&#129351;', sea ? 'Flest monstre' : 'Flest kyllinger', 'kills') +
+    (sea ? line('&#128295;', 'Reparerte mest', 'repaired') + line('&#9889;', 'Mest brent av maneter', 'egged') : line('&#129370;', 'Mest egget', 'egged')) +
     line('&#128668;', 'Flest flate kyllinger', 'flat') +
     line('&#128738;', 'Flest tønner sprengt', 'barrels') +
     line('&#128165;', 'Sprengte mest av sin egen leir', 'own') +
@@ -466,26 +481,28 @@ socket.on('roundOver', d => {
   farmClearAll();
 });
 function farmDeathText() {
-  if (!farmOn()) return null;
+  if (!hordeOn()) return null;
   if (waveInfo.state === 'fight') return 'Du kommer tilbake når neste bølge starter' + (waveInfo.in > 0 && waveInfo.n < waveInfo.total ? ' (om ' + waveInfo.in + 's)' : '') + ' – heia på de andre!';
-  if (waveInfo.state === 'lose') return 'Kyllingene vant denne gangen...';
-  if (waveInfo.state === 'win') return 'Gården er reddet!';
+  if (waveInfo.state === 'lose') return seaOn() ? 'Havmonstrene vant denne gangen...' : 'Kyllingene vant denne gangen...';
+  if (waveInfo.state === 'win') return seaOn() ? 'Basen er reddet!' : 'Gården er reddet!';
   return null;
 }
 function updateFarmHud() {
-  const on = farmOn() && joined;
+  const on = hordeOn() && joined;
   topbar.style.visibility = on ? 'hidden' : '';
   farmHud.style.display = on ? 'block' : 'none';
   if (!on) return;
   const w = waveInfo, rec = w.record ? ' &nbsp;<span style="font-size:15px;opacity:.8">&#127942; rekord ' + w.record + '</span>' : '';
   let txt;
-  if (w.state === 'prep') txt = '&#128020; Gjør dere klare! Første bølge om ' + w.in;
+  const ic = seaOn() ? '&#128025;' : '&#128020;';      // [NY] blekksprut-ikon i dyphavet
+  if (w.state === 'prep') txt = ic + ' Gjør dere klare! Første bølge om ' + w.in;
   else if (w.state === 'break') txt = '&#9989; Bølge ' + w.n + ' klart! Neste om ' + w.in;
-  else if (w.state === 'fight') txt = '&#128020; BØLGE ' + w.n + '/' + w.total + ' &nbsp; &#129503; ' + w.left + ' igjen' +
+  else if (w.state === 'fight') txt = ic + ' BØLGE ' + w.n + '/' + w.total + ' &nbsp; &#129503; ' + w.left + ' igjen' +
     (w.n < w.total ? ' &nbsp; <span style="color:' + (w.in <= 5 ? '#ff6a5a' : '#ffe9a0') + '">&#9201;&#65039; neste bølge om ' + w.in + 's</span>' : ' &nbsp; <span style="color:#ff6a5a">SISTE BØLGE!</span>');
-  else txt = w.state === 'win' ? '&#127881; SEIER!' : '&#128020; Kyllingene vant';
+  else txt = w.state === 'win' ? '&#127881; SEIER!' : seaOn() ? '&#128025; Havmonstrene vant' : '&#128020; Kyllingene vant';
+  if (seaOn() && typeof seaBaseHud === 'function') txt += seaBaseHud(w);   // [NY] livet til basene
   const king = kingId && chicks.get(kingId);
-  if (king) txt += '<br><span style="font-size:15px">&#128081; Kong Klukk ' + '<span style="color:#ff5a4a">' + '█'.repeat(Math.ceil((king.hp || 0) * 12)) + '</span><span style="opacity:.3">' + '█'.repeat(12 - Math.ceil((king.hp || 0) * 12)) + '</span></span>';
+  if (king) txt += '<br><span style="font-size:15px">' + (seaOn() ? '&#128025; Kjempeblekkspruten ' : '&#128081; Kong Klukk ') + '<span style="color:#ff5a4a">' + '█'.repeat(Math.ceil((king.hp || 0) * 12)) + '</span><span style="opacity:.3">' + '█'.repeat(12 - Math.ceil((king.hp || 0) * 12)) + '</span></span>';
   if (minigunOn()) txt += '<br><span style="font-size:16px;color:#ffe14a">&#129370; EGG-MASKINGEVÆR ' + Math.ceil((minigunUntil - performance.now()) / 1000) + 's</span>';
   farmHud.innerHTML = txt + rec;
 }
@@ -497,7 +514,8 @@ function updateFarm(dt) {
   updateFarmHud();
   gooT = Math.max(0, gooT - dt);
   goo.style.opacity = farmOn() ? Math.min(1, gooT) : 0;
-  if (!farmOn()) return;
+  hordeGroup.visible = hordeOn();
+  if (!hordeOn()) return;
   updateChicks(dt);
   updateFlames();
   updateEggs(dt);
