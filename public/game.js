@@ -804,7 +804,8 @@ function showWeaponModel() {
   dartView.visible = !sn && !bz && dart;
   if (sniperView) sniperView.visible = sn;
   if (bazView) bazView.visible = bz;
-  flash.position.set(bz ? 0.05 : 0, bz ? 0.15 : 0.012, sn ? -0.8 : bz ? -0.2 : -0.56);   // [NY] bazooka-munningen er på skulderen   // [NY] bazooka-munningen er på skulderen
+  flash.position.set(bz ? 0.05 : 0, bz ? 0.15 : 0.012, sn ? -0.8 : bz ? -0.2 : -0.56);   // [NY] bazooka-munningen er på skulderen
+  if (typeof applyMySkins === 'function') applyMySkins();   // [NY] våpen-skins fra butikken
 }
 function switchWeapon(w) {
   if (!joined || weapon === w) return;
@@ -1726,7 +1727,7 @@ function addOther(p) {
     cur: { x: p.x, y: p.y, z: p.z, yaw: p.yaw },
     target: { x: p.x, y: p.y, z: p.z, yaw: p.yaw }
   };
-  if (typeof gearOther === 'function') gearOther(p.id, p.level, p.wear);   // [NY] hatter osv. + nivå på navneskiltet
+  if (typeof gearOther === 'function') gearOther(p.id, p.level, p.wear, p.skins);   // [NY] hatter, skins + nivå på navneskiltet
 }
 
 function removeOther(id) {
@@ -2165,7 +2166,7 @@ el('joinBtn').addEventListener('click', () => {
   if (typeof showWeaponModel === 'function') showWeaponModel();   // [NY] lagfarge på armbåndet
   unlockAudio();
   lastJoin = { name, team: chosenTeam };
-  if (typeof myLevel === 'function') { lastJoin.level = myLevel(); lastJoin.wear = myWear(); }   // [NY] nivå + utstyr
+  if (typeof profilePayload === 'function') Object.assign(lastJoin, profilePayload());   // [NY] nivå, utstyr og våpen-skins
   if (pickedMap && el('mapRow').style.display !== 'none') lastJoin.map = pickedMap;   // [NY] første spiller velger bane
   socket.emit('join', lastJoin);
   nameInput.blur();
@@ -2220,6 +2221,7 @@ function animate(now) {
     if (typeof updateFarm === 'function') updateFarm(dt);       // [NY] zombie-kyllingfarmen
     if (typeof updateSea === 'function') updateSea(dt);         // [NY] dyphavsbasen
     if (typeof updateGear === 'function') updateGear(dt);       // [NY] glorien snurrer
+    if (typeof updateSkins === 'function') updateSkins(dt);     // [NY] lava/galakse/diamant gløder
     if (typeof updateFarmVehicles === 'function') updateFarmVehicles(dt);   // [NY] doser og A-10
     if (typeof updateEasterEggs === 'function') updateEasterEggs(dt);       // [NY] påskeegget
     if (typeof updateFun === 'function') updateFun(dt);         // [NY] fyrverkeri

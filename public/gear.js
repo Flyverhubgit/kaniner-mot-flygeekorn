@@ -27,7 +27,11 @@ function levelOf(xp) { let n = 1; while (xp >= xpFor(n + 1)) n++; return n; }
 
 // ---------- Profilen (lagres i nettleseren) ----------
 const profile = (() => {
-  try { const p = JSON.parse(localStorage.getItem('kmf-profile') || 'null'); if (p && typeof p.xp === 'number') return { xp: p.xp, wear: Array.isArray(p.wear) ? p.wear : [] }; } catch (e) {}
+  try {
+    const p = JSON.parse(localStorage.getItem('kmf-profile') || 'null');
+    // [FIKS] Ta vare på ALT som er lagret (også mynter og skins fra butikken), ikke bare XP og utstyr
+    if (p && typeof p.xp === 'number') return Object.assign({}, p, { wear: Array.isArray(p.wear) ? p.wear : [] });
+  } catch (e) {}
   return { xp: 0, wear: [] };
 })();
 function saveProfile() { try { localStorage.setItem('kmf-profile', JSON.stringify(profile)); } catch (e) {} }
@@ -35,12 +39,20 @@ function myLevel() { return levelOf(profile.xp); }
 function myWear() { const L = myLevel(); return profile.wear.filter(id => { const g = GEAR.find(x => x.id === id); return g && g.level <= L; }); }
 
 // ---------- Hemmelig kode (flytt nivået til en annen PC / mobil) ----------
+// [NY] Alt som sendes til de andre: nivå, utstyr og våpen-skins
+function profilePayload() { return { level: myLevel(), wear: myWear(), skins: profile.skins || {} }; }
 function codeCheck(s) { let h = 7; for (const ch of s) h = (h * 31 + ch.charCodeAt(0)) % 1296; return h.toString(36).toUpperCase().padStart(2, '0'); }
-function makeCode() { const body = Math.floor(profile.xp).toString(36).toUpperCase(); return 'KANIN-' + body + '-' + codeCheck(body); }
+// [NY] Koden har nå tre deler: XP . mynter . kjøpte skins (gamle koder med bare XP virker fortsatt)
+function makeCode() {
+  const owned = typeof skinBits === 'function' ? skinBits() : 0;
+  const body = [Math.floor(profile.xp), Math.floor(profile.coins || 0), owned].map(n => n.toString(36).toUpperCase()).join('.');
+  return 'KANIN-' + body + '-' + codeCheck(body);
+}
 function readCode(code) {
-  const m = String(code).trim().toUpperCase().match(/^KANIN-([0-9A-Z]+)-([0-9A-Z]{2})$/);
+  const m = String(code).trim().toUpperCase().match(/^KANIN-([0-9A-Z.]+)-([0-9A-Z]{2})$/);
   if (!m || codeCheck(m[1]) !== m[2]) return null;
-  return parseInt(m[1], 36);
+  const [xp, coins, owned] = m[1].split('.').map(v => parseInt(v || '0', 36));
+  return { xp, coins: coins || 0, owned: owned || 0 };
 }
 
 // ---------- XP: få poeng, og si fra når du går opp et nivå ----------
@@ -57,7 +69,7 @@ function levelUp(L) {
   const unlocked = GEAR.filter(g => g.level === L);
   showToast('⭐ Nivå ' + L + '!' + (unlocked.length ? ' Ny ting: ' + unlocked.map(g => g.icon + ' ' + g.name).join(', ') : ''));
   playLevelUp();
-  socket.emit('profile', { level: L, wear: myWear() });
+  socket.emit('profile', profilePayload());
   renderGearMenu();
 }
 socket.on('kill', d => { if (d.killer === myId && d.victim !== myId) gainXP(d.head ? 15 : 10); });
@@ -160,16 +172,17 @@ function applyGear(body, team, wear) {
   });
 }
 // Andre spillere: sett på utstyret når de dukker opp, og når de bytter / går opp et nivå
-function gearOther(id, level, wear) {
+function gearOther(id, level, wear, skins) {
   const r = others[id];
   if (!r) return;
   applyGear(r.body, r.team, wear);
+  if (typeof skinOther === 'function') skinOther(r, skins || {});   // [NY] våpen-skins (shop.js)
   r.level = level || 1;
   if (r.tag) { r.root.remove(r.tag); }
   r.tag = makeTag((level > 1 ? '⭐' + level + ' ' : '') + r.name, r.team);
   r.root.add(r.tag);
 }
-socket.on('profile', d => gearOther(d.id, d.level, d.wear));
+socket.on('profile', d => gearOther(d.id, d.level, d.wear, d.skins));
 // Glorien snurrer rolig
 function updateGear(dt) {
   for (const id in others) { const gg = others[id].body.userData.gearGroup; if (gg) gg.children.forEach(c => { if (c.userData.spin) c.userData.spin.rotation.z += dt * 1.5; }); }
@@ -222,14 +235,19 @@ function toggleGear(id) {
   else profile.wear = profile.wear.filter(w => { const o = GEAR.find(x => x.id === w); return o && o.slot !== g.slot; }).concat(id);   // én per plass
   saveProfile();
   renderGearMenu();
-  if (joined) socket.emit('profile', { level: myLevel(), wear: myWear() });
+  if (joined) socket.emit('profile', profilePayload());
 }
 function useCode() {
-  const xp = readCode(document.getElementById('codeIn').value);
+  const c = readCode(document.getElementById('codeIn').value);
   const msg = document.getElementById('codeMsg');
-  if (xp === null) { msg.textContent = '❌ Feil kode'; return; }
-  if (xp <= profile.xp) { msg.textContent = 'Du har allerede like mye'; return; }
-  profile.xp = xp; saveProfile(); renderGearMenu();
+  if (c === null) { msg.textContent = '❌ Feil kode'; return; }
+  const better = c.xp > profile.xp || c.coins > (profile.coins || 0) || (typeof skinBits === 'function' && (c.owned & ~skinBits()));
+  if (!better) { msg.textContent = 'Du har allerede like mye'; return; }
+  profile.xp = Math.max(profile.xp, c.xp);
+  profile.coins = Math.max(profile.coins || 0, c.coins);          // [NY] mynter og kjøpte skins følger med koden
+  if (typeof setSkinBits === 'function') setSkinBits(c.owned);
+  saveProfile(); renderGearMenu();
+  if (typeof renderShop === 'function') renderShop();
   document.getElementById('codeMsg').textContent = '✅ Nivå ' + myLevel() + '!';
 }
 renderGearMenu();

@@ -917,14 +917,17 @@ function spawnFor(team) {
 
 function publicPlayer(p) {
   return { id: p.id, name: p.name, team: p.team, x: p.x, y: p.y, z: p.z, yaw: p.yaw, alive: p.alive, kills: p.kills, deaths: p.deaths,
-    level: p.level || 1, wear: p.wear || [] };          // [NY] nivå og utstyr (hatter osv.)
+    level: p.level || 1, wear: p.wear || [], skins: p.skins || {} };   // [NY] nivå, utstyr og våpen-skins
 }
 // [NY] Nivå og utstyr kommer fra spilleren (lagret i nettleseren). Bare lovlige verdier slipper gjennom.
 const GEAR_IDS = ['shades', 'cap', 'pirate', 'goldband', 'mask', 'viking', 'tophat', 'crown', 'halo', 'goldfur'];
+const SKIN_IDS = ['camo', 'pink', 'tiger', 'ice', 'lava', 'rainbow', 'galaxy', 'gold', 'diamond'];   // [NY] våpen-skins fra butikken
 function cleanProfile(d) {
   const level = Math.max(1, Math.min(99, (d && d.level) | 0));
   const wear = Array.isArray(d && d.wear) ? d.wear.filter(w => GEAR_IDS.includes(w)).slice(0, 3) : [];
-  return { level, wear };
+  const skins = {};
+  ['ak', 'sniper', 'baz'].forEach(w => { const v = d && d.skins && d.skins[w]; if (SKIN_IDS.includes(v)) skins[w] = v; });
+  return { level, wear, skins };
 }
 
 function lobbyCounts() {
@@ -1037,7 +1040,7 @@ io.on('connection', socket => {
     const p = players[socket.id];
     if (!p) return;
     Object.assign(p, cleanProfile(d));
-    socket.broadcast.emit('profile', { id: p.id, level: p.level, wear: p.wear });
+    socket.broadcast.emit('profile', { id: p.id, level: p.level, wear: p.wear, skins: p.skins });
   });
 
   // Posisjon fra klienten: [x, føtter-y, z, yaw, pitch, slide]
