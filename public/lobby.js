@@ -315,12 +315,3 @@ function playBoing() {
 
 window.__lobby = { lobbyGroup, lobbyState: () => lobbyState, openShop, closeShop, targets, refreshStand };
 
-// ---------- [NY] Startskjermen skal bare ha navn, dyrevalg og QR: sikte-følsomheten flyttes til pause-skjermen ----------
-(function moveSens() {
-  const row = document.getElementById('sensRow'), box = overlay.firstElementChild;
-  if (!row || !box) return;
-  row.style.justifyContent = 'center';
-  row.style.marginTop = '10px';
-  box.appendChild(row);
-  ['click', 'mousedown', 'pointerdown', 'touchstart'].forEach(ev => row.addEventListener(ev, e => e.stopPropagation()));
-})();
