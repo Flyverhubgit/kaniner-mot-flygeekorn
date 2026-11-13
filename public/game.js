@@ -347,6 +347,8 @@ window.addEventListener('keydown', e => {
   if (e.code === 'Digit1') switchWeapon(akW);          // [NY] bytt våpen
   if (e.code === 'Digit2') switchWeapon(sniperW);
   if (e.code === 'Digit3') switchWeapon(bazW);       // [NY] bazooka
+  if (e.code === 'Digit4' && typeof medWeaponsOn !== 'undefined' && medWeaponsOn) switchWeapon(flailW);   // [NY] kule og kjetting (Ridderborgen)
+  if (e.code === 'KeyV' && joined && alive && typeof battleCry === 'function') battleCry();   // [NY] krigsbrøl (Ridderborgen)
   if (e.code === 'Tab' && joined) e.preventDefault(); // [NY] Tab = poengtavle
 });
 window.addEventListener('keyup', e => { keys[e.code] = false; });
@@ -1682,7 +1684,7 @@ function updateWeapon(dt) {
     if (s.life <= 0) s.mesh.visible = false;
   });
 
-  const wIcon = akW.id === 'bow' ? (weapon === sniperW ? 'ARMBRØST ' : weapon === bazW ? '⚔️ ' : 'BUE ') :   // [NY] Ridderborgen
+  const wIcon = akW.id === 'bow' ? (weapon === sniperW ? 'ARMBRØST ' : weapon === bazW ? '⚔️ ' : weapon !== akW ? 'KULE ' : 'BUE ') :   // [NY] Ridderborgen
     weapon === sniperW ? (myTeam === 'bunny' ? '🥕 ' : '🌰 ') : weapon === bazW ? '🚀 ' : akW.id === 'dart' ? 'PIL ' : 'AK ';   // [NY] pilgevær   // [NY] gulrot / nøtt / bazooka
   const medHud = akW.id === 'bow';   // [NY] Ridderborgen: bunnløst kogger, ildpotter i stedet for granater
   hud.textContent = wIcon + (medHud ? '∞' : reloading > 0 ? 'LADER...' : weapon.mag + ' / ' + (weapon.reserve === Infinity ? '∞' : weapon.reserve)) +
@@ -1976,6 +1978,7 @@ socket.on('shot', d => {
     playDart(Math.max(0.03, 0.25 - dist * 0.006));
     return;
   }
+  if ((d.w === 'sword' || d.w === 'flail') && typeof medRemoteSwing === 'function') { medRemoteSwing(d.id, d.w, dist); return; }   // [NY] hugg og slag
   if ((d.w === 'bow' || d.w === 'crossbow') && typeof medArrowFx === 'function') {   // [NY] andres piler på Ridderborgen
     medArrowFx(from, new THREE.Vector3(d.to[0], d.to[1], d.to[2]), true, d.w === 'crossbow');
     playTwang(Math.max(0.03, 0.22 - dist * 0.005), d.w === 'crossbow');
@@ -2117,7 +2120,7 @@ function sendState(dt) {
   sendTimer -= dt;
   if (sendTimer > 0 || !joined || !alive) return;
   sendTimer = 0.05;
-  socket.emit('state', [+player.x.toFixed(2), +player.feetY.toFixed(2), +player.z.toFixed(2), +player.yaw.toFixed(3), +player.pitch.toFixed(3), slide.active ? 1 : 0, crouching ? 1 : 0, gliding ? 1 : 0, weapon === sniperW ? 1 : weapon === bazW ? 2 : 0, typeof spaceRoll === 'function' ? spaceRoll() : 0]);
+  socket.emit('state', [+player.x.toFixed(2), +player.feetY.toFixed(2), +player.z.toFixed(2), +player.yaw.toFixed(3), +player.pitch.toFixed(3), slide.active ? 1 : 0, crouching ? 1 : 0, gliding ? 1 : 0, weapon === sniperW ? 1 : weapon === bazW ? 2 : (typeof flailW !== 'undefined' && weapon === flailW) ? 3 : 0, typeof spaceRoll === 'function' ? spaceRoll() : 0]);
 }
 
 // ===================================================================

@@ -123,18 +123,18 @@ function applyMap() {
   colliders.length = 0;
   (room ? roomColliders : castle ? castleColliders : space ? spaceColliders : farm ? farmColliders : sea ? seaColliders : lobby ? lobbyColliders : med ? medColliders : mainColliders).forEach(c => colliders.push(c));
   const big = room || castle || space || farm || sea || med;
-  const sky = med ? 0x7d8794 : lobby ? 0xf4e8d8 : sea ? 0x06304a : farm ? 0x0c1428 : space ? 0x03040c : room ? 0xfdf0dc : castle ? 0x9fd0ff : 0x87a7c4;
+  const sky = med ? 0x565e6c : lobby ? 0xf4e8d8 : sea ? 0x06304a : farm ? 0x0c1428 : space ? 0x03040c : room ? 0xfdf0dc : castle ? 0x9fd0ff : 0x87a7c4;
   // [NY] Natt på kyllingfarmen: svakere, blått månelys
   // [NY] Dyphavet: blågrønt, dempet lys ovenfra
   // [NY] Ridderborgen: overskyet og grått, regn i lufta
-  hemi.intensity = med ? 0.6 : sea ? 0.55 : farm ? 0.42 : 0.7;
+  hemi.intensity = med ? 0.5 : sea ? 0.55 : farm ? 0.42 : 0.7;
   sun.color.setHex(med ? 0xd8dce8 : sea ? 0x7fd6ff : farm ? 0xa9bcff : 0xffffff);
-  sun.intensity = med ? 0.55 : sea ? 0.6 : farm ? 0.55 : 0.8;
+  sun.intensity = med ? 0.45 : sea ? 0.6 : farm ? 0.55 : 0.8;
   sun.castShadow = !sea;                    // [NY] ytelse: ingen skygger under vann (synes knapt i mørket)
   scene.background.setHex(sky);
   scene.fog.color.setHex(sky);
-  scene.fog.near = med ? 45 : lobby ? 200 : sea ? 14 : farm ? 30 : space ? 450 : big ? 140 : 70;      // [NY] dyphavet: tett tåke, ser ikke langt
-  scene.fog.far = med ? 190 : lobby ? 400 : sea ? 85 : farm ? 125 : space ? 1500 : big ? 340 : 150;
+  scene.fog.near = med ? 40 : lobby ? 200 : sea ? 14 : farm ? 30 : space ? 450 : big ? 140 : 70;      // [NY] dyphavet: tett tåke, ser ikke langt
+  scene.fog.far = med ? 175 : lobby ? 400 : sea ? 85 : farm ? 125 : space ? 1500 : big ? 340 : 150;
   renderer.setClearColor(sky);
   camera.far = space ? 2000 : big ? 400 : 200;
   camera.updateProjectionMatrix();

@@ -135,7 +135,8 @@ setInterval(() => {
 const MEDIEVAL_W = {
   bow: { dmg: 45, head: true, ms: 550 },           // langbue: 3 treff, hodeskudd dreper
   crossbow: { dmg: 85, head: true, ms: 1100 },     // armbrøst: 2 treff, hodeskudd dreper
-  sword: { dmg: 35, ms: 420, reach: 3.3 }          // sverd: 3 hugg
+  sword: { dmg: 35, ms: 360, reach: 3.3 },         // sverd: 3 hugg (ms litt under klienten, for nettverks-hakk)
+  flail: { dmg: 60, ms: 950, reach: 3.8 }          // [NY] kule og kjetting: tregt men tungt, 2 slag
 };
 const MORTAR_FLIGHT = 3000, MORTAR_COOLDOWN = 5000;
 const MORTAR_BLOCKS = 5, MORTAR_RADIUS = 6, MORTAR_MAX_DMG = 150;
@@ -958,7 +959,7 @@ function publicPlayer(p) {
 }
 // [NY] Nivå og utstyr kommer fra spilleren (lagret i nettleseren). Bare lovlige verdier slipper gjennom.
 const GEAR_IDS = ['shades', 'cap', 'pirate', 'goldband', 'mask', 'viking', 'tophat', 'crown', 'halo', 'goldfur'];
-const SKIN_IDS = ['camo', 'pink', 'tiger', 'ice', 'lava', 'rainbow', 'galaxy', 'gold', 'diamond'];   // [NY] våpen-skins fra butikken
+const SKIN_IDS = ['camo', 'pink', 'tiger', 'ice', 'lava', 'rainbow', 'galaxy', 'gold', 'diamond', 'dino'];   // [NY] dinosaur   // [NY] våpen-skins fra butikken
 function cleanProfile(d) {
   const level = Math.max(1, Math.min(99, (d && d.level) | 0));
   const wear = Array.isArray(d && d.wear) ? d.wear.filter(w => GEAR_IDS.includes(w)).slice(0, 3) : [];
@@ -1091,7 +1092,7 @@ io.on('connection', socket => {
     p.x = x; p.y = y; p.z = z; p.yaw = yaw; p.pitch = pitch; p.slide = s[5] ? 1 : 0;
     p.crouch = s[6] ? 1 : 0;
     p.glide = s[7] ? 1 : 0;
-    p.weapon = s[8] === 2 ? 2 : s[8] ? 1 : 0;      // 0 = AK, 1 = snikskytter, 2 = bazooka
+    p.weapon = s[8] === 3 && mapName === 'medieval' ? 3 : s[8] === 2 ? 2 : s[8] ? 1 : 0;      // 0 = AK, 1 = snikskytter, 2 = bazooka, 3 = kule og kjetting (Ridderborgen)
     p.roll = num(s[9], -2, 2) || 0;                  // [NY] jagerflyet krenger
 
     // Toppen av pyramiden (2 x 2 m, 13 m høyt) = SKUMFEST!
@@ -1110,7 +1111,16 @@ io.on('connection', socket => {
     const to = d.to.map(v => num(v, -500, 500));
     if (to.includes(null)) return;
     p.protectedUntil = 0;                 // skyter du, er beskyttelsen over
-    socket.broadcast.emit('shot', { id: socket.id, to, w: d.w === 'sniper' ? 'sniper' : d.w === 'dart' ? 'dart' : 'ak' });   // [NY] pilgevær under vann
+    const SHOT_W = ['sniper', 'dart', 'bow', 'crossbow', 'sword', 'flail'];   // [NY] pilgevær under vann, bue/armbrøst/sverd på Ridderborgen
+    socket.broadcast.emit('shot', { id: socket.id, to, w: SHOT_W.includes(d.w) ? d.w : 'ak' });
+  });
+  // [NY] Krigsbrøl (V) på Ridderborgen: alle hører det
+  let lastRoar = 0;
+  socket.on('roar', () => {
+    const p = players[socket.id], now = Date.now();
+    if (!p || !p.alive || mapName !== 'medieval' || now - lastRoar < 3000) return;
+    lastRoar = now;
+    io.emit('roar', { id: socket.id, team: p.team });
   });
 
   // Treff: klienten sier hvem den traff

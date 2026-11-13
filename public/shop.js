@@ -22,7 +22,8 @@ const SKINS = [
   { id: 'rainbow', name: 'Regnbue', icon: '🌈', price: 700 },
   { id: 'galaxy', name: 'Galakse', icon: '🌌', price: 1000, level: 8 },
   { id: 'gold', name: 'Gull', icon: '🥇', price: 1500, level: 10 },
-  { id: 'diamond', name: 'Diamant', icon: '💎', price: 2000, level: 12 }
+  { id: 'diamond', name: 'Diamant', icon: '💎', price: 2000, level: 12 },
+  { id: 'dino', name: 'Dinosaur', icon: '🦖', price: 2000 }   // [NY] grønne skjell med oransje rygg-pigger
 ];
 const WEAPON_SLOTS = [['ak', 'AK'], ['sniper', 'Snikskytter'], ['baz', 'Bazooka']];
 function skinBits() { let b = 0; SKINS.forEach((s, i) => { if (profile.owned.includes(s.id)) b |= 1 << i; }); return b; }
@@ -55,6 +56,12 @@ const SKIN_TEX = {
     x.fillStyle = '#140a2e'; x.fillRect(0, 0, 64, 64);
     x.fillStyle = '#3a1a6a'; for (let i = 0; i < 6; i++) x.fillRect(rnd() * 56, rnd() * 56, 10, 8);
     x.fillStyle = '#ffffff'; for (let i = 0; i < 26; i++) x.fillRect(rnd() * 64, rnd() * 64, rnd() < 0.2 ? 2 : 1, rnd() < 0.2 ? 2 : 1);
+  }),
+  dino: patternTex(x => {                         // [NY] dinosaurskjell: grønne skjell, mørke flekker, oransje pigg-stripe
+    x.fillStyle = '#3f8a2e'; x.fillRect(0, 0, 64, 64);
+    for (let yy = 0; yy < 64; yy += 6) for (let xx = (yy / 6) % 2 ? 3 : 0; xx < 64; xx += 6) { x.fillStyle = rnd() < 0.5 ? '#4fa63a' : '#357a26'; x.fillRect(xx, yy, 5, 5); }
+    x.fillStyle = '#1f4a18'; for (let i = 0; i < 7; i++) x.fillRect(rnd() * 56, rnd() * 56, 8 + rnd() * 6, 6 + rnd() * 5);
+    x.fillStyle = '#ff8a1f'; for (let xx = 0; xx < 64; xx += 8) { x.fillRect(xx + 2, 28, 4, 8); x.fillRect(xx + 3, 25, 2, 3); }
   })
 };
 const SKIN_MAT = {
@@ -66,7 +73,8 @@ const SKIN_MAT = {
   rainbow: { map: SKIN_TEX.rainbow, roughness: 0.5 },
   galaxy: { map: SKIN_TEX.galaxy, emissiveMap: SKIN_TEX.galaxy, emissive: 0xffffff, roughness: 0.4, glow: true },
   gold: { color: 0xf2c230, emissive: 0x3a2800, metalness: 0.9, roughness: 0.25 },
-  diamond: { color: 0xd8fbff, emissive: 0x3a8aa0, metalness: 0.6, roughness: 0.05, glow: true }
+  diamond: { color: 0xd8fbff, emissive: 0x3a8aa0, metalness: 0.6, roughness: 0.05, glow: true },
+  dino: { map: SKIN_TEX.dino, roughness: 0.75 }
 };
 // To materialer per skin: lys (de fleste delene) og mørk (delene som var mørke fra før – grep, løp)
 const skinMatCache = {};

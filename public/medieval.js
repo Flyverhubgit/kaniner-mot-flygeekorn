@@ -157,7 +157,7 @@ socket.on('firezone', d => {
 // ===================================================================
 //  RUSTNING: alle får ridderhjelm (med lagfarget fjærbusk) og brystplate på Ridderborgen
 // ===================================================================
-const ARMOR_STEEL = new THREE.MeshStandardMaterial({ color: 0xa8aeb8, metalness: 0.75, roughness: 0.35 });
+const ARMOR_STEEL = new THREE.MeshStandardMaterial({ color: 0xb8bec8, metalness: 0.35, roughness: 0.4 });   // lite metall = lyst stål (ellers ser den svart ut)
 const ARMOR_DARK = new THREE.MeshStandardMaterial({ color: 0x3a3e46, metalness: 0.6, roughness: 0.5 });
 const ARMOR_PLUME = { bunny: new THREE.MeshStandardMaterial({ color: 0xd8302a }), squirrel: new THREE.MeshStandardMaterial({ color: 0x5a9a2a }) };
 function buildArmor(team) {
@@ -172,8 +172,29 @@ function buildArmor(team) {
   add(0.1, 0.18, 0.1, 0, H.top + 0.26, -0.1, ARMOR_PLUME[team] || ARMOR_PLUME.bunny);
   add(0.52, 0.42, 0.38, 0, 0.82, 0.02, ARMOR_STEEL);                                 // brystplate
   [-1, 1].forEach(s => add(0.2, 0.12, 0.3, s * 0.3, 0.98, 0, ARMOR_STEEL));        // skulderplater
+  // [NY] BARBARISK: horn, pelskappe og krigsmaling
+  const tc = ARMOR_PLUME[team] || ARMOR_PLUME.bunny;
+  [-1, 1].forEach(s => {
+    const horn = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.38, 6), BARB_HORN);
+    horn.position.set(s * (H.w / 2 + 0.12), hy + 0.08, 0.02);
+    horn.rotation.z = -s * 0.95; horn.rotation.x = -0.2;       // ut og opp, som en viking
+    horn.castShadow = true; horn.raycast = () => {}; g.add(horn);
+    const tip = new THREE.Mesh(new THREE.ConeGeometry(0.035, 0.14, 6), BARB_HORN_TIP);
+    tip.position.set(s * (H.w / 2 + 0.33), hy + 0.27, 0.0); tip.rotation.z = -s * 0.3;
+    tip.raycast = () => {}; g.add(tip);
+    add(0.06, 0.22, 0.02, s * 0.14, H.eyeY - 0.06, H.d / 2 + 0.055, tc);          // krigsmaling på hjelmen
+    add(0.24, 0.16, 0.36, s * 0.3, 1.08, -0.02, BARB_FUR);                        // pels over skuldrene
+  });
+  add(0.56, 0.62, 0.06, 0, 0.78, -0.24, BARB_FUR);                                 // pelskappe på ryggen
+  for (let i = 0; i < 5; i++) add(0.1, 0.1, 0.05, -0.22 + i * 0.11, 0.44 - (i % 2) * 0.05, -0.24, BARB_FUR);   // fillete kant
+  add(0.54, 0.07, 0.42, 0, 0.6, 0.02, BARB_BELT);                                  // lærbelte
+  add(0.12, 0.1, 0.03, 0, 0.6, 0.24, ARMOR_DARK);                                  // beltespenne
   return g;
 }
+const BARB_HORN = new THREE.MeshStandardMaterial({ color: 0xeee2c4, roughness: 0.7 });
+const BARB_HORN_TIP = new THREE.MeshStandardMaterial({ color: 0x5a4a38, roughness: 0.8 });
+const BARB_FUR = new THREE.MeshStandardMaterial({ color: 0x6a4a2e, roughness: 1 });
+const BARB_BELT = new THREE.MeshStandardMaterial({ color: 0x4a2e1a, roughness: 0.9 });
 function armorize(body, team, on) {
   if (!body) return;
   if (body.userData.armor) { body.remove(body.userData.armor); body.userData.armor = null; }
@@ -208,7 +229,8 @@ function updateMedieval(dt) {
   if (typeof updateMedWeapons === 'function') updateMedWeapons(dt);   // [NY] bue, armbrøst, sverd
   const on = medOn();
   kettleHud.style.display = 'none';
-  if (!on) return;
+  if (!on) { if (typeof leaveBarbaric === 'function') leaveBarbaric(); return; }
+  if (typeof updateBarbaric === 'function') updateBarbaric(dt);   // [NY] bål, grillgris, kråker, lyn
   const t = performance.now() / 1000, now = performance.now();
   // Regnet følger kameraet
   rain.position.set(camera.position.x, 0, camera.position.z);
