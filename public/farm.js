@@ -119,6 +119,7 @@ function farmLadderV(fwd) {
 // Piggtråd: halv fart for spillere
 function wireSlow(px, pz) {
   if (seaOn()) return 0.68;                        // [NY] under vann: tunge, langsomme skritt
+  if (typeof medSlow === 'function' && typeof medOn === 'function' && medOn()) return medSlow(px, pz);   // [NY] gjørme og vollgrav
   if (!farmOn()) return 1;
   return wireSet.has(Math.floor(px) + ',' + Math.floor(pz)) ? 0.5 : 1;
 }

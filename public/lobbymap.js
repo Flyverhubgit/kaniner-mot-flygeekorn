@@ -13,8 +13,9 @@
     { map: 'castle', name: 'Klosseslottet', icon: '🏰', color: 0xb07a4a, x: -3 },
     { map: 'space', name: 'Verdensrommet', icon: '🚀', color: 0x9a6aff, x: 3 },
     { map: 'farm', name: 'Zombie-kyllinger', icon: '🐔', color: 0x7ad84a, x: 9 },
-    { map: 'sea', name: 'Dyphavsbasen', icon: '🐙', color: 0x3ad8d0, x: 15 }
-  ].map(p => Object.assign(p, { z: -12.5, w: 3.4, d: 3 }));   // stå-sonen foran portalen
+    { map: 'sea', name: 'Dyphavsbasen', icon: '🐙', color: 0x3ad8d0, x: 15 },
+    { map: 'medieval', name: 'Ridderborgen', icon: '⚔️', color: 0xc0282a, x: 21 }
+  ].map((p, i) => Object.assign(p, { x: -17 + i * (34 / 6), z: -12.5, w: 3.4, d: 3 }));   // [NY] 7 portaler, jevnt fordelt
   function portalAt(x, z) {
     return PORTALS.find(p => Math.abs(x - p.x) < p.w / 2 && Math.abs(z - p.z) < p.d / 2) || null;
   }

@@ -303,7 +303,8 @@ function castleOn() {
 // [NY] Er vi på en klosse-bane (klosseslottet eller kyllingfarmen)?
 function voxelOn() {
   return typeof currentMap !== 'undefined' && (currentMap === 'castle' || (currentMap === 'farm' && typeof farmWorld !== 'undefined' && farmWorld) ||
-    (currentMap === 'sea' && typeof seaWorld !== 'undefined' && seaWorld)) && !underNow() && typeof castleBlocked === 'function';   // [NY] + dyphavet
+    (currentMap === 'sea' && typeof seaWorld !== 'undefined' && seaWorld) ||
+    (currentMap === 'medieval' && typeof medWorld !== 'undefined' && medWorld)) && !underNow() && typeof castleBlocked === 'function';   // [NY] + dyphavet + Ridderborgen
 }
 
 // Høyden på bakken (eller trinnet) under spilleren
@@ -806,6 +807,7 @@ function showWeaponModel() {
   if (bazView) bazView.visible = bz;
   flash.position.set(bz ? 0.05 : 0, bz ? 0.15 : 0.012, sn ? -0.8 : bz ? -0.2 : -0.56);   // [NY] bazooka-munningen er på skulderen
   if (typeof applyMySkins === 'function') applyMySkins();   // [NY] våpen-skins fra butikken
+  if (typeof medWeaponView === 'function') medWeaponView();   // [NY] Ridderborgen: bue, armbrøst og sverd
 }
 function switchWeapon(w) {
   if (!joined || weapon === w) return;
@@ -1013,7 +1015,8 @@ function torpHitsMonster(x, y, z) {
   return false;
 }
 function spawnNade(id, mine, p, v, holy, torp) {
-  const mesh = holy ? buildHolyPeach() : torp ? buildTorpMesh() : buildNadeMesh();   // [NY] hellig fersken / torpedo
+  const pot = typeof medOn === 'function' && medOn() && typeof buildFirePot === 'function';   // [NY] ildpotte på Ridderborgen
+  const mesh = holy ? buildHolyPeach() : torp ? buildTorpMesh() : pot ? buildFirePot() : buildNadeMesh();   // [NY] hellig fersken / torpedo
   mesh.position.set(p[0], p[1], p[2]);
   scene.add(mesh);
   nades.push({ id, mine, mesh, x: p[0], y: p[1], z: p[2], vx: v[0], vy: v[1], vz: v[2], t: 0, holy: !!holy, torp: !!torp, fuse: holy ? HOLY_FUSE : torp ? TORP_FUSE : NADE_FUSE });
@@ -1514,17 +1517,20 @@ function shoot() {
   if (typeof farmShoot === 'function' && farmShoot()) return;   // [NY] dosertankens kanon / A-10 fra radioen
   if (typeof spaceShoot === 'function' && spaceShoot()) return;   // [NY] laser fra jagerfly / kanontårn
   if (typeof inMortar !== 'undefined' && inMortar) { fireMortar(); return; }   // [NY] står i morteren
+  if (typeof medShoot === 'function' && medShoot()) return;   // [NY] sverdhugg på Ridderborgen
+  const med = typeof medWeaponsOn !== 'undefined' && medWeaponsOn;   // [NY] bue / armbrøst
   const egg = typeof minigunOn === 'function' && minigunOn();   // [NY] eggmaskingevær (gullegg på kyllingfarmen)
   if (weapon === bazW && !egg) { if (currentMap !== 'lobby') fireRocket(); return; }   // [NY] bazooka skyter en rakett (ikke i loungen)
-  if (!egg && !(typeof hordeOn === 'function' && hordeOn())) weapon.mag--;   // [NY] kyllingfarmen: bunnløst magasin
+  if (!egg && !med && !(typeof hordeOn === 'function' && hordeOn())) weapon.mag--;   // [NY] koggeret på Ridderborgen er bunnløst   // [NY] kyllingfarmen: bunnløst magasin
   fireCooldown = egg ? 0.06 : weapon.fireDelay;
   myProtectUntil = 0;                             // [NY] skyter du, er skjoldet borte
   const sn = weapon === sniperW && !egg;         // [NY] snikskytter?
   const dart = weapon === akW && akW.id === 'dart' && !egg;   // [NY] pilgevær under vann
   recoil = sn ? 1.5 : Math.min(recoil + (dart ? 1 : 0.7), 1.5);
-  flashTime = sn ? 0.07 : dart ? 0 : 0.04;        // ingen munningsflamme under vann
+  flashTime = med ? 0 : sn ? 0.07 : dart ? 0 : 0.04;        // ingen munningsflamme under vann eller fra buen
   flash.rotation.z = Math.random() * Math.PI;
-  if (sn) playShot(0.55, 650); else if (dart && typeof playDart === 'function') playDart(0.3); else playShot();  // [NY] dypere og høyere smell
+  if (med && typeof playTwang === 'function') playTwang(0.3, sn);   // [NY] buestreng-smell
+  else if (sn) playShot(0.55, 650); else if (dart && typeof playDart === 'function') playDart(0.3); else playShot();  // [NY] dypere og høyere smell
 
   // Skuddet går rett ut fra midten av skjermen
   // [NY] Snikskytter uten kikkert sprer mye – bruk siktet!
@@ -1578,6 +1584,7 @@ function shoot() {
     addImpact(h.point, n);
   }
   if (dart && typeof dartFx === 'function') dartFx(muzzleWorld(), end, !chick && !target, d);   // [NY] synlig pil som blir sittende fast
+  else if (med && typeof medArrowFx === 'function') medArrowFx(muzzleWorld(), end, !target, sn);   // [NY] pil / armbrøstbolt
   else addTracer(muzzleWorld(), end);
   if (egg && typeof eggShotFx === 'function') eggShotFx(muzzleWorld(), end);
   socket.emit('shot', { to: [+end.x.toFixed(2), +end.y.toFixed(2), +end.z.toFixed(2)], w: weapon.id });
@@ -1671,9 +1678,11 @@ function updateWeapon(dt) {
     if (s.life <= 0) s.mesh.visible = false;
   });
 
-  const wIcon = weapon === sniperW ? (myTeam === 'bunny' ? '🥕 ' : '🌰 ') : weapon === bazW ? '🚀 ' : akW.id === 'dart' ? 'PIL ' : 'AK ';   // [NY] pilgevær   // [NY] gulrot / nøtt / bazooka
-  hud.textContent = wIcon + (reloading > 0 ? 'LADER...' : weapon.mag + ' / ' + (weapon.reserve === Infinity ? '∞' : weapon.reserve)) +
-    '   💣 ' + (underNow() || (typeof hordeOn === 'function' && hordeOn()) ? '∞' : grenades) + (window.holyMine ? '   🍑 HELLIG FERSKEN (G)' : '');   // [NY] viser granater også (uendelig i underverdenen)
+  const wIcon = akW.id === 'bow' ? (weapon === sniperW ? 'ARMBRØST ' : weapon === bazW ? '⚔️ ' : 'BUE ') :   // [NY] Ridderborgen
+    weapon === sniperW ? (myTeam === 'bunny' ? '🥕 ' : '🌰 ') : weapon === bazW ? '🚀 ' : akW.id === 'dart' ? 'PIL ' : 'AK ';   // [NY] pilgevær   // [NY] gulrot / nøtt / bazooka
+  const medHud = akW.id === 'bow';   // [NY] Ridderborgen: bunnløst kogger, ildpotter i stedet for granater
+  hud.textContent = wIcon + (medHud ? '∞' : reloading > 0 ? 'LADER...' : weapon.mag + ' / ' + (weapon.reserve === Infinity ? '∞' : weapon.reserve)) +
+    (medHud ? '   🔥 ' : '   💣 ') + (underNow() || (typeof hordeOn === 'function' && hordeOn()) ? '∞' : grenades) + (window.holyMine ? '   🍑 HELLIG FERSKEN (G)' : '');   // [NY] viser granater også (uendelig i underverdenen)
 }
 
 // ===================================================================
@@ -1963,6 +1972,11 @@ socket.on('shot', d => {
     playDart(Math.max(0.03, 0.25 - dist * 0.006));
     return;
   }
+  if ((d.w === 'bow' || d.w === 'crossbow') && typeof medArrowFx === 'function') {   // [NY] andres piler på Ridderborgen
+    medArrowFx(from, new THREE.Vector3(d.to[0], d.to[1], d.to[2]), true, d.w === 'crossbow');
+    playTwang(Math.max(0.03, 0.22 - dist * 0.005), d.w === 'crossbow');
+    return;
+  }
   addTracer(from, new THREE.Vector3(d.to[0], d.to[1], d.to[2]));
   if (d.w === 'sniper') playShot(Math.max(0.06, 0.5 - dist * 0.006), 650);   // [NY] snikskytter smeller høyere
   else playShot(Math.max(0.03, 0.3 - dist * 0.006));
@@ -2226,6 +2240,7 @@ function animate(now) {
     if (typeof updateGear === 'function') updateGear(dt);       // [NY] glorien snurrer
     if (typeof updateSkins === 'function') updateSkins(dt);     // [NY] lava/galakse/diamant gløder
     if (typeof updateLobby === 'function') updateLobby(dt);     // [NY] loungen
+    if (typeof updateMedieval === 'function') updateMedieval(dt);   // [NY] Ridderborgen
     if (typeof updateFarmVehicles === 'function') updateFarmVehicles(dt);   // [NY] doser og A-10
     if (typeof updateEasterEggs === 'function') updateEasterEggs(dt);       // [NY] påskeegget
     if (typeof updateFun === 'function') updateFun(dt);         // [NY] fyrverkeri

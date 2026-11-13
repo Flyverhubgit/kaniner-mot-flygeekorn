@@ -37,8 +37,18 @@ function makeVoxelWorld(LIB, group) {
   const W = { LIB, group, pristine: LIB.build(), typeMeshes: {} };
   W.grid = W.pristine.slice();
   W.instIndex = new Int32Array(W.grid.length).fill(-1);
+  // [NY] Ytelse: klosser som ALDRI kan synes (uknuselige, og bare omgitt av uknuselige klosser,
+  // f.eks. inni bakkene) tegnes ikke. Ridderborgen: ca. 5000 færre klosser å tegne.
+  const P = W.pristine, hard = t => t && LIB.INFO[t].hp === 0;
+  const hidden = new Uint8Array(P.length);
+  for (let y = 0; y < LIB.NY; y++) for (let z = LIB.Z0 + 1; z < LIB.Z0 + LIB.NZ - 1; z++) for (let x = LIB.X0 + 1; x < LIB.X0 + LIB.NX - 1; x++) {
+    const i = LIB.idx(x, y, z);
+    if (!hard(P[i]) || y + 1 >= LIB.NY) continue;
+    if (hard(P[LIB.idx(x, y + 1, z)]) && (y === 0 || hard(P[LIB.idx(x, y - 1, z)])) && hard(P[LIB.idx(x + 1, y, z)]) && hard(P[LIB.idx(x - 1, y, z)]) &&
+        hard(P[LIB.idx(x, y, z + 1)]) && hard(P[LIB.idx(x, y, z - 1)])) hidden[i] = 1;
+  }
   const counts = {};
-  for (let i = 0; i < W.pristine.length; i++) { const t = W.pristine[i]; if (t) counts[t] = (counts[t] || 0) + 1; }
+  for (let i = 0; i < P.length; i++) { const t = P[i]; if (t && !hidden[i]) counts[t] = (counts[t] || 0) + 1; }
   for (const t in counts) {
     const info = LIB.INFO[t];
     const mat = new THREE.MeshStandardMaterial({ color: info.color, roughness: 0.85, emissive: info.emissive || ((LIB === CM && t == CM.T.GLASS) ? 0x224466 : 0) });
@@ -53,7 +63,7 @@ function makeVoxelWorld(LIB, group) {
   }
   for (let i = 0; i < W.pristine.length; i++) {
     const t = W.pristine[i];
-    if (t) W.instIndex[i] = W.typeMeshes[t].userData.next++;
+    if (t && !hidden[i]) W.instIndex[i] = W.typeMeshes[t].userData.next++;
   }
   W.cellPos = i => {
     const x = i % LIB.NX, rest = (i - x) / LIB.NX, z = rest % LIB.NZ, y = (rest - z) / LIB.NZ;
@@ -61,7 +71,7 @@ function makeVoxelWorld(LIB, group) {
   };
   W.showCell = (i, on) => {
     const t = W.pristine[i];
-    if (!t) return;
+    if (!t || W.instIndex[i] < 0) return;          // (skjult inni bakken – tegnes ikke)
     const [x, y, z] = W.cellPos(i);
     dummyObj.position.set(x + 0.5, y + 0.5, z + 0.5);
     dummyObj.scale.setScalar(on ? 1 : 0.0001);
@@ -80,10 +90,12 @@ function makeVoxelWorld(LIB, group) {
 const castleWorld = makeVoxelWorld(CM, castleGroup);
 let farmWorld = null;                    // lages av farm.js
 let seaWorld = null;                     // [NY] lages av sea.js (dyphavsbasen)
+let medWorld = null;                     // [NY] lages av medieval.js (Ridderborgen)
 // Hvilken klosse-verden gjelder nå?
 function voxWorld() {
   if (typeof currentMap !== 'undefined' && currentMap === 'farm' && farmWorld) return farmWorld;
   if (typeof currentMap !== 'undefined' && currentMap === 'sea' && seaWorld) return seaWorld;   // [NY]
+  if (typeof currentMap !== 'undefined' && currentMap === 'medieval' && medWorld) return medWorld;   // [NY] Ridderborgen
   return castleWorld;
 }
 // Gamle navn (brukes av morteren og testene): klosseslottets rutenett
@@ -206,7 +218,7 @@ function updateCastle(dt) {
 
 // ---------- Meldinger fra serveren ----------
 socket.on('blocks', d => removeCells(d.gone));
-function worldFor(name) { return name === 'castle' ? castleWorld : name === 'farm' ? farmWorld : name === 'sea' ? seaWorld : null; }
+function worldFor(name) { return name === 'castle' ? castleWorld : name === 'farm' ? farmWorld : name === 'sea' ? seaWorld : name === 'medieval' ? medWorld : null; }
 socket.on('map', d => { const W = worldFor(d.name); if (W) W.reset(); });
 socket.on('welcome', d => {
   const W = worldFor(d.map);

@@ -10,6 +10,7 @@ const CM = require('./public/castlemap.js');   // klosseslottet: samme kart som 
 const FM = require('./public/farmmap.js');     // [NY] zombie-kyllingfarmen (samme klosse-system)
 const SM = require('./public/seamap.js');      // [NY] dyphavsbasen (samme klosse-system)
 const LM = require('./public/lobbymap.js');    // [NY] loungen der alle møtes mellom rundene
+const MM = require('./public/medievalmap.js'); // [NY] Ridderborgen (middelalder-borgene)
 
 const app = express();
 app.use(require('compression')());                // [NY] pakker filene (ca. 1 MB -> 250 KB) – raskere lasting på mobil
@@ -44,7 +45,7 @@ let foamHoles = [];            // [x, z] for hvert granat-hull (til nye spillere
 // Underverdenen: et skjult håndtak sender alle ned til lava-arenaen til neste runde
 let worldName = 'main';        // 'main' eller 'underworld'
 // Baner byttes hver runde: tempelet og det kjempestore barnerommet (snikskytterbane)
-const MAPS = ['temple', 'room', 'castle', 'space', 'farm', 'sea'];       // rekkefølgen banene byttes i
+const MAPS = ['temple', 'room', 'castle', 'space', 'farm', 'sea', 'medieval'];       // rekkefølgen banene byttes i
 // [NY] Alle starter i LOUNGEN ('lobby'). Der stemmer man ved å stå i en portal. (START_MAP er for testing)
 let mapName = MAPS.includes(process.env.START_MAP) || process.env.START_MAP === 'lobby' ? process.env.START_MAP : 'lobby';
 let votes = {};                                    // socket-id -> banen spilleren stemte på (i pausen)
@@ -68,7 +69,7 @@ function makeVox(LIB) {
   const pristine = LIB.build();
   return { LIB, pristine, grid: pristine.slice(), hp: new Uint8Array(pristine.length), gone: [] };
 }
-const VOX = { castle: makeVox(CM), farm: makeVox(FM), sea: makeVox(SM) };
+const VOX = { castle: makeVox(CM), farm: makeVox(FM), sea: makeVox(SM), medieval: makeVox(MM) };
 function resetVox(name) {
   const V = VOX[name];
   if (!V) return;
@@ -76,7 +77,7 @@ function resetVox(name) {
   for (let i = 0; i < V.grid.length; i++) V.hp[i] = V.grid[i] ? V.LIB.INFO[V.grid[i]].hp : 0;
   V.gone = [];
 }
-resetVox('castle'); resetVox('farm'); resetVox('sea');
+resetVox('castle'); resetVox('farm'); resetVox('sea'); resetVox('medieval');
 // [NY] "Horde"-baner: alle spillerne sammen mot monstre (kyllingfarmen og dyphavsbasen)
 function hordeMap() { return mapName === 'farm' || mapName === 'sea'; }
 function HL() { return mapName === 'sea' ? SM : FM; }          // kartet til horde-banen
@@ -116,6 +117,26 @@ const BLOCK_DMG = { ak: 1, sniper: 4 };            // kloss-skade per skudd
 
 // Morterer: én i hver slottsgård. Skuddet flyr i 3 sek, så BOOM. 5 sek mellom hvert skudd.
 const MORTARS = { bunny: { x: 0, y: 2, z: 34 }, squirrel: { x: 0, y: 2, z: -34 } };
+// [NY] Ridderborgen: middelaldervåpen (skade, tid mellom skudd, rekkevidde for sverdet)
+// [NY] Brennende soner (oljegryta og ildkrukker). Skader fiender som står i dem, to ganger i sekundet.
+const KETTLE_COOLDOWN = 25000;
+const kettleReadyAt = { bunny: 0, squirrel: 0 };
+let fires = [];
+setInterval(() => {
+  if (!fires.length) return;
+  const now = Date.now();
+  fires = fires.filter(f => f.until > now && mapName === 'medieval');
+  fires.forEach(f => Object.values(players).forEach(t => {
+    if (!t.alive || t.team === f.team || intermission) return;
+    const inside = f.r ? Math.hypot(t.x - f.cx, t.z - f.cz) < f.r && t.y < 3.5 : t.x >= f.x0 && t.x <= f.x1 && t.z >= f.z0 && t.z <= f.z1 && t.y < 2;
+    if (inside) applyDamage(f.owner, t, f.dmg, false, 'fire');
+  }));
+}, 500);
+const MEDIEVAL_W = {
+  bow: { dmg: 45, head: true, ms: 550 },           // langbue: 3 treff, hodeskudd dreper
+  crossbow: { dmg: 85, head: true, ms: 1100 },     // armbrøst: 2 treff, hodeskudd dreper
+  sword: { dmg: 35, ms: 420, reach: 3.3 }          // sverd: 3 hugg
+};
 const MORTAR_FLIGHT = 3000, MORTAR_COOLDOWN = 5000;
 const MORTAR_BLOCKS = 5, MORTAR_RADIUS = 6, MORTAR_MAX_DMG = 150;
 const mortarReadyAt = { bunny: 0, squirrel: 0 };
@@ -892,6 +913,19 @@ function spawnFor(team) {
     return { x: -6.5, y: 0, z: 3.5, yaw: 0 };
   }
   if (mapName === 'lobby') return LM.spawnPoint();          // [NY] loungen: midt i rommet
+  if (mapName === 'medieval') {                             // [NY] Ridderborgen: i egen borggård
+    const S = MM.SPAWNS.bunny, G = VOX.medieval.grid, sq = team === 'squirrel';
+    for (let k = 0; k < 60; k++) {
+      let x = S.x0 + Math.random() * (S.x1 - S.x0), z = S.z0 + Math.random() * (S.z1 - S.z0);
+      if (sq) { x = -x; z = -z; }
+      let ok = true;
+      for (let ix = Math.floor(x - 0.5); ix <= Math.floor(x + 0.5); ix++)
+        for (let iz = Math.floor(z - 0.5); iz <= Math.floor(z + 0.5); iz++)
+          for (let y = MM.B; y < MM.B + 2; y++) if (G[MM.idx(ix, y, iz)]) ok = false;
+      if (ok) return { x, y: MM.B, z, yaw: sq ? Math.PI : 0 };   // se mot fienden
+    }
+    return { x: 0, y: MM.B, z: sq ? -34 : 34, yaw: sq ? Math.PI : 0 };
+  }
   if (mapName === 'sea') {                                  // [NY] dyphavet: i den basen som står (aktiv base)
     const b = SM.BASES[(farm && farm.active) || 0] || SM.BASES[0], G = VOX.sea.grid;
     for (let k = 0; k < 60; k++) {
@@ -1098,6 +1132,16 @@ io.on('connection', socket => {
       applyDamage(p, t, d.weapon === 'laser' ? LASER_DMG : TURRET_DMG, false, d.weapon);
       return;
     }
+    // [NY] RIDDERBORGEN: bare middelaldervåpen (langbue, armbrøst, sverd)
+    if (mapName === 'medieval') {
+      const W = MEDIEVAL_W[d.weapon];
+      if (!W) return;
+      if (now - (p['last_' + d.weapon] || 0) < W.ms) return;
+      if (W.reach && Math.hypot(t.x - p.x, t.z - p.z) > W.reach) return;   // sverdet når bare et par meter
+      p['last_' + d.weapon] = now;
+      applyDamage(p, t, head && W.head ? DMG_HEAD : W.dmg, head && !!W.head, d.weapon);
+      return;
+    }
     if (d.weapon === 'sniper') {
       // Snikskytter: 60 i kroppen (2 treff), 100 i hodet. Maks ett skudd i sekundet.
       if (now - (p.lastSniper || 0) < SNIPER_MIN_MS) return;
@@ -1171,11 +1215,16 @@ io.on('connection', socket => {
       chainBarrels(pos[0], pos[2], 3, p);
       return;
     }
+    const firepot = mapName === 'medieval';           // [NY] Ridderborgen: ildkrukke – mindre smell, men brennende bakke
     Object.values(players).forEach(t => {
       if (!t.alive || t.team === p.team) return;
       const dist = Math.hypot(t.x - pos[0], t.y + 0.9 - pos[1], t.z - pos[2]);
-      if (dist < NADE_RADIUS) applyDamage(p, t, Math.round(NADE_MAX_DMG * (1 - dist / NADE_RADIUS)), false, 'nade');
+      if (dist < NADE_RADIUS) applyDamage(p, t, Math.round(NADE_MAX_DMG * (firepot ? 0.6 : 1) * (1 - dist / NADE_RADIUS)), false, firepot ? 'firepot' : 'nade');
     });
+    if (firepot) {
+      fires.push({ cx: pos[0], cz: pos[2], r: 3, until: Date.now() + 4000, team: p.team, owner: p, dmg: 8 });
+      io.emit('firezone', { x: pos[0], z: pos[2], r: 3, ms: 4000 });
+    }
   });
 
   // [NY] Går inn i den hellige ferskenen på toppen av tårnet
@@ -1443,20 +1492,22 @@ io.on('connection', socket => {
   // Morter avfyrt: alle ser granaten fly, og 3 sek senere smeller den
   socket.on('mortarFire', d => {
     const p = players[socket.id];
-    if (!p || !p.alive || intermission || mapName !== 'castle' || worldName !== 'main' || !d || !Array.isArray(d.to)) return;
-    const m = MORTARS[p.team];
+    const med = mapName === 'medieval';                           // [NY] Ridderborgen: katapult i stedet for morter
+    if (!p || !p.alive || intermission || (mapName !== 'castle' && !med) || worldName !== 'main' || !d || !Array.isArray(d.to)) return;
+    const m = med ? MM.CATAPULT[p.team] : MORTARS[p.team];
     if (Math.hypot(p.x - m.x, p.z - m.z) > 3) return;            // må stå ved morteren
     const now = Date.now();
     if (now < mortarReadyAt[p.team]) return;                      // lader fortsatt
-    const tx = num(d.to[0], -78, 78), tz = num(d.to[1], -48, 48);
+    const tx = num(d.to[0], med ? -83 : -78, med ? 83 : 78), tz = num(d.to[1], med ? -58 : -48, med ? 58 : 48);
     if (tx === null || tz === null) return;
     mortarReadyAt[p.team] = now + MORTAR_COOLDOWN;
     p.protectedUntil = 0;
     const ty = groundTop(tx, tz);
     const id = 'm' + (++mortarSeq);
-    io.emit('mortarShell', { id, team: p.team, from: [m.x, m.y + 1.2, m.z], to: [tx, ty, tz], flight: MORTAR_FLIGHT, cooldown: MORTAR_COOLDOWN });
+    const flight = med ? 2600 : MORTAR_FLIGHT;
+    io.emit('mortarShell', { id, team: p.team, from: [m.x, m.y + 1.6, m.z], to: [tx, ty, tz], flight, cooldown: MORTAR_COOLDOWN, boulder: med });
     setTimeout(() => {
-      if (mapName !== 'castle' || worldName !== 'main') return;
+      if ((mapName !== 'castle' && mapName !== 'medieval') || worldName !== 'main') return;
       const y = groundTop(tx, tz);                                // kan ha endret seg mens den fløy
       io.emit('boom', { id, p: [tx, y + 0.3, tz], big: 2.4 });
       blastCells(tx, y + 0.3, tz, MORTAR_BLOCKS);
@@ -1464,9 +1515,22 @@ io.on('connection', socket => {
       Object.values(players).forEach(t => {
         if (!t.alive || t.team === p.team) return;
         const dist = Math.hypot(t.x - tx, t.y + 0.9 - (y + 0.3), t.z - tz);
-        if (dist < MORTAR_RADIUS) applyDamage(p, t, Math.round(MORTAR_MAX_DMG * (1 - dist / MORTAR_RADIUS)), false, 'mortar');
+        if (dist < MORTAR_RADIUS) applyDamage(p, t, Math.round(MORTAR_MAX_DMG * (1 - dist / MORTAR_RADIUS)), false, med ? 'catapult' : 'mortar');
       });
-    }, MORTAR_FLIGHT);
+    }, flight);
+  });
+
+  // [NY] RIDDERBORGEN: tipp oljegryta over porten -> brennende olje foran porten i 6 sek
+  socket.on('kettle', () => {
+    const p = players[socket.id];
+    if (!p || !p.alive || intermission || mapName !== 'medieval') return;
+    const K = MM.KETTLE[p.team], now = Date.now();
+    if (Math.hypot(p.x - (K.x + 0.5), p.z - (K.z + 0.5)) > 3 || Math.abs(p.y - K.y) > 1.6) return;
+    if (now < kettleReadyAt[p.team]) return;
+    kettleReadyAt[p.team] = now + KETTLE_COOLDOWN;
+    const F = K.fire;
+    fires.push({ x0: F.x0, x1: F.x1 + 1, z0: F.z0, z1: F.z1 + 1, until: now + 6000, team: p.team, owner: p, dmg: 12 });
+    io.emit('kettle', { team: p.team, ms: 6000, cooldown: KETTLE_COOLDOWN, zone: F });
   });
 
   // Kule traff en kloss på klosseslottet
@@ -1532,6 +1596,7 @@ function startMap(name) {
   mapName = name;
   votes = {};
   lobbyVote = { firstAt: 0, countdownAt: 0, chosen: null, sig: '' };
+  fires = []; kettleReadyAt.bunny = kettleReadyAt.squirrel = 0;   // [NY] ingen brann når ny bane starter
   if (VOX[mapName]) resetVox(mapName);                           // nytt, helt slott / ny farm
   holy = { state: 'top', holder: null, readyAt: 0 };
   resetFleet();
