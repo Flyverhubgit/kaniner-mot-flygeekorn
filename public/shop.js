@@ -91,7 +91,7 @@ function skinMats(id) {
 function skinize(target, id) {
   const list = Array.isArray(target) ? target : [target];
   list.forEach(obj => obj && obj.traverse(o => {
-    if (!o.isMesh || o === flash) return;
+    if (!o.isMesh || o === flash || o.userData.noSkin) return;   // [NY] T-rex-hodet har egne farger
     if (!o.userData.baseMat) o.userData.baseMat = o.material;
     if (!id || !SKIN_MAT[id]) { o.material = o.userData.baseMat; return; }
     const base = o.userData.baseMat, c = base.color || new THREE.Color(1, 1, 1);
@@ -100,12 +100,78 @@ function skinize(target, id) {
     o.material = lum < 0.18 ? m.dark : m.light;
   }));
 }
+// ---------- [NY] T-REX: med dinosaur-skinnen holder du en T-rex, og løpet stikker ut av gapet hans ----------
+// Hodet bygges med munnen i (0,0,0) og snuten mot +z. Løpet går rett gjennom gapet.
+function buildRex(o) {
+  const g = new THREE.Group(), sk = skinMats('dino');
+  const mouth = new THREE.MeshStandardMaterial({ color: 0x8a1a1a, roughness: 0.8 });
+  const white = new THREE.MeshStandardMaterial({ color: 0xfffbea, roughness: 0.5 });
+  const yellow = new THREE.MeshStandardMaterial({ color: 0xffd21f, emissive: 0x3a2a00 });
+  const black = new THREE.MeshStandardMaterial({ color: 0x111111 });
+  const orange = new THREE.MeshStandardMaterial({ color: 0xff8a1f, roughness: 0.6 });
+  const box = (w, h, d, x, y, z, m, rx, par) => { const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); b.position.set(x, y, z); if (rx) b.rotation.x = rx; (par || g).add(b); return b; };
+  const head = new THREE.Group(); head.scale.setScalar(o.s); g.add(head);
+  // Overkjeve og skalle
+  box(0.17, 0.07, 0.24, 0, 0.085, -0.07, sk.light, 0, head);            // snute
+  box(0.22, 0.12, 0.2, 0, 0.11, -0.26, sk.light, 0, head);              // skalle (flat, så den ikke skjuler siktet)
+  box(0.23, 0.035, 0.12, 0, 0.18, -0.22, sk.dark, 0, head);             // pannebrask
+  box(0.15, 0.015, 0.22, 0, 0.05, -0.07, mouth, 0, head);               // gane (rød)
+  // Underkjeve – på vidt gap
+  const jaw = new THREE.Group(); jaw.position.set(0, -0.04, -0.17); jaw.rotation.x = 0.32; head.add(jaw);
+  box(0.15, 0.05, 0.25, 0, -0.02, 0.1, sk.light, 0, jaw);
+  box(0.12, 0.015, 0.22, 0, 0.008, 0.1, mouth, 0, jaw);                 // tunge-rødt
+  // Tenner: spisse, hvite, oppe og nede
+  for (let i = 0; i < 4; i++) [-1, 1].forEach(sd => {
+    const t = new THREE.Mesh(new THREE.ConeGeometry(0.014, 0.05, 4), white); t.rotation.x = Math.PI; t.position.set(sd * 0.065, 0.03, 0.03 - i * 0.055); head.add(t);
+    const b = new THREE.Mesh(new THREE.ConeGeometry(0.012, 0.04, 4), white); b.position.set(sd * 0.055, 0.025, 0.2 - i * 0.05); jaw.add(b);
+  });
+  // Øyne (gule med svarte pupiller), nesebor
+  [-1, 1].forEach(sd => {
+    box(0.03, 0.045, 0.05, sd * 0.112, 0.145, -0.2, yellow, 0, head);
+    box(0.012, 0.035, 0.02, sd * 0.124, 0.145, -0.19, black, 0, head);
+    box(0.025, 0.015, 0.02, sd * 0.045, 0.125, 0.04, black, 0, head);
+  });
+  // Bitte små T-rex-armer under hodet (de er alltid for korte!)
+  [-1, 1].forEach(sd => {
+    const arm = box(0.035, 0.09, 0.035, sd * 0.07, -0.08, -0.36, sk.light, 0.6, head);
+    box(0.012, 0.03, 0.012, sd * 0.07, -0.125, -0.32, white, 0, head);
+  });
+  // Oransje rygg-pigger bakover langs våpenet
+  const n = Math.max(3, Math.round(o.ridgeLen / 0.09));
+  for (let i = 0; i < n; i++) {
+    const sp = new THREE.Mesh(new THREE.ConeGeometry(0.025 * o.s, (i % 2 ? 0.06 : 0.09) * o.s, 4), orange);
+    sp.position.set(0, o.ridgeY, -0.36 * o.s - i * (o.ridgeLen / n)); g.add(sp);
+  }
+  g.traverse(c => { if (c.isMesh) { c.userData.noSkin = true; c.raycast = () => {}; c.castShadow = !o.fp; if (o.fp) c.layers.set(2); } });
+  return g;
+}
+// Sett på / ta av T-rexen. key skiller våpen; opts sier hvor munningen er.
+const REX = {
+  akFP: { pos: [0, 0.012, -0.47], rotY: Math.PI, s: 0.7, ridgeY: 0.05, ridgeLen: 0.4, fp: true },
+  akHeld: { pos: [0, 0.015, 0.56], rotY: 0, s: 1.1, ridgeY: 0.07, ridgeLen: 0.5 },
+  sniper: { pos: [0, 0.01, 0.72], rotY: 0, s: 0.9, ridgeY: 0.15, ridgeLen: 0.6 },
+  baz: { pos: [0, 0, 0.62], rotY: 0, s: 1.25, ridgeY: 0.11, ridgeLen: 0.8 }
+};
+function rexOn(container, key, on, fp) {
+  if (!container) return null;
+  let r = container.userData['rex_' + key];
+  if (on && !r) {
+    const o = Object.assign({}, REX[key], { fp: fp || REX[key].fp });
+    r = buildRex(o); r.position.set(...o.pos); r.rotation.y = o.rotY;
+    container.add(r); container.userData['rex_' + key] = r;
+  }
+  if (r) r.visible = !!on;
+  return r;
+}
 // Mine egne våpen (første person)
 function applyMySkins() {
   skinize(akParts, profile.skins.ak);
   if (typeof dartView !== 'undefined') skinize(dartView, profile.skins.ak);
   if (sniperView) skinize(sniperView, profile.skins.sniper);
   if (bazView) skinize(bazView, profile.skins.baz);
+  rexOn(gun, 'akFP', profile.skins.ak === 'dino' && akParts[0].visible);   // [NY] T-rex
+  if (sniperView) rexOn(sniperView, 'sniper', profile.skins.sniper === 'dino', true);
+  if (bazView) rexOn(bazView, 'baz', profile.skins.baz === 'dino', true);
 }
 // Andre spillere (tredje person)
 function skinOther(r, skins) {
@@ -113,6 +179,9 @@ function skinOther(r, skins) {
   if (r.body.userData.gun) skinize(r.body.userData.gun, skins.ak);
   if (r.heldSniper) skinize(r.heldSniper, skins.sniper);
   if (r.heldBaz) skinize(r.heldBaz, skins.baz);
+  rexOn(r.body.userData.gun, 'akHeld', skins.ak === 'dino');              // [NY] T-rex
+  rexOn(r.heldSniper, 'sniper', skins.sniper === 'dino');
+  rexOn(r.heldBaz, 'baz', skins.baz === 'dino');
 }
 // Lava, galakse og diamant gløder og pulserer litt
 function updateSkins(dt) {
