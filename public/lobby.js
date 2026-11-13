@@ -230,7 +230,7 @@ function myPortal() { return LOB.portalAt(player.x, player.z); }
 // ===================================================================
 const shopPanel = document.createElement('div');
 shopPanel.style.cssText = 'position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);width:min(92vw,620px);max-height:86vh;overflow:auto;' +
-  'background:rgba(24,20,34,0.94);border:3px solid #ffd23a;border-radius:16px;padding:12px 10px 14px;z-index:20;display:none;color:#fff;font:14px sans-serif;text-align:center;';
+  'background:rgba(24,20,34,0.94);border:3px solid #ffd23a;border-radius:16px;padding:12px 10px 14px;z-index:20;display:none;color:#fff;font:14px sans-serif;text-align:center;touch-action:pan-y;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;';   // [NY] kan scrolles med fingeren
 shopPanel.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><b style="font-size:18px">🐔 Kyllingens butikk</b>' +
   '<button id="shopClose" style="font:bold 15px sans-serif;padding:4px 12px;border-radius:8px">✖ Lukk</button></div>';
 document.body.appendChild(shopPanel);

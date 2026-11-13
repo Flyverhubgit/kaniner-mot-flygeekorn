@@ -467,8 +467,11 @@ if (isTouch) {
   let moveId = null, lookId = null, fireId = null, lastLookTap = 0, jumpId = null;
   const origin = { x: 0, y: 0 }, lastLook = { x: 0, y: 0 }, lastFire = { x: 0, y: 0 };
 
+  // [NY] Fingeren er i butikken: la den scrolle og trykke vanlig
+  const inShop = e => typeof shopPanelOpen !== 'undefined' && shopPanelOpen && shopPanel.contains(e.target);
   document.addEventListener('touchstart', e => {
     if (!joined) return;                   // [NY] la menyen virke normalt
+    if (inShop(e)) return;
     e.preventDefault();
     for (const t of e.changedTouches) {
       if (t.target === jumpBtn) { jumpQueued = true; touchJumpHeld = true; jumpId = t.identifier; continue; }   // [NY] hold = sveve
@@ -507,6 +510,7 @@ if (isTouch) {
 
   document.addEventListener('touchmove', e => {
     if (!joined) return;
+    if (inShop(e)) return;                 // [NY] scroll i butikken
     e.preventDefault();
     for (const t of e.changedTouches) {
       if (t.identifier === moveId) {
