@@ -105,21 +105,23 @@ function activeWorldGroup() {
   if (currentMap === 'space' && typeof spaceGroup !== 'undefined') return spaceGroup;   // [NY]
   if (currentMap === 'farm' && typeof farmGroup !== 'undefined') return farmGroup;      // [NY]
   if (currentMap === 'sea' && typeof seaGroup !== 'undefined') return seaGroup;         // [NY] dyphavet
+  if (currentMap === 'lobby' && typeof lobbyGroup !== 'undefined') return lobbyGroup;   // [NY] loungen
   return currentMap === 'room' ? roomGroup : world;
 }
 function applyMap() {
   if (inUnderworld) return;               // underverdenen bestemmer selv
-  const room = currentMap === 'room', castle = currentMap === 'castle', space = currentMap === 'space', farm = currentMap === 'farm', sea = currentMap === 'sea';
-  world.visible = !room && !castle && !space && !farm && !sea;
+  const room = currentMap === 'room', castle = currentMap === 'castle', space = currentMap === 'space', farm = currentMap === 'farm', sea = currentMap === 'sea', lobby = currentMap === 'lobby';
+  world.visible = !room && !castle && !space && !farm && !sea && !lobby;
   if (typeof seaGroup !== 'undefined') seaGroup.visible = sea;      // [NY] dyphavet
+  if (typeof lobbyGroup !== 'undefined') lobbyGroup.visible = lobby;   // [NY] loungen
   if (typeof farmGroup !== 'undefined') farmGroup.visible = farm;   // [NY] kyllingfarmen
   if (typeof spaceGroup !== 'undefined') spaceGroup.visible = space;   // [NY] verdensrommet
   roomGroup.visible = room;
   if (typeof castleGroup !== 'undefined') castleGroup.visible = castle;   // [NY] klosseslottet
   colliders.length = 0;
-  (room ? roomColliders : castle ? castleColliders : space ? spaceColliders : farm ? farmColliders : sea ? seaColliders : mainColliders).forEach(c => colliders.push(c));
+  (room ? roomColliders : castle ? castleColliders : space ? spaceColliders : farm ? farmColliders : sea ? seaColliders : lobby ? lobbyColliders : mainColliders).forEach(c => colliders.push(c));
   const big = room || castle || space || farm || sea;
-  const sky = sea ? 0x06304a : farm ? 0x0c1428 : space ? 0x03040c : room ? 0xfdf0dc : castle ? 0x9fd0ff : 0x87a7c4;
+  const sky = lobby ? 0xf4e8d8 : sea ? 0x06304a : farm ? 0x0c1428 : space ? 0x03040c : room ? 0xfdf0dc : castle ? 0x9fd0ff : 0x87a7c4;
   // [NY] Natt på kyllingfarmen: svakere, blått månelys
   // [NY] Dyphavet: blågrønt, dempet lys ovenfra
   hemi.intensity = sea ? 0.55 : farm ? 0.42 : 0.7;
@@ -128,8 +130,8 @@ function applyMap() {
   sun.castShadow = !sea;                    // [NY] ytelse: ingen skygger under vann (synes knapt i mørket)
   scene.background.setHex(sky);
   scene.fog.color.setHex(sky);
-  scene.fog.near = sea ? 14 : farm ? 30 : space ? 450 : big ? 140 : 70;      // [NY] dyphavet: tett tåke, ser ikke langt
-  scene.fog.far = sea ? 85 : farm ? 125 : space ? 1500 : big ? 340 : 150;
+  scene.fog.near = lobby ? 200 : sea ? 14 : farm ? 30 : space ? 450 : big ? 140 : 70;      // [NY] dyphavet: tett tåke, ser ikke langt
+  scene.fog.far = lobby ? 400 : sea ? 85 : farm ? 125 : space ? 1500 : big ? 340 : 150;
   renderer.setClearColor(sky);
   camera.far = space ? 2000 : big ? 400 : 200;
   camera.updateProjectionMatrix();
@@ -142,12 +144,13 @@ function applyMap() {
   if (big) setFoam(false);
 }
 
-function mapFromName(n) { return n === 'room' || n === 'castle' || n === 'space' || n === 'farm' || n === 'sea' ? n : 'temple'; }
+function mapFromName(n) { return n === 'room' || n === 'castle' || n === 'space' || n === 'farm' || n === 'sea' || n === 'lobby' ? n : 'temple'; }
 socket.on('map', d => {
   currentMap = mapFromName(d.name);
   applyMap();
   bannerMsg = '&#127918; Ny bane: ' + (currentMap === 'room' ? 'KJEMPE-BARNEROMMET &#129528;<br><span style="font-size:20px">Stor bane – bruk snikskytteren (2)!</span>'
     : currentMap === 'castle' ? 'KLOSSESLOTTET &#127984;<br><span style="font-size:20px">Alt kan skytes i stykker!</span>'
+    : currentMap === 'lobby' ? 'LOUNGEN &#127968;<br><span style="font-size:20px">Gå inn i en portal for å velge bane</span>'
     : currentMap === 'sea' ? 'DYPHAVSBASEN! &#127754;&#128025;<br><span style="font-size:20px">Alle sammen – forsvar basen! Hold E inni basen for å reparere</span>'
     : currentMap === 'farm' ? 'ZOMBIE-KYLLINGER! &#128020;&#129503;<br><span style="font-size:20px">Alle sammen mot kyllingene – forsvar leiren!</span>'
     : currentMap === 'space' ? 'VERDENSROMMET &#128640;<br><span style="font-size:20px">Ta et jagerfly i hangaren og spreng fiendens moderskip!</span>' : 'TEMPELET &#127963;');

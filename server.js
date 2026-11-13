@@ -9,6 +9,7 @@ const { Server } = require('socket.io');
 const CM = require('./public/castlemap.js');   // klosseslottet: samme kart som nettleseren bygger
 const FM = require('./public/farmmap.js');     // [NY] zombie-kyllingfarmen (samme klosse-system)
 const SM = require('./public/seamap.js');      // [NY] dyphavsbasen (samme klosse-system)
+const LM = require('./public/lobbymap.js');    // [NY] loungen der alle møtes mellom rundene
 
 const app = express();
 app.use(require('compression')());                // [NY] pakker filene (ca. 1 MB -> 250 KB) – raskere lasting på mobil
@@ -19,7 +20,7 @@ const PORT = process.env.PORT || 3000;
 
 // ---------- Regler ----------
 const ROUND_SECONDS = +process.env.ROUND_SECONDS || 300;     // 5 minutter per runde (kan endres for testing)
-const BREAK_SECONDS = 12;      // pause mellom runder (tid til å stemme på neste bane)
+const BREAK_SECONDS = 8;       // [NY] resultater i 8 sek, så tilbake til loungen
 const RESPAWN_SECONDS = 3;
 const MAX_HP = 100;
 const DMG_BODY = 20;           // 5 treff i kroppen
@@ -44,7 +45,8 @@ let foamHoles = [];            // [x, z] for hvert granat-hull (til nye spillere
 let worldName = 'main';        // 'main' eller 'underworld'
 // Baner byttes hver runde: tempelet og det kjempestore barnerommet (snikskytterbane)
 const MAPS = ['temple', 'room', 'castle', 'space', 'farm', 'sea'];       // rekkefølgen banene byttes i
-let mapName = MAPS.includes(process.env.START_MAP) ? process.env.START_MAP : 'temple';   // (START_MAP er for testing)
+// [NY] Alle starter i LOUNGEN ('lobby'). Der stemmer man ved å stå i en portal. (START_MAP er for testing)
+let mapName = MAPS.includes(process.env.START_MAP) || process.env.START_MAP === 'lobby' ? process.env.START_MAP : 'lobby';
 let votes = {};                                    // socket-id -> banen spilleren stemte på (i pausen)
 function voteCounts() {
   const c = { temple: 0, room: 0, castle: 0, space: 0, farm: 0 };
@@ -863,7 +865,7 @@ setInterval(farmTick, 100);
 
 const HANDLE = { x: -25, z: -3 };   // håndtaket i bakre hjørne av venstre hus
 const UNDER_HANDLES = [{ x: 0, z: 24 }, { x: 0, z: -24 }];   // skyll-håndtak i underverdenen (ett per lag)
-let roundEndsAt = Date.now() + ROUND_SECONDS * 1000;
+let roundEndsAt = mapName === 'lobby' ? Infinity : Date.now() + ROUND_SECONDS * 1000;   // [NY] ingen klokke i loungen
 let intermission = false;
 if (hordeMap()) { resetFarm(); roundEndsAt = Date.now() + FARM_SECONDS * 1000; }   // [NY] start rett på kyllingfarmen (testing)
 
@@ -889,6 +891,7 @@ function spawnFor(team) {
     }
     return { x: -6.5, y: 0, z: 3.5, yaw: 0 };
   }
+  if (mapName === 'lobby') return LM.spawnPoint();          // [NY] loungen: midt i rommet
   if (mapName === 'sea') {                                  // [NY] dyphavet: i den basen som står (aktiv base)
     const b = SM.BASES[(farm && farm.active) || 0] || SM.BASES[0], G = VOX.sea.grid;
     for (let k = 0; k < 60; k++) {
@@ -1004,7 +1007,7 @@ io.on('connection', socket => {
     if (players[socket.id] || !data) return;
     const team = TEAMS.includes(data.team) ? data.team : 'bunny';
     // [NY] Første spiller på en tom server velger banen, og runden starter på nytt
-    if (Object.keys(players).length === 0 && MAPS.includes(data.map)) startFresh(data.map);
+    if (Object.keys(players).length === 0 && mapName !== 'lobby' && !process.env.START_MAP) startMap('lobby');   // [NY] tom server: begynn i loungen
     const name = String(data.name || '').replace(/[<>]/g, '').trim().slice(0, 16) || 'Spiller';
     const sp = spawnFor(team);
     const p = players[socket.id] = {
@@ -1021,7 +1024,8 @@ io.on('connection', socket => {
       id: socket.id, spawn: sp, players: others, score,
       foam: { on: foamOn, holes: foamHoles },
       world: worldName, map: mapName, blocksGone: VOX[mapName] ? VOX[mapName].gone : undefined,
-      timeLeft: Math.max(0, Math.ceil((roundEndsAt - Date.now()) / 1000)), intermission
+      timeLeft: mapName === 'lobby' ? 0 : Math.max(0, Math.ceil((roundEndsAt - Date.now()) / 1000)), intermission,
+      lastResult                                       // [NY] forrige runde (skjermen i loungen)
     });
     socket.emit('holy', holyState());                 // [NY] hvor er ferskenen?
     socket.emit('fleet', fleetState());               // [NY] moderskipene
@@ -1079,7 +1083,7 @@ io.on('connection', socket => {
   socket.on('hit', d => {
     const p = players[socket.id];
     if (!p || !p.alive || intermission || !d) return;
-    if (hordeMap()) return;                            // [NY] kyllingfarmen/dyphavet: alle er på samme lag
+    if (hordeMap() || mapName === 'lobby') return;     // [NY] kyllingfarmen/dyphavet: samme lag. Loungen: ingen skade
     const t = players[d.target];
     if (!t || !t.alive || t.team === p.team) return;
     const now = Date.now();
@@ -1138,6 +1142,7 @@ io.on('connection', socket => {
     if (!p || !d || !p.pending[d.id]) return;
     const kind = p.pending[d.id];
     delete p.pending[d.id];                           // hver granat kan bare smelle én gang
+    if (mapName === 'lobby') return;                  // [NY] loungen: ingen smell
     if (!Array.isArray(d.p)) return;
     const pos = d.p.map(v => num(v, -250, 250));        // [FIKS] dyphavet er 220 m bredt
     if (pos.includes(null)) return;
@@ -1516,6 +1521,65 @@ setInterval(() => {
   io.emit('snap', snap);
 }, 50);
 
+// ===================================================================
+// [NY] LOUNGEN: bytt bane for alle, og stemming ved å stå i portalene
+// ===================================================================
+let lastResult = null;
+// Bytt alle spillerne til en ny bane (eller tilbake til loungen)
+function startMap(name) {
+  score = { bunny: 0, squirrel: 0 };
+  if (worldName !== 'main') { worldName = 'main'; io.emit('world', { name: 'main' }); }
+  mapName = name;
+  votes = {};
+  lobbyVote = { firstAt: 0, countdownAt: 0, chosen: null, sig: '' };
+  if (VOX[mapName]) resetVox(mapName);                           // nytt, helt slott / ny farm
+  holy = { state: 'top', holder: null, readyAt: 0 };
+  resetFleet();
+  io.emit('fleet', fleetState());
+  io.emit('holy', holyState());
+  io.emit('map', { name: mapName, lastResult });
+  Object.values(players).forEach(p => { leaveVehicle(p); p.kills = 0; p.deaths = 0; p.streak = 0; respawn(p); });
+  roundEndsAt = mapName === 'lobby' ? Infinity : Date.now() + (hordeMap() ? FARM_SECONDS : ROUND_SECONDS) * 1000;
+  intermission = false;
+  if (hordeMap()) resetFarm(); else farm = null;
+  foamOn = false; foamHoles = [];
+  io.emit('foam', { on: false });
+  io.emit('roundStart', { score });
+  console.log('Bane: ' + mapName);
+}
+// Stemming: står alle i en portal -> 5 sek nedtelling. Ellers starter det 30 sek etter første stemme.
+const LOBBY_WAIT_MS = 30000, LOBBY_COUNT_MS = 5000;
+let lobbyVote = { firstAt: 0, countdownAt: 0, chosen: null, sig: '' };
+setInterval(() => {
+  if (mapName !== 'lobby' || intermission) return;
+  const now = Date.now(), all = Object.values(players), byMap = {};
+  let inPortal = 0;
+  all.forEach(p => {
+    const pt = LM.portalAt(p.x, p.z);
+    if (pt && p.alive) { (byMap[pt.map] = byMap[pt.map] || []).push(p.name); inPortal++; }
+  });
+  if (inPortal && !lobbyVote.firstAt) lobbyVote.firstAt = now;
+  if (!inPortal) { lobbyVote.firstAt = 0; lobbyVote.countdownAt = 0; }
+  const everyone = all.length > 0 && inPortal === all.length;
+  const waited = lobbyVote.firstAt && now - lobbyVote.firstAt >= LOBBY_WAIT_MS;
+  if ((everyone || waited) && inPortal && !lobbyVote.countdownAt) lobbyVote.countdownAt = now + LOBBY_COUNT_MS;
+  if (lobbyVote.countdownAt && !everyone && !waited) lobbyVote.countdownAt = 0;    // noen gikk ut før tiden: vent igjen
+  // Flest stemmer vinner. Likt: trekning mellom de like.
+  const max = Math.max(0, ...Object.values(byMap).map(v => v.length));
+  const top = Object.keys(byMap).filter(m => byMap[m].length === max);
+  if (lobbyVote.countdownAt && (!lobbyVote.chosen || !top.includes(lobbyVote.chosen))) lobbyVote.chosen = top[Math.floor(Math.random() * top.length)];
+  if (!lobbyVote.countdownAt) lobbyVote.chosen = null;
+  const state = {
+    votes: byMap,
+    countdown: lobbyVote.countdownAt ? Math.max(0, Math.ceil((lobbyVote.countdownAt - now) / 1000)) : null,
+    waitLeft: lobbyVote.firstAt && !lobbyVote.countdownAt ? Math.max(0, Math.ceil((lobbyVote.firstAt + LOBBY_WAIT_MS - now) / 1000)) : null,
+    chosen: lobbyVote.chosen
+  };
+  const sig = JSON.stringify(state);
+  if (sig !== lobbyVote.sig) { lobbyVote.sig = sig; io.emit('lobbyVote', state); }
+  if (lobbyVote.countdownAt && now >= lobbyVote.countdownAt && lobbyVote.chosen) startMap(lobbyVote.chosen);
+}, 250);
+
 // ---------- Runde-klokke, hvert sekund ----------
 setInterval(() => {
   const now = Date.now();
@@ -1536,34 +1600,15 @@ setInterval(() => {
     }
     votes = {};
     io.emit('roundOver', { winner, score, board: board(), maps: MAPS, votes: voteCounts(), voteSeconds: BREAK_SECONDS, farm: farmResult });
-    setTimeout(() => {
-      score = { bunny: 0, squirrel: 0 };
-      if (worldName !== 'main') { worldName = 'main'; io.emit('world', { name: 'main' }); }
-      mapName = firstPick || nextMap();                              // ny bane: flest stemmer, ellers vanlig rekkefølge
-      firstPick = null;
-      votes = {};
-      resetVox(mapName);                                             // nytt, helt slott / ny farm
-      holy = { state: 'top', holder: null, readyAt: 0 };             // [NY] ny fersken på toppen
-      resetFleet();                                                  // [NY] nye moderskip og 12 nye jagerfly
-      io.emit('fleet', fleetState());
-      io.emit('holy', holyState());
-      io.emit('map', { name: mapName });
-      Object.values(players).forEach(p => { p.kills = 0; p.deaths = 0; p.streak = 0; respawn(p); });
-      roundEndsAt = Date.now() + (hordeMap() ? FARM_SECONDS : ROUND_SECONDS) * 1000;
-      intermission = false;
-      if (hordeMap()) resetFarm(); else farm = null;          // [NY] kyllingfarmen starter på bølge 1
-      foamOn = false;              // skummet forsvinner ved ny runde
-      foamHoles = [];
-      io.emit('foam', { on: false });
-      io.emit('roundStart', { score });
-    }, BREAK_SECONDS * 1000);
+    lastResult = { winner, board: board(), farm: farmResult, map: mapName };   // [NY] vises på skjermen i loungen
+    setTimeout(() => startMap('lobby'), BREAK_SECONDS * 1000);   // [NY] etter runden: alle tilbake til loungen
   }
   if (fleet) TEAMS.forEach(t => fleet[t].turrets.forEach(u => {   // [NY] ødelagte kanontårn repareres
     if (u.hp <= 0 && u.repairAt && now >= u.repairAt && !fleet[t].down) { u.hp = TURRET_HP; u.repairAt = 0; fleetDirty = true; }
   }));
   if (holy.state === 'wait' && now >= holy.readyAt) setHoly('top', null, { back: true });   // [NY] ny fersken
   io.emit('tick', {
-    timeLeft: intermission ? 0 : Math.max(0, Math.ceil((roundEndsAt - now) / 1000)),
+    timeLeft: intermission || mapName === 'lobby' ? 0 : Math.max(0, Math.ceil((roundEndsAt - now) / 1000)),
     score, intermission, board: board()
   });
 }, 1000);

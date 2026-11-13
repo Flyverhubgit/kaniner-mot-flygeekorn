@@ -403,7 +403,7 @@ if (!isTouch) {
     const locked = document.pointerLockElement === renderer.domElement;
     if (!locked) releaseAll();             // [FIKS] se over
     if (!joined) return;                   // [NY] menyen styrer visningen før du er med
-    overlay.style.display = locked ? 'none' : 'flex';
+    overlay.style.display = locked || (typeof shopPanelOpen !== 'undefined' && shopPanelOpen) ? 'none' : 'flex';   // [NY] ikke over butikken
   });
 } else {
   overlay.innerHTML = '<div><b>Trykk for å starte</b><br>Venstre tommel = gå<br>Høyre tommel = se deg rundt<br>Knappene nede til høyre = skyt, lad om, granat, hopp, slide og dukk<br>Skyt: dobbelttrykk og hold på høyre side (dra for å sikte),<br>eller hold SKYT-knappen<br>BYTT = snikskytter &nbsp; SIKTE = kikkert<br>&#129991; Tips: toppen av pyramiden = SKUMFEST!</div>';
@@ -1027,6 +1027,7 @@ function removeNade(id) {
 }
 
 function throwNade() {
+  if (currentMap === 'lobby') return;                // [NY] ingen granater i loungen
   if (typeof spaceThrow === 'function' && spaceThrow()) return;   // [NY] torpedo fra jagerflyet
   if (typeof holyThrow === 'function' && holyThrow()) return;   // [NY] har du den hellige ferskenen, kastes den
   const endless = underNow() || (typeof hordeOn === 'function' && hordeOn());   // [NY] uendelig i underverdenen og på kyllingfarmen
@@ -1514,7 +1515,7 @@ function shoot() {
   if (typeof spaceShoot === 'function' && spaceShoot()) return;   // [NY] laser fra jagerfly / kanontårn
   if (typeof inMortar !== 'undefined' && inMortar) { fireMortar(); return; }   // [NY] står i morteren
   const egg = typeof minigunOn === 'function' && minigunOn();   // [NY] eggmaskingevær (gullegg på kyllingfarmen)
-  if (weapon === bazW && !egg) { fireRocket(); return; }   // [NY] bazooka skyter en rakett i stedet for en kule
+  if (weapon === bazW && !egg) { if (currentMap !== 'lobby') fireRocket(); return; }   // [NY] bazooka skyter en rakett (ikke i loungen)
   if (!egg && !(typeof hordeOn === 'function' && hordeOn())) weapon.mag--;   // [NY] kyllingfarmen: bunnløst magasin
   fireCooldown = egg ? 0.06 : weapon.fireDelay;
   myProtectUntil = 0;                             // [NY] skyter du, er skjoldet borte
@@ -1531,6 +1532,7 @@ function shoot() {
   camera.updateMatrixWorld(true);
   raycaster.setFromCamera({ x: (Math.random() - 0.5) * spread, y: (Math.random() - 0.5) * spread }, camera);
   const hits = raycaster.intersectObject(activeWorldGroup(), true);   // [NY] bare verden (ikke spor/fyll), riktig bane
+  if (currentMap === 'lobby' && hits[0] && typeof lobbyShot === 'function') lobbyShot(hits[0].object);   // [NY] skyteskivene i loungen
   const o = raycaster.ray.origin, d = raycaster.ray.direction;
   const vox = voxelOn() ? castleRay(o, d, 200) : null;   // [NY] første kloss kula treffer
 
@@ -1791,7 +1793,8 @@ function esc(s) {
 
 function updateHud(dt) {
   const m = Math.floor(timeLeft / 60), s = String(timeLeft % 60).padStart(2, '0');
-  topbar.innerHTML = teamSpan('bunny', 'Kaniner ' + score.bunny) + ' &nbsp; ' + m + ':' + s + ' &nbsp; ' + teamSpan('squirrel', score.squirrel + ' Flygeekorn');
+  topbar.innerHTML = currentMap === 'lobby' && typeof lobbyTopText === 'function' ? lobbyTopText()   // [NY] loungen: stemming i stedet for klokke
+    : teamSpan('bunny', 'Kaniner ' + score.bunny) + ' &nbsp; ' + m + ':' + s + ' &nbsp; ' + teamSpan('squirrel', score.squirrel + ' Flygeekorn');
   healthEl.innerHTML = '&#9829; ' + Math.max(0, hp) + (performance.now() < myProtectUntil ? ' &#128737;&#65039;' : '') +
     ' &nbsp; <span style="font-size:16px;opacity:.8">' + ((typeof hordeOn === 'function' && hordeOn()) ? (myTeam === 'bunny' ? 'Du er en kanin' : 'Du er et flygeekorn') + ' &#129309; alle mot ' + (currentMap === 'sea' ? 'havmonstrene' : 'kyllingene') : (myTeam === 'bunny' ? 'Du er Kanin' : 'Du er Flygeekorn')) + '</span>';
 
@@ -1874,7 +1877,7 @@ socket.on('lobby', c => {
   el('countSquirrel').textContent = c.squirrel + (c.squirrel === 1 ? ' spiller' : ' spillere');
   // [NY] Ingen andre inne? Da velger du banen.
   const empty = c.bunny + c.squirrel === 0;
-  el('mapRow').style.display = empty && !joined ? 'block' : 'none';
+  el('mapRow').style.display = 'none';              // [NY] banen velges nå i loungen (portalene)
   if (!empty) pickedMap = null;
   else if (!pickedMap && c.map) pickedMap = c.map;
   document.querySelectorAll('.mapPick').forEach(b => b.classList.toggle('on', b.dataset.map === pickedMap));
@@ -2222,6 +2225,7 @@ function animate(now) {
     if (typeof updateSea === 'function') updateSea(dt);         // [NY] dyphavsbasen
     if (typeof updateGear === 'function') updateGear(dt);       // [NY] glorien snurrer
     if (typeof updateSkins === 'function') updateSkins(dt);     // [NY] lava/galakse/diamant gløder
+    if (typeof updateLobby === 'function') updateLobby(dt);     // [NY] loungen
     if (typeof updateFarmVehicles === 'function') updateFarmVehicles(dt);   // [NY] doser og A-10
     if (typeof updateEasterEggs === 'function') updateEasterEggs(dt);       // [NY] påskeegget
     if (typeof updateFun === 'function') updateFun(dt);         // [NY] fyrverkeri

@@ -52,6 +52,7 @@ window.addEventListener('keydown', e => {
 });
 
 socket.on('roundOver', d => {
+  return;                                          // [NY] stemmingen skjer nå i loungen (portalene) – panelet brukes ikke
   voteOpen = true;
   myVote = null;
   votePanel.style.display = 'block';
