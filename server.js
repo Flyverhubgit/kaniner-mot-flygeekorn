@@ -1926,9 +1926,10 @@ let dragonGame = null, dragonSeq = 0, dragonRecord = 0;
 function dragonMap() { return mapName === 'dragon' && worldName === 'main'; }
 // [NY] Vanskelighet etter antall spillere: få spillere = lettere, mange = vanskeligere
 function dragonNP() { return Math.max(1, Object.values(players).filter(p => !p.isBot).length); }
-function dragonCountMul() { return 0.35 + 0.35 * dragonNP(); }          // 1: 0,7  2: 1,05  3: 1,4  4: 1,75
-function dragonBossMul() { return 0.2 + 0.4 * dragonNP(); }             // 1: 0,6  2: 1,0  3: 1,4  4: 1,8
-function dragonDmgMul() { return [0.7, 0.85, 1, 1][Math.min(3, dragonNP() - 1)]; }   // dragene biter litt mindre når dere er få
+const DRAGON_HARD = true;   // [NY] vanskeligere, men fortsatt mulig. false = de gamle, lettere tallene
+function dragonCountMul() { return DRAGON_HARD ? 0.5 + 0.4 * dragonNP() : 0.35 + 0.35 * dragonNP(); }   // hard 1: 0,9  2: 1,3  3: 1,7  4: 2,1
+function dragonBossMul() { return DRAGON_HARD ? 0.3 + 0.5 * dragonNP() : 0.2 + 0.4 * dragonNP(); }     // hard 1: 0,8  2: 1,3  3: 1,8  4: 2,3
+function dragonDmgMul() { return (DRAGON_HARD ? [0.85, 1, 1.1, 1.2] : [0.7, 0.85, 1, 1])[Math.min(3, dragonNP() - 1)]; }
 function resetDragons() {
   const np = Math.max(1, Object.values(players).filter(p => !p.isBot).length);
   dragonGame = { wave: Math.max(0, (+process.env.DRAGON_START_WAVE || 1) - 1), state: 'prep',   // (DRAGON_START_WAVE er for testing)
