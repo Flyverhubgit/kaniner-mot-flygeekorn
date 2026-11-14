@@ -171,7 +171,9 @@ function buildGearPart(id, team) {
     const tail = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.15, 6), yel); tail.position.set(0, y + 0.22, -0.27); tail.rotation.x = -0.9; g.add(tail);
     const tuft = new THREE.Mesh(new THREE.ConeGeometry(0.025, 0.08, 5), yel); tuft.position.set(0, y + 0.46, 0.08); tuft.rotation.x = -0.4; g.add(tuft);   // liten hårtust
     // [NY] Reiret anda sitter i: en rund kvistkrans med strå som stikker ut, og et lite egg som titter frem
-    g.children.forEach(c => { c.position.y += 0.09; });           // løft anda opp i reiret
+    const duck = new THREE.Group();                                // anda litt mindre (75 %), og løftet opp i reiret
+    [...g.children].forEach(c => { c.position.y -= y; duck.add(c); });
+    duck.scale.setScalar(0.75); duck.position.set(0, y + 0.07, 0); g.add(duck);
     const twig = new THREE.MeshStandardMaterial({ color: 0x8a5a2e, roughness: 1 });
     const twig2 = new THREE.MeshStandardMaterial({ color: 0x6b4423, roughness: 1 });
     const ring = new THREE.Mesh(new THREE.TorusGeometry(0.22, 0.075, 6, 16), twig);
