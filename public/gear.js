@@ -22,7 +22,8 @@ const GEAR = [
   { id: 'goldfur', name: 'Gullpels', icon: '✨', level: 15, slot: 'fur' },
   { id: 'unihat', name: 'Enhjørninghatt', icon: '🦄', level: 17, slot: 'head' }, // [NY] enhjørning-hette
   { id: 'sharkhat', name: 'Haihatt', icon: '🦈', level: 20, slot: 'head' },     // [NY] haihode som hette
-  { id: 'dinohat', name: 'Dinosaurhatt', icon: '🦖', level: 25, slot: 'head' }   // [NY] T-rex-hode som hette
+  { id: 'dinohat', name: 'Dinosaurhatt', icon: '🦖', level: 25, slot: 'head' },  // [NY] T-rex-hode som hette
+  { id: 'froggles', name: 'Froskebriller', icon: '🐸', level: 27, slot: 'face' }  // [NY] solbriller som froskeøyne
 ];
 // XP som trengs for nivå n: 30 * n * (n - 1)  -> nivå 2 = 60, 5 = 600, 10 = 2700, 15 = 6300
 function xpFor(n) { return 30 * n * (n - 1); }
@@ -152,6 +153,22 @@ function buildGearPart(id, team) {
     const ring = new THREE.Mesh(new THREE.TorusGeometry(0.2, 0.03, 8, 24), new THREE.MeshBasicMaterial({ color: 0xfff3a0 }));
     ring.rotation.x = Math.PI / 2; ring.position.y = y + 0.3; g.add(ring);
     g.userData.spin = ring;
+  } else if (id === 'froggles') {
+    // [NY] Froskebriller: to store grønne froskeøyne som buler ut, med svarte speilglass og et rosa smil-bånd
+    const GR = 0x5fc23a, DK = 0x2f7a1e;
+    const frame = new THREE.MeshStandardMaterial({ color: GR, roughness: 0.5 });
+    const lens = new THREE.MeshStandardMaterial({ color: 0x0a0f14, metalness: 0.6, roughness: 0.1, emissive: 0x0a2a3a });
+    const ex = H.eyeX + 0.03;
+    [-1, 1].forEach(sd => {
+      const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.11, 12, 8), frame);   // grønn froskeøye-kuppel
+      bulb.scale.z = 0.7; bulb.position.set(sd * ex, H.eyeY + 0.04, H.front + 0.04); g.add(bulb);
+      const gl = new THREE.Mesh(new THREE.SphereGeometry(0.085, 12, 8), lens);    // svart glass
+      gl.scale.z = 0.55; gl.position.set(sd * ex, H.eyeY + 0.04, H.front + 0.085); g.add(gl);
+      const hl = new THREE.Mesh(new THREE.SphereGeometry(0.02, 6, 4), new THREE.MeshBasicMaterial({ color: 0xffffff }));
+      hl.position.set(sd * ex - 0.03, H.eyeY + 0.08, H.front + 0.13); g.add(hl);  // glimt
+      blk(g, 0.03, 0.03, H.d * 0.6, sd * (H.w / 2 + 0.02), H.eyeY + 0.03, 0, DK);  // brillestenger
+    });
+    blk(g, 0.08, 0.035, 0.03, 0, H.eyeY + 0.03, H.front + 0.1, DK);               // nesebro
   } else if (id === 'unihat') {
     // [NY] Enhjørning-hette: hvit hestemule over pannen, gullhorn, ører, store øyne og regnbuemanke
     const WHT = 0xfdfaff, PINK = 0xffb3c7, GOLDH = 0xffd84a;
