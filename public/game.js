@@ -304,7 +304,8 @@ function castleOn() {
 function voxelOn() {
   return typeof currentMap !== 'undefined' && (currentMap === 'castle' || (currentMap === 'farm' && typeof farmWorld !== 'undefined' && farmWorld) ||
     (currentMap === 'sea' && typeof seaWorld !== 'undefined' && seaWorld) ||
-    (currentMap === 'medieval' && typeof medWorld !== 'undefined' && medWorld)) && !underNow() && typeof castleBlocked === 'function';   // [NY] + dyphavet + Ridderborgen
+    (currentMap === 'medieval' && typeof medWorld !== 'undefined' && medWorld) ||
+    (currentMap === 'west' && typeof westWorld !== 'undefined' && westWorld)) && !underNow() && typeof castleBlocked === 'function';   // [NY] + dyphavet + Ridderborgen
 }
 
 // Høyden på bakken (eller trinnet) under spilleren
@@ -2258,6 +2259,7 @@ function animate(now) {
     if (typeof updateLobby === 'function') updateLobby(dt);     // [NY] loungen
     if (typeof updateMedieval === 'function') updateMedieval(dt);   // [NY] Ridderborgen
     if (typeof updateHammer === 'function') updateHammer(dt);       // [NY] hammeren: byggeklosser
+    if (typeof updateWest === 'function') updateWest(dt);           // [NY] Ville Vesten: toget, tumbleweeds
     if (typeof updateFarmVehicles === 'function') updateFarmVehicles(dt);   // [NY] doser og A-10
     if (typeof updateEasterEggs === 'function') updateEasterEggs(dt);       // [NY] påskeegget
     if (typeof updateFun === 'function') updateFun(dt);         // [NY] fyrverkeri

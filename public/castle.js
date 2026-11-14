@@ -124,11 +124,13 @@ const castleWorld = makeVoxelWorld(CM, castleGroup);
 let farmWorld = null;                    // lages av farm.js
 let seaWorld = null;                     // [NY] lages av sea.js (dyphavsbasen)
 let medWorld = null;                     // [NY] lages av medieval.js (Ridderborgen)
+let westWorld = null;                    // [NY] lages av west.js (Ville Vesten)
 // Hvilken klosse-verden gjelder nå?
 function voxWorld() {
   if (typeof currentMap !== 'undefined' && currentMap === 'farm' && farmWorld) return farmWorld;
   if (typeof currentMap !== 'undefined' && currentMap === 'sea' && seaWorld) return seaWorld;   // [NY]
   if (typeof currentMap !== 'undefined' && currentMap === 'medieval' && medWorld) return medWorld;   // [NY] Ridderborgen
+  if (typeof currentMap !== 'undefined' && currentMap === 'west' && westWorld) return westWorld;     // [NY] Ville Vesten
   return castleWorld;
 }
 // Gamle navn (brukes av morteren og testene): klosseslottets rutenett
@@ -253,7 +255,7 @@ function updateCastle(dt) {
 // ---------- Meldinger fra serveren ----------
 socket.on('blocks', d => removeCells(d.gone));
 socket.on('built', d => { const W = voxWorld(); W.addBuilt(d.i); if (typeof onBlockBuilt === 'function') onBlockBuilt(d.i); });   // [NY] hammeren
-function worldFor(name) { return name === 'castle' ? castleWorld : name === 'farm' ? farmWorld : name === 'sea' ? seaWorld : name === 'medieval' ? medWorld : null; }
+function worldFor(name) { return name === 'castle' ? castleWorld : name === 'farm' ? farmWorld : name === 'sea' ? seaWorld : name === 'medieval' ? medWorld : name === 'west' ? westWorld : null; }
 socket.on('map', d => { const W = worldFor(d.name); if (W) W.reset(); });
 socket.on('welcome', d => {
   const W = worldFor(d.map);

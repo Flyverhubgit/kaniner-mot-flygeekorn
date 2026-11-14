@@ -11,6 +11,7 @@ const FM = require('./public/farmmap.js');     // [NY] zombie-kyllingfarmen (sam
 const SM = require('./public/seamap.js');      // [NY] dyphavsbasen (samme klosse-system)
 const LM = require('./public/lobbymap.js');    // [NY] loungen der alle møtes mellom rundene
 const MM = require('./public/medievalmap.js'); // [NY] Ridderborgen (middelalder-borgene)
+const WM = require('./public/westmap.js');     // [NY] Ville Vesten (cowboybyen)
 
 const app = express();
 app.use(require('compression')());                // [NY] pakker filene (ca. 1 MB -> 250 KB) – raskere lasting på mobil
@@ -67,7 +68,7 @@ let foamHoles = [];            // [x, z] for hvert granat-hull (til nye spillere
 // Underverdenen: et skjult håndtak sender alle ned til lava-arenaen til neste runde
 let worldName = 'main';        // 'main' eller 'underworld'
 // Baner byttes hver runde: tempelet og det kjempestore barnerommet (snikskytterbane)
-const MAPS = ['temple', 'room', 'castle', 'space', 'farm', 'sea', 'medieval'];       // rekkefølgen banene byttes i
+const MAPS = ['temple', 'room', 'castle', 'space', 'farm', 'sea', 'medieval', 'west'];       // rekkefølgen banene byttes i
 // [NY] Alle starter i LOUNGEN ('lobby'). Der stemmer man ved å stå i en portal. (START_MAP er for testing)
 let mapName = MAPS.includes(process.env.START_MAP) || process.env.START_MAP === 'lobby' ? process.env.START_MAP : 'lobby';
 let votes = {};                                    // socket-id -> banen spilleren stemte på (i pausen)
@@ -94,7 +95,7 @@ function makeVox(LIB) {
   const pristine = LIB.build();
   return { LIB, pristine, grid: pristine.slice(), hp: new Uint8Array(pristine.length), gone: [], built: [] };
 }
-const VOX = { castle: makeVox(CM), farm: makeVox(FM), sea: makeVox(SM), medieval: makeVox(MM) };
+const VOX = { castle: makeVox(CM), farm: makeVox(FM), sea: makeVox(SM), medieval: makeVox(MM), west: makeVox(WM) };
 function resetVox(name) {
   const V = VOX[name];
   if (!V) return;
@@ -103,7 +104,7 @@ function resetVox(name) {
   V.gone = [];
   V.built = [];                                     // [NY] byggeklosser forsvinner ved ny runde
 }
-resetVox('castle'); resetVox('farm'); resetVox('sea'); resetVox('medieval');
+resetVox('castle'); resetVox('farm'); resetVox('sea'); resetVox('medieval'); resetVox('west');
 // [NY] "Horde"-baner: alle spillerne sammen mot monstre (kyllingfarmen og dyphavsbasen)
 function hordeMap() { return mapName === 'farm' || mapName === 'sea'; }
 function HL() { return mapName === 'sea' ? SM : FM; }          // kartet til horde-banen
@@ -227,6 +228,36 @@ function startFresh(map) {
 // [NY] VERDENSROMMET: to moderskip. Hvert lag har 12 jagerfly per runde og 4 kanontårn.
 // Når flyene er brukt opp, er kanontårnene siste forsvar. Moderskipet sprenges = du vinner.
 // ===================================================================
+// [NY] TOGET i Ville Vesten: kommer innimellom og kjører på tvers gjennom byen (z = -2..2).
+// Står du på skinnene når det kommer, blir du kjørt over (og byggeklosser på sporet knuses).
+const TRAIN = { every: 40000, firstAfter: 20000, warn: 4000, speed: 22, len: 28, from: 85 };
+let train = { nextAt: 0, startAt: 0, dir: 1, running: false };
+setInterval(() => {
+  const now = Date.now();
+  if (mapName !== 'west' || worldName !== 'main' || intermission) { train.running = false; train.nextAt = 0; return; }
+  if (!train.nextAt) train.nextAt = now + TRAIN.firstAfter;
+  if (!train.running && now >= train.nextAt) {
+    train.dir = Math.random() < 0.5 ? 1 : -1;
+    train.startAt = now + TRAIN.warn; train.running = true;
+    io.emit('train', { warn: TRAIN.warn, dir: train.dir, speed: TRAIN.speed, len: TRAIN.len, from: TRAIN.from });
+  }
+  if (!train.running || now < train.startAt) return;
+  const x = -train.dir * TRAIN.from + train.dir * TRAIN.speed * (now - train.startAt) / 1000;   // midten av toget
+  if (Math.abs(x) > TRAIN.from + TRAIN.len) { train.running = false; train.nextAt = now + TRAIN.every; return; }
+  for (const id in players) {
+    const p = players[id];
+    if (p.alive && Math.abs(p.z) < 2.3 && p.y < 3.5 && Math.abs(p.x - x) < TRAIN.len / 2 + 0.6) killByWorld(p, 'Toget 🚂', 'train');
+  }
+  const V = VOX.west, list = [];                                 // knus byggeklosser på sporet
+  for (let ix = Math.floor(x - TRAIN.len / 2); ix <= Math.floor(x + TRAIN.len / 2); ix++)
+    for (let iz = WM.TRACK.z0; iz <= WM.TRACK.z1; iz++) for (let iy = 0; iy < 4; iy++) {
+      if (ix < WM.X0 || ix >= WM.X0 + WM.NX) continue;
+      const i = WM.idx(ix, iy, iz);
+      if (V.grid[i] === BUILT_T) list.push(i);
+    }
+  if (list.length) destroyCells(list);
+}, 100);
+
 // [NY] Byggeklosser fylles på: 1 kloss hvert 3. sekund, opp til 30
 setInterval(() => {
   for (const id in players) {
@@ -950,6 +981,19 @@ function spawnFor(team) {
     return { x: -6.5, y: 0, z: 3.5, yaw: 0 };
   }
   if (mapName === 'lobby') return LM.spawnPoint();          // [NY] loungen: midt i rommet
+  if (mapName === 'west') {                                 // [NY] Ville Vesten: i innhegningen i egen ende av byen
+    const S = WM.SPAWNS.bunny, G = VOX.west.grid, sq = team === 'squirrel';
+    for (let k = 0; k < 60; k++) {
+      let x = S.x0 + Math.random() * (S.x1 - S.x0), z = S.z0 + Math.random() * (S.z1 - S.z0);
+      if (sq) { x = -x; z = -z; }
+      let ok = true;
+      for (let ix = Math.floor(x - 0.5); ix <= Math.floor(x + 0.5); ix++)
+        for (let iz = Math.floor(z - 0.5); iz <= Math.floor(z + 0.5); iz++)
+          for (let y = 0; y < 2; y++) if (G[WM.idx(ix, y, iz)]) ok = false;
+      if (ok) return { x, y: 0, z, yaw: sq ? Math.PI : 0 };
+    }
+    return { x: 0, y: 0, z: sq ? -54 : 54, yaw: sq ? Math.PI : 0 };
+  }
   if (mapName === 'medieval') {                             // [NY] Ridderborgen: i egen borggård
     const S = MM.SPAWNS.bunny, G = VOX.medieval.grid, sq = team === 'squirrel';
     for (let k = 0; k < 60; k++) {
@@ -1596,7 +1640,7 @@ io.on('connection', socket => {
     if (Math.hypot(x + 0.5 - p.x, y + 0.5 - (p.y + 1.5), z + 0.5 - p.z) > BUILD_REACH + 1) return;
     const solid = (a, b, c) => b < 0 || (b < L.NY && a >= L.X0 && a < L.X0 + L.NX && c >= L.Z0 && c < L.Z0 + L.NZ && V.grid[L.idx(a, b, c)] !== 0);
     if (!(solid(x, y - 1, z) || solid(x + 1, y, z) || solid(x - 1, y, z) || solid(x, y, z + 1) || solid(x, y, z - 1) || solid(x, y + 1, z))) return;   // må henge fast i noe
-    const NB = { castle: { x0: -14, x1: 14, z0: 30, z1: 35 }, medieval: MM.SPAWNS.bunny }[mapName];
+    const NB = { castle: { x0: -14, x1: 14, z0: 30, z1: 35 }, medieval: MM.SPAWNS.bunny, west: WM.SPAWNS.bunny }[mapName];
     if (NB) for (const sg of [1, -1]) {                               // ikke bygg i spawn (begge lag)
       const cx = (x + 0.5) * sg, cz = (z + 0.5) * sg;
       if (cx >= NB.x0 - 1 && cx <= NB.x1 + 1 && cz >= NB.z0 - 1 && cz <= NB.z1 + 1) return;
@@ -1764,7 +1808,7 @@ setInterval(() => {
 // Bare på klosse-banene (Klosseslottet og Ridderborgen) der serveren vet hvor veggene er.
 // De er med vilje ganske dårlige: treg reaksjon, bommer mye, går saktere enn deg.
 // ===================================================================
-const BOT_MAPS = ['castle', 'medieval', 'room', 'temple'];
+const BOT_MAPS = ['castle', 'medieval', 'room', 'temple', 'west'];
 // [NY] Barnerommet og tempelet er bygd av vanlige bokser (ikke klosser). Boksene er hentet fra nettleseren
 // (room.js / game.js) og lagret i filer, så serveren vet hvor veggene er. Endres banen, må filene lages på nytt.
 const BOX_MAPS = {
@@ -1820,10 +1864,12 @@ function freeSpot(x, z) {                    // kan en robot stå her på bakken
 const BOT_OUT = {
   castle: [[0, 31.5], [0, 26], [0, 19]],
   medieval: [[0, 30.5], [0, 26.5], [0, 22.5], [0, 18]],
-  room: [], temple: []                        // åpne baner: rett ut på gulvet
+  room: [], temple: [],                       // åpne baner: rett ut på gulvet
+  west: [[0, 47], [0, 30]]                    // Ville Vesten: ut av innhegningen og ned hovedgata
 };
 function botField() {                        // tilfeldig ledig punkt ute på slagmarka
-  const bm = boxMap(), zMax = bm ? bm.zMax : mapName === 'medieval' ? 16 : 17, xMax = bm ? bm.xMax : mapName === 'medieval' ? 55 : 60;
+  const bm = boxMap(), west = mapName === 'west';
+  const zMax = bm ? bm.zMax : west ? 44 : mapName === 'medieval' ? 16 : 17, xMax = bm ? bm.xMax : west ? 40 : mapName === 'medieval' ? 55 : 60;
   for (let k = 0; k < 40; k++) {
     const x = (Math.random() * 2 - 1) * xMax, z = (Math.random() * 2 - 1) * zMax;
     if (freeSpot(x, z) >= 0) return [x, z];
