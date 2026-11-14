@@ -20,6 +20,7 @@ const GEAR = [
   { id: 'crown', name: 'Krone', icon: '👑', level: 10, slot: 'head' },
   { id: 'halo', name: 'Glorie', icon: '😇', level: 12, slot: 'head' },
   { id: 'goldfur', name: 'Gullpels', icon: '✨', level: 15, slot: 'fur' },
+  { id: 'sharkhat', name: 'Haihatt', icon: '🦈', level: 20, slot: 'head' },     // [NY] haihode som hette
   { id: 'dinohat', name: 'Dinosaurhatt', icon: '🦖', level: 25, slot: 'head' }   // [NY] T-rex-hode som hette
 ];
 // XP som trengs for nivå n: 30 * n * (n - 1)  -> nivå 2 = 60, 5 = 600, 10 = 2700, 15 = 6300
@@ -150,6 +151,23 @@ function buildGearPart(id, team) {
     const ring = new THREE.Mesh(new THREE.TorusGeometry(0.2, 0.03, 8, 24), new THREE.MeshBasicMaterial({ color: 0xfff3a0 }));
     ring.rotation.x = Math.PI / 2; ring.position.y = y + 0.3; g.add(ring);
     g.userData.spin = ring;
+  } else if (id === 'sharkhat') {
+    // [NY] Hai-hette: spiss snute over pannen, tannrader, svarte øyne, gjeller og stor ryggfinne på toppen
+    const TOP = 0x5f7888, BELLY = 0xeef0ec, WH = 0xffffff, RED = 0x9a2a3a;
+    const W = H.w + 0.1, D = H.d + 0.1;
+    blk(g, W, 0.2, D, 0, y + 0.06, -0.02, TOP);                                 // toppen av hodet
+    blk(g, W * 0.8, 0.12, 0.26, 0, y + 0.03, H.front + 0.11, TOP);              // snuten over pannen
+    blk(g, W * 0.55, 0.09, 0.12, 0, y + 0.05, H.front + 0.28, TOP, [0.3, 0, 0]);   // spiss snutetupp
+    blk(g, W * 0.74, 0.03, 0.24, 0, y - 0.04, H.front + 0.11, RED);             // gane
+    [-1, 1].forEach(sd => {
+      blk(g, 0.06, 0.06, 0.06, sd * (W / 2 - 0.01), y + 0.1, H.front - 0.03, 0x0c0c10);   // svarte haiøyne
+      blk(g, 0.06, H.eyeY - 0.95, 0.12, sd * (W / 2), (y + 0.95) / 2 - 0.05, 0.0, TOP);   // sidene ned langs hodet
+      blk(g, 0.062, 0.09, 0.08, sd * (W / 2), (y + 0.95) / 2 - 0.12, 0.0, BELLY);         // hvit kant nederst
+      for (let i = 0; i < 3; i++) blk(g, 0.065, 0.1, 0.015, sd * (W / 2), y - 0.02, -0.04 - i * 0.05, 0x3a4a54);   // gjeller
+      for (let i = 0; i < 5; i++) [0, 1].forEach(row => blk(g, 0.03, 0.06, 0.03, sd * (W * 0.34 - row * 0.03), y - 0.08, H.front + 0.21 - i * 0.05 - row * 0.02, WH));   // to tannrader
+    });
+    const fin = new THREE.Mesh(new THREE.ConeGeometry(0.14, 0.34, 3), new THREE.MeshStandardMaterial({ color: TOP }));
+    fin.scale.z = 0.3; fin.rotation.x = -0.35; fin.position.set(0, y + 0.3, -0.06); g.add(fin);   // ryggfinne
   } else if (id === 'dinohat') {
     // [NY] T-rex-hette: overkjeven over pannen, underkjeven under haka-høyde, tenner, øyne og rygg-pigger
     const GR = 0x4fa63a, DK = 0x2f6e22, OR = 0xff8a1f, WH = 0xfffbea, RED = 0x8a1a1a;
