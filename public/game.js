@@ -348,6 +348,8 @@ window.addEventListener('keydown', e => {
   if (e.code === 'Digit2') switchWeapon(sniperW);
   if (e.code === 'Digit3') switchWeapon(bazW);       // [NY] bazooka
   if (e.code === 'Digit4' && typeof medWeaponsOn !== 'undefined' && medWeaponsOn) switchWeapon(flailW);   // [NY] kule og kjetting (Ridderborgen)
+  else if (e.code === 'Digit4' && typeof hammerOn === 'function' && hammerOn()) switchWeapon(hammerW);   // [NY] hammeren (4, på Ridderborgen 5)
+  if (e.code === 'Digit5' && typeof hammerOn === 'function' && hammerOn() && medWeaponsOn) switchWeapon(hammerW);
   if (e.code === 'KeyV' && joined && alive && typeof battleCry === 'function') battleCry();   // [NY] krigsbrøl (Ridderborgen)
   if (e.code === 'Tab' && joined) e.preventDefault(); // [NY] Tab = poengtavle
 });
@@ -814,6 +816,7 @@ function showWeaponModel() {
   flash.position.set(bz ? 0.05 : 0, bz ? 0.15 : 0.012, sn ? -0.8 : bz ? -0.2 : -0.56);   // [NY] bazooka-munningen er på skulderen
   if (typeof applyMySkins === 'function') applyMySkins();   // [NY] våpen-skins fra butikken
   if (typeof medWeaponView === 'function') medWeaponView();   // [NY] Ridderborgen: bue, armbrøst og sverd
+  if (typeof hammerWeaponView === 'function') hammerWeaponView();   // [NY] hammeren
 }
 function switchWeapon(w) {
   if (!joined || weapon === w) return;
@@ -1524,6 +1527,7 @@ function shoot() {
   if (typeof spaceShoot === 'function' && spaceShoot()) return;   // [NY] laser fra jagerfly / kanontårn
   if (typeof inMortar !== 'undefined' && inMortar) { fireMortar(); return; }   // [NY] står i morteren
   if (typeof medShoot === 'function' && medShoot()) return;   // [NY] sverdhugg på Ridderborgen
+  if (typeof hammerShoot === 'function' && hammerShoot()) return;   // [NY] hammeren setter en kloss
   const med = typeof medWeaponsOn !== 'undefined' && medWeaponsOn;   // [NY] bue / armbrøst
   const egg = typeof minigunOn === 'function' && minigunOn();   // [NY] eggmaskingevær (gullegg på kyllingfarmen)
   if (weapon === bazW && !egg) { if (currentMap !== 'lobby') fireRocket(); return; }   // [NY] bazooka skyter en rakett (ikke i loungen)
@@ -1687,6 +1691,10 @@ function updateWeapon(dt) {
   const wIcon = akW.id === 'bow' ? (weapon === sniperW ? 'ARMBRØST ' : weapon === bazW ? '⚔️ ' : weapon !== akW ? 'KULE ' : 'BUE ') :   // [NY] Ridderborgen
     weapon === sniperW ? (myTeam === 'bunny' ? '🥕 ' : '🌰 ') : weapon === bazW ? '🚀 ' : akW.id === 'dart' ? 'PIL ' : 'AK ';   // [NY] pilgevær   // [NY] gulrot / nøtt / bazooka
   const medHud = akW.id === 'bow';   // [NY] Ridderborgen: bunnløst kogger, ildpotter i stedet for granater
+  if (typeof hammerW !== 'undefined' && weapon === hammerW) {   // [NY] hammeren: bare antall klosser
+    hud.textContent = '🔨 ' + myStash + (medHud ? '   🔥 ' : '   💣 ') + (underNow() || (typeof hordeOn === 'function' && hordeOn()) ? '∞' : grenades);
+    return;
+  }
   hud.textContent = wIcon + (medHud ? '∞' : reloading > 0 ? 'LADER...' : weapon.mag + ' / ' + (weapon.reserve === Infinity ? '∞' : weapon.reserve)) +
     (medHud ? '   🔥 ' : '   💣 ') + (underNow() || (typeof hordeOn === 'function' && hordeOn()) ? '∞' : grenades) + (window.holyMine ? '   🍑 HELLIG FERSKEN (G)' : '');   // [NY] viser granater også (uendelig i underverdenen)
 }
@@ -2121,7 +2129,7 @@ function sendState(dt) {
   sendTimer -= dt;
   if (sendTimer > 0 || !joined || !alive) return;
   sendTimer = 0.05;
-  socket.emit('state', [+player.x.toFixed(2), +player.feetY.toFixed(2), +player.z.toFixed(2), +player.yaw.toFixed(3), +player.pitch.toFixed(3), slide.active ? 1 : 0, crouching ? 1 : 0, gliding ? 1 : 0, weapon === sniperW ? 1 : weapon === bazW ? 2 : (typeof flailW !== 'undefined' && weapon === flailW) ? 3 : 0, typeof spaceRoll === 'function' ? spaceRoll() : 0]);
+  socket.emit('state', [+player.x.toFixed(2), +player.feetY.toFixed(2), +player.z.toFixed(2), +player.yaw.toFixed(3), +player.pitch.toFixed(3), slide.active ? 1 : 0, crouching ? 1 : 0, gliding ? 1 : 0, weapon === sniperW ? 1 : weapon === bazW ? 2 : (typeof flailW !== 'undefined' && weapon === flailW) ? 3 : (typeof hammerW !== 'undefined' && weapon === hammerW) ? 4 : 0, typeof spaceRoll === 'function' ? spaceRoll() : 0]);
 }
 
 // ===================================================================
@@ -2249,6 +2257,7 @@ function animate(now) {
     if (typeof updateSkins === 'function') updateSkins(dt);     // [NY] lava/galakse/diamant gløder
     if (typeof updateLobby === 'function') updateLobby(dt);     // [NY] loungen
     if (typeof updateMedieval === 'function') updateMedieval(dt);   // [NY] Ridderborgen
+    if (typeof updateHammer === 'function') updateHammer(dt);       // [NY] hammeren: byggeklosser
     if (typeof updateFarmVehicles === 'function') updateFarmVehicles(dt);   // [NY] doser og A-10
     if (typeof updateEasterEggs === 'function') updateEasterEggs(dt);       // [NY] påskeegget
     if (typeof updateFun === 'function') updateFun(dt);         // [NY] fyrverkeri

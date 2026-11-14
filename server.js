@@ -87,9 +87,12 @@ function nextMap() {
 
 // Klosseslottet: hvilke klosser finnes og hvor mye liv de har igjen
 // [NY] Klosse-baner: klosseslottet og kyllingfarmen. Hver har sitt rutenett med liv per kloss.
+// [NY] BYGGEKLOSSER (hammeren): egen klossetype i alle klosse-baner. Tåler 8 AK-skudd. Man kan gå opp ett trinn.
+const BUILT_T = 200, BUILT_HP = 8, BUILD_MAX = 30, BUILD_REFILL_MS = 3000, BUILD_REACH = 6;
 function makeVox(LIB) {
+  if (!LIB.INFO[BUILT_T]) LIB.INFO[BUILT_T] = { color: 0xc8955a, hp: BUILT_HP, step: true };
   const pristine = LIB.build();
-  return { LIB, pristine, grid: pristine.slice(), hp: new Uint8Array(pristine.length), gone: [] };
+  return { LIB, pristine, grid: pristine.slice(), hp: new Uint8Array(pristine.length), gone: [], built: [] };
 }
 const VOX = { castle: makeVox(CM), farm: makeVox(FM), sea: makeVox(SM), medieval: makeVox(MM) };
 function resetVox(name) {
@@ -98,6 +101,7 @@ function resetVox(name) {
   V.grid.set(V.pristine);
   for (let i = 0; i < V.grid.length; i++) V.hp[i] = V.grid[i] ? V.LIB.INFO[V.grid[i]].hp : 0;
   V.gone = [];
+  V.built = [];                                     // [NY] byggeklosser forsvinner ved ny runde
 }
 resetVox('castle'); resetVox('farm'); resetVox('sea'); resetVox('medieval');
 // [NY] "Horde"-baner: alle spillerne sammen mot monstre (kyllingfarmen og dyphavsbasen)
@@ -117,12 +121,13 @@ function destroyCells(list) {
     if (!t || V.LIB.INFO[t].hp === 0) return;     // tom, eller bakke som ikke kan ødelegges
     V.grid[i] = 0;
     gone.push(i);
+    if (t === BUILT_T) { const k = V.built.indexOf(i); if (k >= 0) V.built.splice(k, 1); }   // [NY] byggekloss borte
     if (blastOwner && mapName === 'farm') {         // sprengte du din egen leir?
       const x = i % FM.NX + FM.X0, z = Math.floor(i / FM.NX) % FM.NZ + FM.Z0;
       if (Math.abs(x + 0.5) <= 21 && z >= -17 && z <= 16) blastOwner.ownBlocks = (blastOwner.ownBlocks || 0) + 1;
     }
   });
-  if (gone.length) { V.gone.push(...gone); io.emit('blocks', { gone }); }
+  if (gone.length) { V.gone.push(...gone.filter(i => V.pristine[i])); io.emit('blocks', { gone }); }   // [NY] byggeklosser huskes ikke som "borte"
 }
 // Alle klosser innenfor en radius (granat, bazooka, morter)
 function blastCells(x, y, z, r) {
@@ -222,6 +227,15 @@ function startFresh(map) {
 // [NY] VERDENSROMMET: to moderskip. Hvert lag har 12 jagerfly per runde og 4 kanontårn.
 // Når flyene er brukt opp, er kanontårnene siste forsvar. Moderskipet sprenges = du vinner.
 // ===================================================================
+// [NY] Byggeklosser fylles på: 1 kloss hvert 3. sekund, opp til 30
+setInterval(() => {
+  for (const id in players) {
+    const p = players[id];
+    if (p.isBot) continue;
+    if (p.blocks === undefined) p.blocks = BUILD_MAX;
+    if (p.blocks < BUILD_MAX) { p.blocks++; io.to(id).emit('stash', { n: p.blocks }); }
+  }
+}, BUILD_REFILL_MS);
 const SHIP_HP = +process.env.SHIP_HP || 2500, FIGHTERS_PER_ROUND = 12, TURRET_HP = 250, TURRET_REPAIR_MS = 30000;
 const LASER_DMG = 20, TURRET_DMG = 34;                     // mot spillere/jagerfly
 const HULL_LASER = 8, HULL_TORP = 300, TURRET_LASER = 10, TURRET_TORP = 250;
@@ -1081,7 +1095,7 @@ io.on('connection', socket => {
     socket.emit('welcome', {
       id: socket.id, spawn: sp, players: others, score,
       foam: { on: foamOn, holes: foamHoles },
-      world: worldName, map: mapName, blocksGone: VOX[mapName] ? VOX[mapName].gone : undefined,
+      world: worldName, map: mapName, blocksGone: VOX[mapName] ? VOX[mapName].gone : undefined, blocksBuilt: VOX[mapName] ? VOX[mapName].built : undefined,
       timeLeft: mapName === 'lobby' ? 0 : Math.max(0, Math.ceil((roundEndsAt - Date.now()) / 1000)), intermission,
       lastResult                                       // [NY] forrige runde (skjermen i loungen)
     });
@@ -1115,7 +1129,7 @@ io.on('connection', socket => {
     p.x = x; p.y = y; p.z = z; p.yaw = yaw; p.pitch = pitch; p.slide = s[5] ? 1 : 0;
     p.crouch = s[6] ? 1 : 0;
     p.glide = s[7] ? 1 : 0;
-    p.weapon = s[8] === 3 && mapName === 'medieval' ? 3 : s[8] === 2 ? 2 : s[8] ? 1 : 0;      // 0 = AK, 1 = snikskytter, 2 = bazooka, 3 = kule og kjetting (Ridderborgen)
+    p.weapon = s[8] === 4 && VOX[mapName] ? 4 : s[8] === 3 && mapName === 'medieval' ? 3 : s[8] === 2 ? 2 : s[8] ? 1 : 0;   // [NY] 4 = hammeren      // 0 = AK, 1 = snikskytter, 2 = bazooka, 3 = kule og kjetting (Ridderborgen)
     p.roll = num(s[9], -2, 2) || 0;                  // [NY] jagerflyet krenger
 
     // Toppen av pyramiden (2 x 2 m, 13 m høyt) = SKUMFEST!
@@ -1567,6 +1581,38 @@ io.on('connection', socket => {
   });
 
   // Kule traff en kloss på klosseslottet
+  // [NY] HAMMEREN: sett en byggekloss. Serveren sjekker alt (avstand, ledig, inntil noe, ikke i spawn, ikke inni noen).
+  socket.on('build', d => {
+    const p = players[socket.id], V = vox();
+    if (!p || !p.alive || !d || !V || intermission || mapName === 'lobby') return;
+    const now = Date.now();
+    if (now - (p.lastBuild || 0) < 200) return;
+    if (p.blocks === undefined) p.blocks = BUILD_MAX;
+    if (p.blocks <= 0) return;
+    const L = V.LIB, x = d.x | 0, y = d.y | 0, z = d.z | 0;
+    if (y < 0 || y >= L.NY - 1 || x < L.X0 || x >= L.X0 + L.NX || z < L.Z0 || z >= L.Z0 + L.NZ) return;
+    const i = L.idx(x, y, z);
+    if (V.grid[i]) return;                                            // opptatt
+    if (Math.hypot(x + 0.5 - p.x, y + 0.5 - (p.y + 1.5), z + 0.5 - p.z) > BUILD_REACH + 1) return;
+    const solid = (a, b, c) => b < 0 || (b < L.NY && a >= L.X0 && a < L.X0 + L.NX && c >= L.Z0 && c < L.Z0 + L.NZ && V.grid[L.idx(a, b, c)] !== 0);
+    if (!(solid(x, y - 1, z) || solid(x + 1, y, z) || solid(x - 1, y, z) || solid(x, y, z + 1) || solid(x, y, z - 1) || solid(x, y + 1, z))) return;   // må henge fast i noe
+    const NB = { castle: { x0: -14, x1: 14, z0: 30, z1: 35 }, medieval: MM.SPAWNS.bunny }[mapName];
+    if (NB) for (const sg of [1, -1]) {                               // ikke bygg i spawn (begge lag)
+      const cx = (x + 0.5) * sg, cz = (z + 0.5) * sg;
+      if (cx >= NB.x0 - 1 && cx <= NB.x1 + 1 && cz >= NB.z0 - 1 && cz <= NB.z1 + 1) return;
+    }
+    for (const id in players) {                                       // ikke inni en spiller
+      const o = players[id];
+      if (o.alive && Math.abs(o.x - (x + 0.5)) < 0.85 && Math.abs(o.z - (z + 0.5)) < 0.85 && y + 1 > o.y && y < o.y + 1.8) return;
+    }
+    p.lastBuild = now;
+    p.blocks--;
+    V.grid[i] = BUILT_T; V.hp[i] = BUILT_HP; V.built.push(i);
+    const g = V.gone.indexOf(i); if (g >= 0) V.gone.splice(g, 1);
+    io.emit('built', { i });
+    socket.emit('stash', { n: p.blocks });
+  });
+
   socket.on('blockHit', d => {
     const p = players[socket.id];
     const V = vox();

@@ -33,7 +33,19 @@ cBox(0, 0.01, -0.5, 160, 0.02, 4, 0x4a90d9, false, { noShadow: true, emissive: 0
 // LIB = kart-biblioteket (CastleMap / FarmMap), group = gruppen klossene tegnes i.
 const boxGeo = new THREE.BoxGeometry(1, 1, 1);
 const dummyObj = new THREE.Object3D();
+// [NY] BYGGEKLOSSER fra hammeren: egen type (samme nummer som på serveren), planke-tekstur
+const BUILT_T = 200, BUILT_CAP = 1500;
+const builtTex = (() => {
+  const c = document.createElement('canvas'); c.width = c.height = 32;
+  const x = c.getContext('2d');
+  x.fillStyle = '#c8955a'; x.fillRect(0, 0, 32, 32);
+  x.fillStyle = '#a8743f'; [7, 15, 23, 31].forEach(y => x.fillRect(0, y, 32, 1));   // plankeskjøter
+  x.fillStyle = '#d9a86c'; [3, 11, 19, 27].forEach(y => x.fillRect(0, y, 32, 1));
+  x.fillStyle = '#6b4423'; [[4, 2], [26, 10], [12, 18], [20, 26]].forEach(([a, b]) => x.fillRect(a, b, 2, 2));   // spikerhoder
+  const t = new THREE.CanvasTexture(c); t.magFilter = THREE.NearestFilter; return t;
+})();
 function makeVoxelWorld(LIB, group) {
+  if (!LIB.INFO[BUILT_T]) LIB.INFO[BUILT_T] = { color: 0xc8955a, hp: 8, step: true };
   const W = { LIB, group, pristine: LIB.build(), typeMeshes: {} };
   W.grid = W.pristine.slice();
   W.instIndex = new Int32Array(W.grid.length).fill(-1);
@@ -78,8 +90,29 @@ function makeVoxelWorld(LIB, group) {
     dummyObj.updateMatrix();
     W.typeMeshes[t].setMatrixAt(W.instIndex[i], dummyObj.matrix);
   };
+  // [NY] Byggeklosser: én egen mesh med ledige plasser
+  const bm = new THREE.InstancedMesh(boxGeo, new THREE.MeshStandardMaterial({ map: builtTex, roughness: 0.8 }), BUILT_CAP);
+  bm.castShadow = !isTouch; bm.receiveShadow = true; bm.frustumCulled = false; bm.raycast = () => {};
+  group.add(bm);
+  W.builtMesh = bm; W.builtSlot = new Map(); W.builtFree = [];
+  for (let k = BUILT_CAP - 1; k >= 0; k--) W.builtFree.push(k);
+  W.addBuilt = i => {
+    if (W.builtSlot.has(i) || !W.builtFree.length) { W.grid[i] = BUILT_T; return; }
+    const k = W.builtFree.pop(), [x, y, z] = W.cellPos(i);
+    W.builtSlot.set(i, k); W.grid[i] = BUILT_T;
+    dummyObj.position.set(x + 0.5, y + 0.5, z + 0.5); dummyObj.scale.setScalar(1); dummyObj.updateMatrix();
+    bm.setMatrixAt(k, dummyObj.matrix); bm.instanceMatrix.needsUpdate = true;
+  };
+  W.removeBuilt = i => {
+    const k = W.builtSlot.get(i);
+    if (k === undefined) return;
+    dummyObj.scale.setScalar(0.0001); dummyObj.updateMatrix();
+    bm.setMatrixAt(k, dummyObj.matrix); bm.instanceMatrix.needsUpdate = true;
+    W.builtSlot.delete(i); W.builtFree.push(k);
+  };
   W.flush = () => { for (const t in W.typeMeshes) W.typeMeshes[t].instanceMatrix.needsUpdate = true; };
   W.reset = () => {                                // ny runde: alle klosser tilbake
+    [...W.builtSlot.keys()].forEach(i => W.removeBuilt(i));   // [NY] byggeklossene bort
     W.grid.set(W.pristine);
     for (let i = 0; i < W.grid.length; i++) if (W.pristine[i]) W.showCell(i, true);
     W.flush();
@@ -181,7 +214,7 @@ for (let i = 0; i < 160; i++) {
 let debrisIndex = 0;
 function spawnDebris(i, n) {
   const W = voxWorld(), [x, y, z] = W.cellPos(i);
-  const color = W.LIB.INFO[W.pristine[i]].color;
+  const color = (W.LIB.INFO[W.pristine[i]] || W.LIB.INFO[BUILT_T]).color;   // [NY] byggekloss: planke-farge
   for (let k = 0; k < n; k++) {
     const d = debris[debrisIndex];
     debrisIndex = (debrisIndex + 1) % debris.length;
@@ -197,8 +230,9 @@ function removeCells(list, noDebris) {
   const W = voxWorld();
   list.forEach(i => {
     if (!W.grid[i]) return;
+    const wasBuilt = W.grid[i] === BUILT_T;
     W.grid[i] = 0;
-    W.showCell(i, false);
+    if (wasBuilt) W.removeBuilt(i); else W.showCell(i, false);   // [NY] byggekloss eller vanlig kloss
     if (!noDebris && fx < 60) { spawnDebris(i, list.length > 20 ? 1 : 3); fx++; }
   });
   W.flush();
@@ -218,11 +252,13 @@ function updateCastle(dt) {
 
 // ---------- Meldinger fra serveren ----------
 socket.on('blocks', d => removeCells(d.gone));
+socket.on('built', d => { const W = voxWorld(); W.addBuilt(d.i); if (typeof onBlockBuilt === 'function') onBlockBuilt(d.i); });   // [NY] hammeren
 function worldFor(name) { return name === 'castle' ? castleWorld : name === 'farm' ? farmWorld : name === 'sea' ? seaWorld : name === 'medieval' ? medWorld : null; }
 socket.on('map', d => { const W = worldFor(d.name); if (W) W.reset(); });
 socket.on('welcome', d => {
   const W = worldFor(d.map);
-  if (W) { W.reset(); if (d.blocksGone) { const keep = currentMap; currentMap = d.map; removeCells(d.blocksGone, true); currentMap = keep; } }
+  if (W) { W.reset(); if (d.blocksGone) { const keep = currentMap; currentMap = d.map; removeCells(d.blocksGone, true); currentMap = keep; }
+    if (d.blocksBuilt) d.blocksBuilt.forEach(i => W.addBuilt(i)); }   // [NY] klosser andre har bygd
 });
 
 window.__castleDebrisHide = () => debris.forEach(d => { d.m.visible = false; d.life = 0; });
