@@ -23,7 +23,8 @@ const GEAR = [
   { id: 'unihat', name: 'Enhjørninghatt', icon: '🦄', level: 17, slot: 'head' }, // [NY] enhjørning-hette
   { id: 'sharkhat', name: 'Haihatt', icon: '🦈', level: 20, slot: 'head' },     // [NY] haihode som hette
   { id: 'dinohat', name: 'Dinosaurhatt', icon: '🦖', level: 25, slot: 'head' },  // [NY] T-rex-hode som hette
-  { id: 'froggles', name: 'Froskebriller', icon: '🐸', level: 27, slot: 'face' }  // [NY] solbriller som froskeøyne
+  { id: 'froggles', name: 'Froskebriller', icon: '🐸', level: 27, slot: 'face' }, // [NY] solbriller som froskeøyne
+  { id: 'duckhat', name: 'Andehatt', icon: '🦆', level: 30, slot: 'head' }       // [NY] gul badeand som sitter på hodet
 ];
 // XP som trengs for nivå n: 30 * n * (n - 1)  -> nivå 2 = 60, 5 = 600, 10 = 2700, 15 = 6300
 function xpFor(n) { return 30 * n * (n - 1); }
@@ -153,6 +154,23 @@ function buildGearPart(id, team) {
     const ring = new THREE.Mesh(new THREE.TorusGeometry(0.2, 0.03, 8, 24), new THREE.MeshBasicMaterial({ color: 0xfff3a0 }));
     ring.rotation.x = Math.PI / 2; ring.position.y = y + 0.3; g.add(ring);
     g.userData.spin = ring;
+  } else if (id === 'duckhat') {
+    // [NY] Andehatt: en stor gul badeand som sitter på hodet og ser fremover
+    const yel = new THREE.MeshStandardMaterial({ color: 0xffd21f, roughness: 0.45 });
+    const ora = new THREE.MeshStandardMaterial({ color: 0xff8a1f, roughness: 0.5 });
+    const blk2 = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.2 });
+    const body = new THREE.Mesh(new THREE.SphereGeometry(0.2, 14, 10), yel);
+    body.scale.set(1, 0.7, 1.25); body.position.set(0, y + 0.13, -0.03); g.add(body);
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.12, 12, 8), yel); head.position.set(0, y + 0.32, 0.1); g.add(head);
+    const beak = new THREE.Mesh(new THREE.SphereGeometry(0.07, 10, 6), ora); beak.scale.set(1.1, 0.45, 1.3); beak.position.set(0, y + 0.29, 0.22); g.add(beak);
+    [-1, 1].forEach(sd => {
+      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.025, 8, 6), blk2); eye.position.set(sd * 0.065, y + 0.36, 0.19); g.add(eye);
+      const glint = new THREE.Mesh(new THREE.SphereGeometry(0.008, 4, 4), new THREE.MeshBasicMaterial({ color: 0xffffff })); glint.position.set(sd * 0.065 - 0.008, y + 0.37, 0.212); g.add(glint);
+      const wing = new THREE.Mesh(new THREE.SphereGeometry(0.1, 10, 6), yel); wing.scale.set(0.35, 0.6, 1.1); wing.position.set(sd * 0.18, y + 0.15, -0.05); wing.rotation.x = 0.3; g.add(wing);
+    });
+    const tail = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.15, 6), yel); tail.position.set(0, y + 0.22, -0.27); tail.rotation.x = -0.9; g.add(tail);
+    const tuft = new THREE.Mesh(new THREE.ConeGeometry(0.025, 0.08, 5), yel); tuft.position.set(0, y + 0.46, 0.08); tuft.rotation.x = -0.4; g.add(tuft);   // liten hårtust
+    g.traverse(o => { if (o.isMesh) o.castShadow = true; });
   } else if (id === 'froggles') {
     // [NY] Froskebriller: to store grønne froskeøyne som buler ut, med svarte speilglass og et rosa smil-bånd
     const GR = 0x5fc23a, DK = 0x2f7a1e;
