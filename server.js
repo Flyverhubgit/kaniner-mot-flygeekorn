@@ -958,7 +958,7 @@ function publicPlayer(p) {
     level: p.level || 1, wear: p.wear || [], skins: p.skins || {} };   // [NY] nivå, utstyr og våpen-skins
 }
 // [NY] Nivå og utstyr kommer fra spilleren (lagret i nettleseren). Bare lovlige verdier slipper gjennom.
-const GEAR_IDS = ['shades', 'cap', 'pirate', 'goldband', 'mask', 'viking', 'tophat', 'crown', 'halo', 'goldfur'];
+const GEAR_IDS = ['shades', 'cap', 'pirate', 'goldband', 'mask', 'viking', 'tophat', 'crown', 'halo', 'goldfur', 'dinohat'];
 const SKIN_IDS = ['camo', 'pink', 'tiger', 'ice', 'lava', 'rainbow', 'galaxy', 'gold', 'diamond', 'dino', 'shark', 'unicorn'];   // [NY] dinosaur   // [NY] våpen-skins fra butikken
 function cleanProfile(d) {
   const level = Math.max(1, Math.min(99, (d && d.level) | 0));

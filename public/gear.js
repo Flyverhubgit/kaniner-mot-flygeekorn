@@ -19,7 +19,8 @@ const GEAR = [
   { id: 'tophat', name: 'Tryllehatt', icon: '🎩', level: 9, slot: 'head' },
   { id: 'crown', name: 'Krone', icon: '👑', level: 10, slot: 'head' },
   { id: 'halo', name: 'Glorie', icon: '😇', level: 12, slot: 'head' },
-  { id: 'goldfur', name: 'Gullpels', icon: '✨', level: 15, slot: 'fur' }
+  { id: 'goldfur', name: 'Gullpels', icon: '✨', level: 15, slot: 'fur' },
+  { id: 'dinohat', name: 'Dinosaurhatt', icon: '🦖', level: 25, slot: 'head' }   // [NY] T-rex-hode som hette
 ];
 // XP som trengs for nivå n: 30 * n * (n - 1)  -> nivå 2 = 60, 5 = 600, 10 = 2700, 15 = 6300
 function xpFor(n) { return 30 * n * (n - 1); }
@@ -149,6 +150,22 @@ function buildGearPart(id, team) {
     const ring = new THREE.Mesh(new THREE.TorusGeometry(0.2, 0.03, 8, 24), new THREE.MeshBasicMaterial({ color: 0xfff3a0 }));
     ring.rotation.x = Math.PI / 2; ring.position.y = y + 0.3; g.add(ring);
     g.userData.spin = ring;
+  } else if (id === 'dinohat') {
+    // [NY] T-rex-hette: overkjeven over pannen, underkjeven under haka-høyde, tenner, øyne og rygg-pigger
+    const GR = 0x4fa63a, DK = 0x2f6e22, OR = 0xff8a1f, WH = 0xfffbea, RED = 0x8a1a1a;
+    const W = H.w + 0.1, D = H.d + 0.1;
+    blk(g, W, 0.2, D, 0, y + 0.06, -0.02, GR);                                  // toppen av hodet
+    blk(g, W * 0.86, 0.12, 0.28, 0, y + 0.02, H.front + 0.12, GR);              // snuten over pannen
+    blk(g, W * 0.8, 0.03, 0.26, 0, y - 0.05, H.front + 0.12, RED);              // gane (rød)
+    blk(g, W + 0.02, 0.05, D * 0.6, 0, y + 0.17, -0.06, DK);                    // pannebrask
+    [-1, 1].forEach(sd => {
+      blk(g, 0.07, 0.07, 0.07, sd * (W / 2 - 0.02), y + 0.12, H.front - 0.02, 0xffd21f);   // gule øyne
+      blk(g, 0.03, 0.06, 0.02, sd * (W / 2 + 0.005), y + 0.12, H.front + 0.0, 0x111111);
+      blk(g, 0.06, 0.03, 0.03, sd * 0.07, y + 0.07, H.front + 0.26, 0x1a1a1a);              // nesebor
+      blk(g, 0.06, H.eyeY - 0.95, 0.12, sd * (W / 2), (y + 0.95) / 2 - 0.05, 0.0, GR);     // sidene ned langs hodet (hette)
+      for (let i = 0; i < 4; i++) blk(g, 0.035, 0.07, 0.035, sd * (W * 0.38 - i * 0.002), y - 0.08, H.front + 0.22 - i * 0.07, WH);   // tenner
+    });
+    for (let i = 0; i < 5; i++) blk(g, 0.06, 0.1 + (i % 2) * 0.05, 0.08, 0, y + 0.2 - i * 0.05, -D / 2 - i * 0.04 + 0.08, OR);   // pigger nedover nakken
   }
   g.traverse(o => { o.raycast = () => {}; });
   return g;
