@@ -285,8 +285,26 @@ function keyLerp(keys, t) {
 // ---------- Synlige piler som flyr og blir sittende fast ----------
 const flyingArrows = [];
 const stuckArrows = [];
-function medArrowFx(from, to, stick, bolt) {
-  const a = buildArrow(bolt ? 0.42 : 0.75, bolt ? MW_DARK : null);
+const MAX_STUCK = 80;                                      // [NY] pilene blir sittende i veggen til runden er over
+function nearSomeone(p) {                                  // traff pila en spiller (eller deg)?
+  if (Math.hypot(p.x - player.x, p.z - player.z) < 0.9 && p.y > player.feetY - 0.2 && p.y < player.feetY + 2) return true;
+  for (const id in others) { const r = others[id]; if (r.alive && Math.hypot(p.x - r.cur.x, p.z - r.cur.z) < 0.9 && p.y > r.cur.y - 0.2 && p.y < r.cur.y + 2) return true; }
+  return false;
+}
+function medArrowFx(from, to, stick, bolt, remote) {
+  const len = bolt ? 0.42 : 0.75;
+  const dir = to.clone().sub(from).normalize();
+  if (remote) {
+    // [NY] Andres piler: finn veggen pila faktisk treffer. Traff den en spiller, blir den ikke sittende.
+    const wall = typeof castleRay === 'function' ? castleRay(from, dir, 150) : null;
+    const d0 = from.distanceTo(to);
+    if (wall && wall.dist <= d0 + 0.5) { to = from.clone().addScaledVector(dir, wall.dist); stick = true; }
+    else if (nearSomeone(to)) stick = false;
+    else if (wall) { to = from.clone().addScaledVector(dir, wall.dist); stick = true; }   // bom: flyr videre til veggen bak
+    else stick = false;                                    // rett opp i lufta
+  }
+  if (stick) to = to.clone().addScaledVector(dir, -len * 0.3);   // spissen godt inn i veggen, resten stikker ut
+  const a = buildArrow(len, bolt ? MW_DARK : null);
   a.traverse(c => { c.raycast = () => {}; });
   a.position.copy(from);
   a.lookAt(to); a.rotateY(Math.PI);                        // pilen peker mot -z
@@ -304,14 +322,14 @@ function updateMedWeapons(dt) {
     f.a.position.lerpVectors(f.from, f.to, k);
     if (k >= 1) {
       flyingArrows.splice(i, 1);
-      if (f.stick) { stuckArrows.push({ a: f.a, life: 6 }); if (stuckArrows.length > 30) scene.remove(stuckArrows.shift().a); }
+      if (f.stick) { stuckArrows.push({ a: f.a }); if (stuckArrows.length > MAX_STUCK) scene.remove(stuckArrows.shift().a); }
       else scene.remove(f.a);
     }
   }
-  for (let i = stuckArrows.length - 1; i >= 0; i--) {
-    if ((stuckArrows[i].life -= dt) <= 0) { scene.remove(stuckArrows[i].a); stuckArrows.splice(i, 1); }
+  if (!medWeaponsOn) {                                     // nytt kart: rydd bort pilene
+    while (stuckArrows.length) scene.remove(stuckArrows.pop().a);
+    hideMedHeld(); return;
   }
-  if (!medWeaponsOn) { hideMedHeld(); return; }
   // Pilen på buen forsvinner et øyeblikk etter skuddet
   bowView.userData.arrow.visible = fireCooldown < 0.25 || weapon !== akW;
   xbowView.userData.arrow.visible = fireCooldown < 0.5 || weapon !== sniperW;

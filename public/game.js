@@ -1980,7 +1980,7 @@ socket.on('shot', d => {
   }
   if ((d.w === 'sword' || d.w === 'flail') && typeof medRemoteSwing === 'function') { medRemoteSwing(d.id, d.w, dist); return; }   // [NY] hugg og slag
   if ((d.w === 'bow' || d.w === 'crossbow') && typeof medArrowFx === 'function') {   // [NY] andres piler på Ridderborgen
-    medArrowFx(from, new THREE.Vector3(d.to[0], d.to[1], d.to[2]), true, d.w === 'crossbow');
+    medArrowFx(from, new THREE.Vector3(d.to[0], d.to[1], d.to[2]), true, d.w === 'crossbow', true);   // [NY] finner veggen selv
     playTwang(Math.max(0.03, 0.22 - dist * 0.005), d.w === 'crossbow');
     return;
   }
