@@ -7,6 +7,8 @@
 // ===================================================================
 (function (root) {
   const W = 40, D = 30, H = 6;
+  // [NY] Baner som er tatt bort fra loungen (koden er der fortsatt – fjern fra lista for å få dem tilbake)
+  const HIDDEN_MAPS = ['farm', 'sea'];
   const PORTALS = [
     { map: 'temple', name: 'Tempelet', icon: '🏛️', color: 0xd8b04a, x: -15 },
     { map: 'room', name: 'Barnerommet', icon: '🧸', color: 0x5aa8ff, x: -9 },
@@ -16,7 +18,8 @@
     { map: 'sea', name: 'Dyphavsbasen', icon: '🐙', color: 0x3ad8d0, x: 15 },
     { map: 'medieval', name: 'Ridderborgen', icon: '⚔️', color: 0xc0282a, x: 21 },
     { map: 'west', name: 'Ville Vesten', icon: '🤠', color: 0xe08a3a, x: 27 }
-  ].map((p, i) => Object.assign(p, { x: -17 + i * (34 / 7), z: -12.5, w: 3.4, d: 3 }));   // [NY] 8 portaler, jevnt fordelt
+  ].filter(p => !HIDDEN_MAPS.includes(p.map))
+   .map((p, i, all) => Object.assign(p, { x: -17 + i * (34 / Math.max(1, all.length - 1)), z: -12.5, w: 3.4, d: 3 }));   // [NY] portalene jevnt fordelt
   function portalAt(x, z) {
     return PORTALS.find(p => Math.abs(x - p.x) < p.w / 2 && Math.abs(z - p.z) < p.d / 2) || null;
   }
@@ -30,7 +33,7 @@
   function spawnPoint() {
     return { x: SPAWN.x0 + Math.random() * (SPAWN.x1 - SPAWN.x0), y: 0, z: SPAWN.z0 + Math.random() * (SPAWN.z1 - SPAWN.z0), yaw: 0 };
   }
-  const api = { W, D, H, PORTALS, portalAt, COUNTER, SHOP_ZONE, STAND, TRAMPOLINE, RANGE, SPAWN, SCREEN, spawnPoint };
+  const api = { W, D, H, HIDDEN_MAPS, PORTALS, portalAt, COUNTER, SHOP_ZONE, STAND, TRAMPOLINE, RANGE, SPAWN, SCREEN, spawnPoint };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.LobbyMap = api;
 })(this);

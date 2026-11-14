@@ -68,7 +68,8 @@ let foamHoles = [];            // [x, z] for hvert granat-hull (til nye spillere
 // Underverdenen: et skjult håndtak sender alle ned til lava-arenaen til neste runde
 let worldName = 'main';        // 'main' eller 'underworld'
 // Baner byttes hver runde: tempelet og det kjempestore barnerommet (snikskytterbane)
-const MAPS = ['temple', 'room', 'castle', 'space', 'farm', 'sea', 'medieval', 'west'];       // rekkefølgen banene byttes i
+const MAPS = ['temple', 'room', 'castle', 'space', 'farm', 'sea', 'medieval', 'west']       // rekkefølgen banene byttes i
+  .filter(m => !LM.HIDDEN_MAPS.includes(m) || process.env.START_MAP === m);   // [NY] zombie-kyllinger og dyphavet er tatt bort (se lobbymap.js)
 // [NY] Alle starter i LOUNGEN ('lobby'). Der stemmer man ved å stå i en portal. (START_MAP er for testing)
 let mapName = MAPS.includes(process.env.START_MAP) || process.env.START_MAP === 'lobby' ? process.env.START_MAP : 'lobby';
 let votes = {};                                    // socket-id -> banen spilleren stemte på (i pausen)
