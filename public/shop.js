@@ -24,7 +24,7 @@ const SKINS = [
   { id: 'gold', name: 'Gull', icon: '🥇', price: 1500, level: 10 },
   { id: 'diamond', name: 'Diamant', icon: '💎', price: 2000, level: 12 },
   { id: 'dino', name: 'Dinosaur', icon: '🦖', price: 2000 },   // [NY] grønne skjell med oransje rygg-pigger
-  { id: 'shark', name: 'Hai', icon: '🦈', price: 2000 }        // [NY] haihode med løpet ut av gapet
+  { id: 'shark', name: 'Hai', icon: '🦈', price: 1750 }        // [NY] haihode med løpet ut av gapet
 ];
 const WEAPON_SLOTS = [['ak', 'AK'], ['sniper', 'Snikskytter'], ['baz', 'Bazooka']];
 function skinBits() { let b = 0; SKINS.forEach((s, i) => { if (profile.owned.includes(s.id)) b |= 1 << i; }); return b; }
