@@ -24,7 +24,8 @@ const SKINS = [
   { id: 'gold', name: 'Gull', icon: '🥇', price: 1500, level: 10 },
   { id: 'diamond', name: 'Diamant', icon: '💎', price: 2000, level: 12 },
   { id: 'dino', name: 'Dinosaur', icon: '🦖', price: 2000 },   // [NY] grønne skjell med oransje rygg-pigger
-  { id: 'shark', name: 'Hai', icon: '🦈', price: 1750 }        // [NY] haihode med løpet ut av gapet
+  { id: 'shark', name: 'Hai', icon: '🦈', price: 1750 },       // [NY] haihode med løpet ut av gapet
+  { id: 'unicorn', name: 'Enhjørning', icon: '🦄', price: 500 }  // [NY] enhjørning med regnbuemanke og gullhorn
 ];
 const WEAPON_SLOTS = [['ak', 'AK'], ['sniper', 'Snikskytter'], ['baz', 'Bazooka']];
 function skinBits() { let b = 0; SKINS.forEach((s, i) => { if (profile.owned.includes(s.id)) b |= 1 << i; }); return b; }
@@ -58,6 +59,11 @@ const SKIN_TEX = {
     x.fillStyle = '#3a1a6a'; for (let i = 0; i < 6; i++) x.fillRect(rnd() * 56, rnd() * 56, 10, 8);
     x.fillStyle = '#ffffff'; for (let i = 0; i < 26; i++) x.fillRect(rnd() * 64, rnd() * 64, rnd() < 0.2 ? 2 : 1, rnd() < 0.2 ? 2 : 1);
   }),
+  unicorn: patternTex(x => {                      // [NY] hvit med pastell-regnbuestriper og glitter
+    x.fillStyle = '#fbf7ff'; x.fillRect(0, 0, 64, 64);
+    ['#ffb3c7', '#ffd9a8', '#fff3a8', '#b8f0c0', '#b3dcff', '#d6b8ff'].forEach((c, i) => { x.fillStyle = c; x.fillRect(0, 34 + i * 4, 64, 4); });
+    for (let i = 0; i < 30; i++) { x.fillStyle = rnd() < 0.5 ? '#ffe36b' : '#ff9ed6'; const xx = rnd() * 64, yy = rnd() * 32; x.fillRect(xx, yy + 1, 3, 1); x.fillRect(xx + 1, yy, 1, 3); }
+  }),
   shark: patternTex(x => {                        // [NY] hai: blågrå rygg, hvit buk, litt skrammer
     x.fillStyle = '#5f7888'; x.fillRect(0, 0, 64, 40);
     x.fillStyle = '#eef0ec'; x.fillRect(0, 40, 64, 24);
@@ -83,7 +89,8 @@ const SKIN_MAT = {
   gold: { color: 0xf2c230, emissive: 0x3a2800, metalness: 0.9, roughness: 0.25 },
   diamond: { color: 0xd8fbff, emissive: 0x3a8aa0, metalness: 0.6, roughness: 0.05, glow: true },
   dino: { map: SKIN_TEX.dino, roughness: 0.75 },
-  shark: { map: SKIN_TEX.shark, roughness: 0.45 }
+  shark: { map: SKIN_TEX.shark, roughness: 0.45 },
+  unicorn: { map: SKIN_TEX.unicorn, roughness: 0.5, emissive: 0x2a1a30 }
 };
 // To materialer per skin: lys (de fleste delene) og mørk (delene som var mørke fra før – grep, løp)
 const skinMatCache = {};
@@ -167,7 +174,7 @@ function rexOn(container, key, on, fp, kind) {
   let r = container.userData[kind + '_' + key];
   if (on && !r) {
     const o = Object.assign({}, REX[key], { fp: fp || REX[key].fp });
-    r = kind === 'shark' ? buildShark(o) : buildRex(o); r.position.set(...o.pos); r.rotation.y = o.rotY;
+    r = kind === 'shark' ? buildShark(o) : kind === 'uni' ? buildUnicorn(o) : buildRex(o); r.position.set(...o.pos); r.rotation.y = o.rotY;
     container.add(r); container.userData[kind + '_' + key] = r;
   }
   if (r) r.visible = !!on;
@@ -177,6 +184,46 @@ function rexOn(container, key, on, fp, kind) {
 function creatureOn(container, key, skin, show, fp) {
   rexOn(container, key, show && skin === 'dino', fp, 'rex');
   rexOn(container, key, show && skin === 'shark', fp, 'shark');
+  rexOn(container, key, show && skin === 'unicorn', fp, 'uni');
+}
+// ---------- [NY] ENHJØRNING: hvitt hestehode, gullhorn, store øyne, regnbuemanke og -hale ----------
+function buildUnicorn(o) {
+  const g = new THREE.Group();
+  const white = new THREE.MeshStandardMaterial({ color: 0xfdfaff, roughness: 0.5 });
+  const pink = new THREE.MeshStandardMaterial({ color: 0xffb3c7, roughness: 0.6 });
+  const gold = new THREE.MeshStandardMaterial({ color: 0xffd84a, emissive: 0x6a4a00, metalness: 0.3, roughness: 0.3 });
+  const black = new THREE.MeshStandardMaterial({ color: 0x1a1020, roughness: 0.2 });
+  const shine = new THREE.MeshBasicMaterial({ color: 0xffffff });
+  const RAIN = [0xff6b8a, 0xffa94d, 0xffe14d, 0x6be07a, 0x5ab4ff, 0xa36bff].map(c => new THREE.MeshStandardMaterial({ color: c, roughness: 0.6 }));
+  const box = (w, h, d, x, y, z, m, par) => { const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); b.position.set(x, y, z); (par || g).add(b); return b; };
+  const head = new THREE.Group(); head.scale.setScalar(o.s); g.add(head);
+  box(0.15, 0.08, 0.24, 0, 0.075, -0.07, white, head);                    // mule (overkjeve)
+  box(0.155, 0.05, 0.06, 0, 0.07, 0.04, pink, head);                       // rosa mulespiss
+  box(0.13, 0.04, 0.2, 0, -0.04, -0.08, white, head).rotation.x = 0.18;    // underkjeve, litt åpen
+  box(0.2, 0.17, 0.2, 0, 0.13, -0.27, white, head);                        // hode
+  [-1, 1].forEach(sd => {
+    box(0.025, 0.015, 0.02, sd * 0.04, 0.12, 0.04, new THREE.MeshStandardMaterial({ color: 0xc06a8a }), head);   // nesebor
+    box(0.02, 0.06, 0.05, sd * 0.101, 0.16, -0.22, black, head);           // store øyne
+    box(0.021, 0.02, 0.015, sd * 0.102, 0.175, -0.205, shine, head);       // glimt i øyet
+    [0, 1, 2].forEach(i => box(0.006, 0.025, 0.006, sd * 0.104, 0.2 + i * 0.004, -0.24 + i * 0.015, black, head).rotation.x = -0.5);   // øyevipper
+    const ear = new THREE.Mesh(new THREE.ConeGeometry(0.03, 0.09, 4), white); ear.position.set(sd * 0.07, 0.25, -0.32); head.add(ear);
+    const inner = new THREE.Mesh(new THREE.ConeGeometry(0.015, 0.06, 4), pink); inner.position.set(sd * 0.07, 0.245, -0.305); head.add(inner);
+    box(0.03, 0.02, 0.03, sd * 0.09, 0.115, -0.15, pink, head);            // rosa kinn
+  });
+  // Spiralhorn i gull
+  const horn = new THREE.Group(); horn.position.set(0, 0.24, -0.22); horn.rotation.x = 0.55; head.add(horn);
+  const hc = new THREE.Mesh(new THREE.ConeGeometry(0.028, 0.2, 8), gold); hc.position.y = 0.1; horn.add(hc);
+  for (let i = 0; i < 4; i++) { const r = new THREE.Mesh(new THREE.TorusGeometry(0.024 - i * 0.005, 0.006, 4, 10), gold); r.rotation.x = Math.PI / 2 + 0.3; r.position.y = 0.03 + i * 0.04; horn.add(r); }
+  // Regnbuemanke bakover langs våpenet, og hale
+  const n = Math.max(4, Math.round(o.ridgeLen / 0.07));
+  for (let i = 0; i < n; i++) {
+    const m = box(0.05 * o.s, (0.07 + (i % 2) * 0.03) * o.s, (o.ridgeLen / n) * 1.1, 0, o.ridgeY + 0.02 * o.s, -0.36 * o.s - i * (o.ridgeLen / n), RAIN[i % 6]);
+    m.rotation.x = -0.25;
+  }
+  const tail = new THREE.Group(); tail.position.set(0, o.ridgeY * 0.5, -0.36 * o.s - o.ridgeLen); g.add(tail);
+  RAIN.forEach((m, i) => { const st = box(0.03 * o.s, 0.03 * o.s, 0.22 * o.s, (i - 2.5) * 0.012 * o.s, -i * 0.012 * o.s, -0.08 * o.s, m, tail); st.rotation.x = 0.5 + i * 0.08; });
+  g.traverse(c => { if (c.isMesh) { c.userData.noSkin = true; c.raycast = () => {}; c.castShadow = !o.fp; if (o.fp) c.layers.set(2); } });
+  return g;
 }
 // ---------- [NY] HAI: spiss snute over gapet, tannrader, svarte øyne, gjeller og ryggfinne ----------
 function buildShark(o) {
