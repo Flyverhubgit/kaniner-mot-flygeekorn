@@ -153,6 +153,7 @@ function medWeaponView() {                 // kalles på slutten av showWeaponMo
   akParts.forEach(c => { c.visible = false; });
   dartView.visible = false;
   if (gun.userData.rex_akFP) gun.userData.rex_akFP.visible = false;   // [NY] T-rexen (AK-skin) bort på Ridderborgen
+  if (gun.userData.shark_akFP) gun.userData.shark_akFP.visible = false;
   if (sniperView) sniperView.visible = false;
   if (bazView) bazView.visible = false;
   bowView.visible = weapon === akW;

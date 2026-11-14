@@ -23,7 +23,8 @@ const SKINS = [
   { id: 'galaxy', name: 'Galakse', icon: '🌌', price: 1000, level: 8 },
   { id: 'gold', name: 'Gull', icon: '🥇', price: 1500, level: 10 },
   { id: 'diamond', name: 'Diamant', icon: '💎', price: 2000, level: 12 },
-  { id: 'dino', name: 'Dinosaur', icon: '🦖', price: 2000 }   // [NY] grønne skjell med oransje rygg-pigger
+  { id: 'dino', name: 'Dinosaur', icon: '🦖', price: 2000 },   // [NY] grønne skjell med oransje rygg-pigger
+  { id: 'shark', name: 'Hai', icon: '🦈', price: 2000 }        // [NY] haihode med løpet ut av gapet
 ];
 const WEAPON_SLOTS = [['ak', 'AK'], ['sniper', 'Snikskytter'], ['baz', 'Bazooka']];
 function skinBits() { let b = 0; SKINS.forEach((s, i) => { if (profile.owned.includes(s.id)) b |= 1 << i; }); return b; }
@@ -57,6 +58,13 @@ const SKIN_TEX = {
     x.fillStyle = '#3a1a6a'; for (let i = 0; i < 6; i++) x.fillRect(rnd() * 56, rnd() * 56, 10, 8);
     x.fillStyle = '#ffffff'; for (let i = 0; i < 26; i++) x.fillRect(rnd() * 64, rnd() * 64, rnd() < 0.2 ? 2 : 1, rnd() < 0.2 ? 2 : 1);
   }),
+  shark: patternTex(x => {                        // [NY] hai: blågrå rygg, hvit buk, litt skrammer
+    x.fillStyle = '#5f7888'; x.fillRect(0, 0, 64, 40);
+    x.fillStyle = '#eef0ec'; x.fillRect(0, 40, 64, 24);
+    x.fillStyle = '#7f96a4'; for (let xx = 0; xx < 64; xx += 4) x.fillRect(xx, 36 + (xx % 8 ? 2 : 0), 4, 4);   // bølget overgang
+    x.fillStyle = '#4c6372'; for (let i = 0; i < 18; i++) x.fillRect(rnd() * 64, rnd() * 34, 3 + rnd() * 6, 1);
+    x.fillStyle = '#c9d2d6'; for (let i = 0; i < 4; i++) x.fillRect(rnd() * 56, 6 + rnd() * 24, 7, 1);         // skrammer
+  }),
   dino: patternTex(x => {                         // [NY] dinosaurskjell: grønne skjell, mørke flekker, oransje pigg-stripe
     x.fillStyle = '#3f8a2e'; x.fillRect(0, 0, 64, 64);
     for (let yy = 0; yy < 64; yy += 6) for (let xx = (yy / 6) % 2 ? 3 : 0; xx < 64; xx += 6) { x.fillStyle = rnd() < 0.5 ? '#4fa63a' : '#357a26'; x.fillRect(xx, yy, 5, 5); }
@@ -74,7 +82,8 @@ const SKIN_MAT = {
   galaxy: { map: SKIN_TEX.galaxy, emissiveMap: SKIN_TEX.galaxy, emissive: 0xffffff, roughness: 0.4, glow: true },
   gold: { color: 0xf2c230, emissive: 0x3a2800, metalness: 0.9, roughness: 0.25 },
   diamond: { color: 0xd8fbff, emissive: 0x3a8aa0, metalness: 0.6, roughness: 0.05, glow: true },
-  dino: { map: SKIN_TEX.dino, roughness: 0.75 }
+  dino: { map: SKIN_TEX.dino, roughness: 0.75 },
+  shark: { map: SKIN_TEX.shark, roughness: 0.45 }
 };
 // To materialer per skin: lys (de fleste delene) og mørk (delene som var mørke fra før – grep, løp)
 const skinMatCache = {};
@@ -152,16 +161,62 @@ const REX = {
   sniper: { pos: [0, 0.01, 0.72], rotY: 0, s: 0.9, ridgeY: 0.15, ridgeLen: 0.6 },
   baz: { pos: [0, 0, 0.62], rotY: 0, s: 1.25, ridgeY: 0.11, ridgeLen: 0.8 }
 };
-function rexOn(container, key, on, fp) {
+function rexOn(container, key, on, fp, kind) {
   if (!container) return null;
-  let r = container.userData['rex_' + key];
+  kind = kind || 'rex';
+  let r = container.userData[kind + '_' + key];
   if (on && !r) {
     const o = Object.assign({}, REX[key], { fp: fp || REX[key].fp });
-    r = buildRex(o); r.position.set(...o.pos); r.rotation.y = o.rotY;
-    container.add(r); container.userData['rex_' + key] = r;
+    r = kind === 'shark' ? buildShark(o) : buildRex(o); r.position.set(...o.pos); r.rotation.y = o.rotY;
+    container.add(r); container.userData[kind + '_' + key] = r;
   }
   if (r) r.visible = !!on;
   return r;
+}
+// [NY] Både T-rex og hai: riktig dyr på, det andre av
+function creatureOn(container, key, skin, show, fp) {
+  rexOn(container, key, show && skin === 'dino', fp, 'rex');
+  rexOn(container, key, show && skin === 'shark', fp, 'shark');
+}
+// ---------- [NY] HAI: spiss snute over gapet, tannrader, svarte øyne, gjeller og ryggfinne ----------
+function buildShark(o) {
+  const g = new THREE.Group(), sk = skinMats('shark');
+  const top = new THREE.MeshStandardMaterial({ color: 0x5f7888, roughness: 0.45 });
+  const belly = new THREE.MeshStandardMaterial({ color: 0xeef0ec, roughness: 0.5 });
+  const mouth = new THREE.MeshStandardMaterial({ color: 0x9a2a3a, roughness: 0.8 });
+  const white = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.4 });
+  const black = new THREE.MeshStandardMaterial({ color: 0x0c0c10, roughness: 0.2 });
+  const box = (w, h, d, x, y, z, m, par) => { const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); b.position.set(x, y, z); (par || g).add(b); return b; };
+  const fin = (r, h, m, par) => { const f = new THREE.Mesh(new THREE.ConeGeometry(r, h, 3), m); f.scale.z = 0.3; (par || g).add(f); return f; };
+  const head = new THREE.Group(); head.scale.setScalar(o.s); g.add(head);
+  box(0.16, 0.07, 0.2, 0, 0.075, -0.06, top, head);                      // overkjeve
+  const snout = box(0.13, 0.06, 0.12, 0, 0.11, 0.06, top, head); snout.rotation.x = 0.25;   // spiss snute som henger over gapet
+  box(0.21, 0.13, 0.22, 0, 0.1, -0.26, top, head);                        // hode
+  box(0.2, 0.05, 0.2, 0, 0.02, -0.27, belly, head);                       // hvit hake
+  box(0.14, 0.015, 0.2, 0, 0.042, -0.06, mouth, head);                    // gane
+  const jaw = new THREE.Group(); jaw.position.set(0, -0.03, -0.16); jaw.rotation.x = 0.38; head.add(jaw);
+  box(0.15, 0.045, 0.22, 0, -0.02, 0.09, belly, jaw);
+  box(0.12, 0.012, 0.2, 0, 0.006, 0.09, mouth, jaw);
+  // To rader trekant-tenner oppe, en nede
+  for (let i = 0; i < 5; i++) [-1, 1].forEach(sd => {
+    [0, 1].forEach(row => {
+      const t = new THREE.Mesh(new THREE.ConeGeometry(0.016, 0.045, 3), white); t.rotation.x = Math.PI; t.scale.z = 0.4;
+      t.position.set(sd * (0.062 - row * 0.014), 0.025, 0.02 - i * 0.045 - row * 0.02); head.add(t);
+    });
+    const b = new THREE.Mesh(new THREE.ConeGeometry(0.014, 0.04, 3), white); b.scale.z = 0.4; b.position.set(sd * 0.055, 0.025, 0.18 - i * 0.04); jaw.add(b);
+  });
+  [-1, 1].forEach(sd => {
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.024, 8, 6), black); eye.position.set(sd * 0.105, 0.12, -0.17); head.add(eye);
+    for (let i = 0; i < 3; i++) box(0.01, 0.07, 0.012, sd * 0.106, 0.08, -0.3 - i * 0.03, new THREE.MeshStandardMaterial({ color: 0x3a4a54 }), head);   // gjeller
+    const pf = fin(0.06, 0.16, top, head); pf.position.set(sd * 0.14, -0.02, -0.36); pf.rotation.z = sd * 1.9; pf.rotation.y = sd * 0.4;   // sidefinner
+  });
+  // Stor ryggfinne og halefinne bakover langs våpenet
+  const df = fin(0.09 * o.s, 0.2 * o.s, top); df.position.set(0, o.ridgeY + 0.07 * o.s, -0.42 * o.s); df.rotation.x = -0.35;
+  const tail = new THREE.Group(); tail.position.set(0, o.ridgeY * 0.6, -0.36 * o.s - o.ridgeLen); g.add(tail);
+  const t1 = fin(0.06 * o.s, 0.2 * o.s, top, tail); t1.position.y = 0.08 * o.s; t1.rotation.x = -0.6;
+  const t2 = fin(0.05 * o.s, 0.14 * o.s, top, tail); t2.position.y = -0.05 * o.s; t2.rotation.x = Math.PI + 0.6;
+  g.traverse(c => { if (c.isMesh) { c.userData.noSkin = true; c.raycast = () => {}; c.castShadow = !o.fp; if (o.fp) c.layers.set(2); } });
+  return g;
 }
 // Mine egne våpen (første person)
 function applyMySkins() {
@@ -169,9 +224,9 @@ function applyMySkins() {
   if (typeof dartView !== 'undefined') skinize(dartView, profile.skins.ak);
   if (sniperView) skinize(sniperView, profile.skins.sniper);
   if (bazView) skinize(bazView, profile.skins.baz);
-  rexOn(gun, 'akFP', profile.skins.ak === 'dino' && akParts[0].visible);   // [NY] T-rex
-  if (sniperView) rexOn(sniperView, 'sniper', profile.skins.sniper === 'dino', true);
-  if (bazView) rexOn(bazView, 'baz', profile.skins.baz === 'dino', true);
+  creatureOn(gun, 'akFP', profile.skins.ak, akParts[0].visible);   // [NY] T-rex / hai
+  if (sniperView) creatureOn(sniperView, 'sniper', profile.skins.sniper, true, true);
+  if (bazView) creatureOn(bazView, 'baz', profile.skins.baz, true, true);
 }
 // Andre spillere (tredje person)
 function skinOther(r, skins) {
@@ -179,9 +234,9 @@ function skinOther(r, skins) {
   if (r.body.userData.gun) skinize(r.body.userData.gun, skins.ak);
   if (r.heldSniper) skinize(r.heldSniper, skins.sniper);
   if (r.heldBaz) skinize(r.heldBaz, skins.baz);
-  rexOn(r.body.userData.gun, 'akHeld', skins.ak === 'dino');              // [NY] T-rex
-  rexOn(r.heldSniper, 'sniper', skins.sniper === 'dino');
-  rexOn(r.heldBaz, 'baz', skins.baz === 'dino');
+  creatureOn(r.body.userData.gun, 'akHeld', skins.ak, true);              // [NY] T-rex / hai
+  creatureOn(r.heldSniper, 'sniper', skins.sniper, true);
+  creatureOn(r.heldBaz, 'baz', skins.baz, true);
 }
 // Lava, galakse og diamant gløder og pulserer litt
 function updateSkins(dt) {
