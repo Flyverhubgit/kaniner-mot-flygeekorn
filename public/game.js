@@ -2017,6 +2017,7 @@ socket.on('hitConfirm', d => {
   playHit(d.kill);
 });
 
+socket.on('heal', d => { if (alive) hp = d.hp; });   // [NY] liv kommer sakte tilbake etter 5 sek uten skade
 socket.on('damaged', d => {
   hp = d.hp;
   damageFlash = 0.8;

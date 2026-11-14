@@ -24,6 +24,21 @@ const ROUND_SECONDS = +process.env.ROUND_SECONDS || 300;     // 5 minutter per r
 const BREAK_SECONDS = 8;       // [NY] resultater i 8 sek, så tilbake til loungen
 const RESPAWN_SECONDS = 3;
 const MAX_HP = 100;
+// [NY] Liv kommer tilbake: etter 5 sek uten skade får du 5 liv i sekundet (1 hvert 200 ms)
+const REGEN_DELAY = 5000, REGEN_TICK = 200;
+setInterval(() => {
+  const now = Date.now();
+  for (const id in players) {
+    const p = players[id];
+    if (!p.alive) { p.regenHp = p.hp; continue; }
+    if (p.regenHp === undefined || p.hp < p.regenHp) p.hurtAt = now;   // tok skade siden sist (fra hva som helst)
+    if (p.hp > 0 && p.hp < MAX_HP && now - (p.hurtAt || 0) >= REGEN_DELAY) {
+      p.hp = Math.min(MAX_HP, p.hp + 1);
+      io.to(id).emit('heal', { hp: p.hp });
+    }
+    p.regenHp = p.hp;
+  }
+}, REGEN_TICK);
 const DMG_BODY = 20;           // 5 treff i kroppen
 const DMG_HEAD = 100;          // midt i hodet = død med én kule
 const AK_BODY = 10;            // [NY] AK mot spillere: 10 i kroppen (10 treff)
