@@ -302,6 +302,11 @@ function playDragonFireSound(vol) {
 const dragonHud = document.createElement('div');
 dragonHud.style.cssText = 'position:fixed;top:34px;left:50%;transform:translateX(-50%);color:#fff;font:bold 14px sans-serif;text-shadow:0 1px 3px #000;background:rgba(0,0,0,0.25);padding:2px 10px;border-radius:10px;z-index:5;display:none;pointer-events:none;white-space:nowrap;';
 document.body.appendChild(dragonHud);
+// [NY] Boss-bar: navn og en rød livsbar øverst når kjempedragen eller himmeldragen er ute
+const bossBar = document.createElement('div');
+bossBar.style.cssText = 'position:fixed;top:60px;left:50%;transform:translateX(-50%);width:min(420px,70vw);z-index:5;display:none;pointer-events:none;text-align:center;font:bold 14px sans-serif;color:#ffe9a0;text-shadow:0 1px 3px #000;';
+bossBar.innerHTML = '<div id="bossName"></div><div style="height:12px;border:2px solid rgba(255,255,255,0.8);border-radius:7px;background:rgba(0,0,0,0.45);overflow:hidden;margin-top:2px"><div id="bossFill" style="height:100%;width:100%;background:linear-gradient(#ff5a4a,#b0201a);transition:width 0.2s"></div></div>';
+document.body.appendChild(bossBar);
 let dragonInfo = null;
 socket.on('dwave', w => {
   dragonInfo = w;
@@ -331,7 +336,7 @@ let roarT = 6;
 function updateDragons(dt) {
   const on = dragonOn();
   dragonHud.style.display = on && dragonInfo ? 'block' : 'none';
-  if (!on) { if (dragons.size) { dragons.forEach(d => dragonGroup.remove(d.model)); dragons.clear(); } return; }
+  if (!on) { bossBar.style.display = 'none'; if (dragons.size) { dragons.forEach(d => dragonGroup.remove(d.model)); dragons.clear(); } return; }
   const t = performance.now() / 1000;
   // Dragene: flytt hodet mykt mot serverens posisjon, kroppen følger sporet
   let boss = null;
@@ -406,13 +411,18 @@ function updateDragons(dt) {
   // Brøl innimellom fra en tilfeldig drage
   roarT -= dt;
   if (roarT <= 0 && dragons.size) { roarT = 4 + Math.random() * 6; const d = [...dragons.values()][Math.floor(Math.random() * dragons.size)]; const dist = d.pos.distanceTo(new THREE.Vector3(player.x, player.feetY, player.z)); playDragonRoar(Math.max(0.03, 0.2 - dist * 0.002), d.t); }
+  // Boss-baren
+  bossBar.style.display = boss ? 'block' : 'none';
+  if (boss) {
+    document.getElementById('bossName').textContent = '🐉 ' + DRAGON_LOOK[boss.t].name.toUpperCase();
+    document.getElementById('bossFill').style.width = Math.max(0, boss.hp) + '%';
+  }
   // Linja øverst
   if (dragonInfo) {
     const w = dragonInfo, sh = w.shrine >= 0 ? Math.max(0, Math.round(w.shrine / w.max * 100)) : -1;
     const state = w.state === 'prep' ? 'Dragene kommer snart...' : w.state === 'break' ? 'Pause' : (w.left || 0) + ' drager';
     dragonHud.innerHTML = '&#128009; Bølge ' + Math.max(1, w.n) + '/' + w.of +
       (sh >= 0 ? ' &nbsp;·&nbsp; &#9961;&#65039; <span style="color:' + (sh > 50 ? '#9f9' : sh > 25 ? '#fd6' : '#f66') + '">' + sh + '%</span>' : '') +
-      (w.team > 1 ? ' &nbsp;·&nbsp; &#128101; ' + w.alive + '/' + w.team + ' i live' : '') + ' &nbsp;·&nbsp; ' + state +
-      (boss ? ' &nbsp;·&nbsp; <span style="color:#fd4">' + DRAGON_LOOK[boss.t].name + ' ' + boss.hp + '%</span>' : '');
+      (w.team > 1 ? ' &nbsp;·&nbsp; &#128101; ' + w.alive + '/' + w.team + ' i live' : '') + ' &nbsp;·&nbsp; ' + state;
   }
 }
