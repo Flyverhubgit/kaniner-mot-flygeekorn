@@ -222,13 +222,20 @@ socket.on('dwave', w => {
 socket.on('roundOver', d => {
   if (!d.dragon) return;
   const st = (d.dragon.stats || []).slice().sort((a, b) => b.kills - a.kills)[0];
-  roundMsg = (d.dragon.result === 'win' ? '&#127881; TEMPELET ER REDDET! &#127881;' : '&#128009; DRAGENE VANT... &#9961;&#65039;') +
+  roundMsg = (d.dragon.result === 'win' ? '&#127881; DERE SLO KJEMPEDRAGEN! &#127881;' : '&#128009; DRAGENE VANT... &#9961;&#65039;') +
     '<br><span style="font-size:20px">' + (d.dragon.result === 'win' ? 'Alle 10 bølgene klart!' : 'Dere kom til bølge ' + d.dragon.wave) +
     ' &nbsp; (rekord: ' + d.dragon.record + ')' + (st && st.kills ? '<br>&#129351; Flest drager: <b>' + esc(st.name) + '</b> (' + st.kills + ')' : '') +
     '<br>Stem på neste bane!</span>';
   if ((d.dragon.result === 'win') && typeof gainCoins === 'function') gainCoins(25);
 });
 
+// Død mens bølgen pågår: du kommer tilbake når neste bølge starter
+function dragonDeathText() {
+  if (!dragonOn() || !dragonInfo) return null;
+  if (dragonInfo.state === 'fight') return 'Du kommer tilbake når neste bølge starter – heia på de andre!';
+  if (dragonInfo.state === 'lose') return 'Dragene vant denne gangen...';
+  return null;
+}
 let roarT = 6;
 function updateDragons(dt) {
   const on = dragonOn();
@@ -274,9 +281,11 @@ function updateDragons(dt) {
   if (roarT <= 0 && dragons.size) { roarT = 4 + Math.random() * 6; const d = [...dragons.values()][Math.floor(Math.random() * dragons.size)]; const dist = d.pos.distanceTo(new THREE.Vector3(player.x, player.feetY, player.z)); playDragonRoar(Math.max(0.03, 0.2 - dist * 0.002), d.t); }
   // Linja øverst
   if (dragonInfo) {
-    const w = dragonInfo, sh = Math.max(0, Math.round(w.shrine / w.max * 100));
+    const w = dragonInfo, sh = w.shrine >= 0 ? Math.max(0, Math.round(w.shrine / w.max * 100)) : -1;
     const state = w.state === 'prep' ? 'Dragene kommer snart...' : w.state === 'break' ? 'Pause' : (w.left || 0) + ' drager';
-    dragonHud.innerHTML = '&#128009; Bølge ' + Math.max(1, w.n) + '/' + w.of + ' &nbsp;·&nbsp; &#9961;&#65039; <span style="color:' + (sh > 50 ? '#9f9' : sh > 25 ? '#fd6' : '#f66') + '">' + sh + '%</span> &nbsp;·&nbsp; ' + state +
+    dragonHud.innerHTML = '&#128009; Bølge ' + Math.max(1, w.n) + '/' + w.of +
+      (sh >= 0 ? ' &nbsp;·&nbsp; &#9961;&#65039; <span style="color:' + (sh > 50 ? '#9f9' : sh > 25 ? '#fd6' : '#f66') + '">' + sh + '%</span>' : '') +
+      (w.team > 1 ? ' &nbsp;·&nbsp; &#128101; ' + w.alive + '/' + w.team + ' i live' : '') + ' &nbsp;·&nbsp; ' + state +
       (boss ? ' &nbsp;·&nbsp; <span style="color:#fd4">Kjempedragen ' + boss.hp + '%</span>' : '');
   }
 }

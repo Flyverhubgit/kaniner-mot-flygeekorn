@@ -1098,7 +1098,7 @@ function applyDamage(p, t, dmg, head, weapon) {
       io.emit('streak', { name: p.name, team: p.team, n: p.streak });
     }
     io.emit('kill', { killer: p.id, killerName: p.name, killerTeam: p.team, victim: t.id, victimName: t.name, victimTeam: t.team, head, weapon, score });
-    if (!(farmActive() && farm.state === 'fight')) setTimeout(() => { if (players[t.id] && !t.alive) respawn(t); }, RESPAWN_SECONDS * 1000);
+    if (!(farmActive() && farm.state === 'fight') && !(dragonMap() && dragonGame && dragonGame.state === 'fight')) setTimeout(() => { if (players[t.id] && !t.alive) respawn(t); }, RESPAWN_SECONDS * 1000);
   }
 }
 
@@ -1114,7 +1114,7 @@ function killByWorld(t, who, weapon) {
   io.to(t.id).emit('damaged', { hp: 0, fromX: t.x, fromZ: t.z });
   io.emit('kill', { killer: null, killerName: who, killerTeam: 'none', victim: t.id, victimName: t.name, victimTeam: t.team, head: false, weapon, score });
   // [NY] Kyllingfarmen: døde kommer tilbake i pausen etter bølgen
-  if (!(farmActive() && farm.state === 'fight')) setTimeout(() => { if (players[t.id] && !t.alive) respawn(t); }, RESPAWN_SECONDS * 1000);
+  if (!(farmActive() && farm.state === 'fight') && !(dragonMap() && dragonGame && dragonGame.state === 'fight')) setTimeout(() => { if (players[t.id] && !t.alive) respawn(t); }, RESPAWN_SECONDS * 1000);
 }
 
 function respawn(p) {
@@ -1846,7 +1846,9 @@ setInterval(() => {
 // [NY] DRAGETEMPELET 🐉⛩️ – alle spiller sammen mot bølger av drager.
 // Dragene flyr (ingen veifinning trengs): de sirkler over tempelet og stuper ned
 // mot spillere eller pagoden. Ilddragene spytter ildkuler. Kjempedragen kommer i bølge 5 og 10.
-// Pagoden har eget liv – faller den, har dragene vunnet. Klarer dere 10 bølger, har dere vunnet.
+// [NY] Ingen base å forsvare: dragene går bare etter spillerne. Dør du, kommer du tilbake
+// når neste bølge starter. Er hele laget dødt samtidig, har dragene vunnet. Klar bølge 10 (med sjefen) = seier.
+const SHRINE_ON = false;                         // (pagoden hadde eget liv før – sett true for å slå det på igjen)
 // ===================================================================
 const DRAGON_T = ['small', 'fire', 'boss'];
 const DRAGON = {
@@ -1866,7 +1868,9 @@ function resetDragons() {
 }
 function dragonWaveMsg(extra) {
   const g = dragonGame;
-  io.emit('dwave', Object.assign({ n: g.wave, of: DRAGON_WAVES, state: g.state, shrine: Math.round(g.shrine), max: Math.round(g.shrineMax), left: g.list.size + g.queue.length, record: dragonRecord }, extra || {}));
+  const humans = Object.values(players).filter(p => !p.isBot);
+  io.emit('dwave', Object.assign({ n: g.wave, of: DRAGON_WAVES, state: g.state, shrine: SHRINE_ON ? Math.round(g.shrine) : -1, max: Math.round(g.shrineMax),
+    left: g.list.size + g.queue.length, alive: humans.filter(p => p.alive).length, team: humans.length, record: dragonRecord }, extra || {}));
 }
 function dragonWaveList(n) {
   const np = Math.max(1, Object.values(players).filter(p => !p.isBot).length), k = 1 + 0.4 * (np - 1), list = [];
@@ -1889,6 +1893,7 @@ function spawnDragon(type) {
 }
 function dragonTargets() { return Object.values(players).filter(p => p.alive && !p.isBot); }
 function hurtShrine(dmg) {
+  if (!SHRINE_ON) return;
   const g = dragonGame;
   if (!g || g.state === 'lose' || g.state === 'win') return;
   g.shrine = Math.max(0, g.shrine - dmg);
@@ -1946,7 +1951,10 @@ setInterval(() => {
   }
   if (g.state === 'fight') {
     if (g.queue.length && now >= g.spawnAt && g.list.size < 40) { spawnDragon(g.queue.shift()); g.spawnAt = now + 700; }
-    if (!g.queue.length && !g.list.size) {
+    // [NY] Hele laget dødt samtidig? Da vant dragene.
+    const humans = Object.values(players).filter(p => !p.isBot);
+    if (humans.length && !humans.some(p => p.alive) && g.state === 'fight') { g.state = 'lose'; roundEndsAt = now + 3000; dragonWaveMsg({ result: 'lose' }); }
+    if (g.state === 'fight' && !g.queue.length && !g.list.size) {
       dragonRecord = Math.max(dragonRecord, g.wave);
       if (g.wave >= DRAGON_WAVES) { g.state = 'win'; roundEndsAt = now + 2500; dragonWaveMsg({ cleared: true, result: 'win' }); }
       else { g.state = 'break'; g.nextAt = now + DRAGON_BREAK_MS; dragonWaveMsg({ cleared: true }); }
@@ -1964,7 +1972,9 @@ setInterval(() => {
         // Velg: en spiller (nærmeste) eller pagoden
         let best = null, bd = 1e9;
         targets.forEach(t => { const dd = Math.hypot(t.x - d.x, t.z - d.z); if (dd < bd) { bd = dd; best = t; } });
-        d.target = best && Math.random() < 0.6 ? best.id : 'shrine';
+        if (!SHRINE_ON && targets.length) best = targets[Math.floor(Math.random() * targets.length)];   // tilfeldig spiller (ikke alltid den nærmeste)
+        d.target = best && (!SHRINE_ON || Math.random() < 0.6) ? best.id : SHRINE_ON ? 'shrine' : null;
+        if (!d.target) { d.nextAttack = now + 2000; return; }
         d.mode = d.type === 'small' ? 'dive' : 'strafe';
         d.modeUntil = now + (d.type === 'small' ? 6000 : 7000);
       }

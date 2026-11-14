@@ -157,7 +157,7 @@ socket.on('map', d => {
   applyMap();
   bannerMsg = '&#127918; Ny bane: ' + (currentMap === 'room' ? 'KJEMPE-BARNEROMMET &#129528;<br><span style="font-size:20px">Stor bane – bruk snikskytteren (2)!</span>'
     : currentMap === 'castle' ? 'KLOSSESLOTTET &#127984;<br><span style="font-size:20px">Alt kan skytes i stykker!</span>'
-    : currentMap === 'dragon' ? 'DRAGETEMPELET &#128009;&#9961;&#65039;<br><span style="font-size:20px">Alle sammen: forsvar pagoden mot dragene!</span>'
+    : currentMap === 'dragon' ? 'DRAGETEMPELET &#128009;&#9961;&#65039;<br><span style="font-size:20px">Alle sammen: klar 10 bølger og slå kjempedragen!</span>'
     : currentMap === 'west' ? 'VILLE VESTEN &#129312;&#127797;<br><span style="font-size:20px">Pass deg for toget!</span>'
     : currentMap === 'medieval' ? 'RIDDERBORGEN &#9876;&#65039;&#127984;<br><span style="font-size:20px">Storm fiendens borg!</span>'
     : currentMap === 'lobby' ? 'LOUNGEN &#127968;<br><span style="font-size:20px">Gå inn i en portal for å velge bane</span>'

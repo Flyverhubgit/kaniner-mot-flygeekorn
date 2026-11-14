@@ -1847,7 +1847,7 @@ function updateHud(dt) {
   } else if (!alive) {
     deathTimer = Math.max(0, deathTimer - dt);
     centerEl.style.display = 'block';
-    const farmTxt = typeof farmDeathText === 'function' ? farmDeathText() : null;   // [NY] kyllingfarmen: vent til bølgen er over
+    const farmTxt = (typeof farmDeathText === 'function' ? farmDeathText() : null) || (typeof dragonDeathText === 'function' ? dragonDeathText() : null);   // [NY] kyllingfarmen: vent til bølgen er over
     const funny = typeof funnyDeath === 'function' ? funnyDeath() : null;   // [NY] morsomme dødsmeldinger
     centerEl.innerHTML = (funny || 'Du ble tatt av ' + esc(killerName)) + '<br><span style="font-size:20px">' + (farmTxt || 'Tilbake om ' + Math.ceil(deathTimer) + '...') + '</span>';
   } else if (bannerTime > 0) {
