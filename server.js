@@ -1924,6 +1924,11 @@ const DRAGON_WAVES = 10, SHRINE_HP = 4000, DRAGON_PREP_MS = +process.env.DRAGON_
 const DRAGON_HIT = { ak: 20, sniper: 90, dart: 30, bow: 45, crossbow: 85, sword: 40, flail: 70 };
 let dragonGame = null, dragonSeq = 0, dragonRecord = 0;
 function dragonMap() { return mapName === 'dragon' && worldName === 'main'; }
+// [NY] Vanskelighet etter antall spillere: få spillere = lettere, mange = vanskeligere
+function dragonNP() { return Math.max(1, Object.values(players).filter(p => !p.isBot).length); }
+function dragonCountMul() { return 0.35 + 0.35 * dragonNP(); }          // 1: 0,7  2: 1,05  3: 1,4  4: 1,75
+function dragonBossMul() { return 0.2 + 0.4 * dragonNP(); }             // 1: 0,6  2: 1,0  3: 1,4  4: 1,8
+function dragonDmgMul() { return [0.7, 0.85, 1, 1][Math.min(3, dragonNP() - 1)]; }   // dragene biter litt mindre når dere er få
 function resetDragons() {
   const np = Math.max(1, Object.values(players).filter(p => !p.isBot).length);
   dragonGame = { wave: Math.max(0, (+process.env.DRAGON_START_WAVE || 1) - 1), state: 'prep',   // (DRAGON_START_WAVE er for testing)
@@ -1938,7 +1943,7 @@ function dragonWaveMsg(extra) {
     left: g.list.size + g.queue.length, alive: humans.filter(p => p.alive).length, team: humans.length, record: dragonRecord }, extra || {}));
 }
 function dragonWaveList(n) {
-  const np = Math.max(1, Object.values(players).filter(p => !p.isBot).length), k = 1 + 0.4 * (np - 1), list = [];
+  const k = dragonCountMul(), list = [];
   for (let i = 0; i < Math.round((3 + 2 * n) * k); i++) list.push('small');
   for (let i = 0; i < Math.round((n >= 2 ? Math.floor(n * 0.8) : 0) * k); i++) list.push('fire');
   list.sort(() => Math.random() - 0.5);
@@ -1949,7 +1954,7 @@ function dragonWaveList(n) {
 function spawnDragon(type) {
   const T = DRAGON[type], np = Math.max(1, Object.values(players).filter(p => !p.isBot).length);
   const a = Math.random() * Math.PI * 2;
-  const hp = type === 'boss' || type === 'skyboss' ? Math.round(T.hp * (1 + 0.5 * (np - 1))) : T.hp;
+  const hp = type === 'boss' || type === 'skyboss' ? Math.round(T.hp * dragonBossMul()) : T.hp;
   const sky = type === 'skyboss';
   const gate = DRAGON_GATES[Math.floor(Math.random() * DRAGON_GATES.length)];
   const walk = DRAGON_WALK && !sky;
@@ -2002,7 +2007,7 @@ function fireballBoom(b) {
   blastCells(x, y, z, b.big ? 2.2 : 1.6);
   dragonTargets().forEach(t => {
     const dd = Math.hypot(t.x - x, t.y + 0.9 - y, t.z - z);
-    if (dd < r) chickHurt(t, Math.round(dmg * (1 - dd / r) + 5), 'Dragebål 🔥', 'dragonfire', x, z);
+    if (dd < r) chickHurt(t, Math.round((dmg * (1 - dd / r) + 5) * dragonDmgMul()), 'Dragebål 🔥', 'dragonfire', x, z);
   });
   if (Math.hypot(x - JM.PAGODA.x, z - JM.PAGODA.z) < JM.PAGODA.r && y < JM.PAGODA.top) hurtShrine(b.big ? 90 : 45);
 }
@@ -2022,7 +2027,7 @@ function stepWalkingDragon(d, T, targets, now, dt) {
   // Bitt
   if (hd < T.wr + 1.6 && dy > -1 && dy < T.h + 0.5 && now >= (d.atkAt || 0)) {
     d.atkAt = now + T.atkMs; d.bite = now;
-    chickHurt(best, T.dmg, d.type === 'boss' ? 'Kjempedragen 🐉' : d.type === 'fire' ? 'Ilddrage 🐉' : 'Drageunge 🐉', 'dragon', d.x, d.z);
+    chickHurt(best, Math.round(T.dmg * dragonDmgMul()), d.type === 'boss' ? 'Kjempedragen 🐉' : d.type === 'fire' ? 'Ilddrage 🐉' : 'Drageunge 🐉', 'dragon', d.x, d.z);
   }
   // Ild: ilddragene og sjefen på avstand, små drager bare når du står høyt (på et tak) og de ikke når deg
   const canFire = T.fireMs ? hd < 28 && hd > 4 : (dy > 2.5 && hd < 10);
@@ -2090,7 +2095,7 @@ setInterval(() => {
         gx = tx; gy = ty; gz = tz; sp = T.speed * 1.4;
         const dist = Math.hypot(tx - d.x, ty - d.y, tz - d.z);
         if (dist < T.r + 1.2) {                                     // BITT!
-          if (t) chickHurt(t, T.dmg, d.type === 'skyboss' ? 'Himmeldragen 🐉' : d.type === 'boss' ? 'Kjempedragen 🐉' : 'Drageunge 🐉', 'dragon', d.x, d.z);
+          if (t) chickHurt(t, Math.round(T.dmg * dragonDmgMul()), d.type === 'skyboss' ? 'Himmeldragen 🐉' : d.type === 'boss' ? 'Kjempedragen 🐉' : 'Drageunge 🐉', 'dragon', d.x, d.z);
           else hurtShrine(T.shrine);
           d.mode = 'climb'; d.climbUntil = now + 1500;
         }
