@@ -27,7 +27,7 @@ const MAX_HP = 100;
 const DMG_BODY = 20;           // 5 treff i kroppen
 const DMG_HEAD = 100;          // midt i hodet = død med én kule
 const AK_BODY = 10;            // [NY] AK mot spillere: 10 i kroppen (10 treff)
-const AK_HEAD = 20;            // [NY] AK mot spillere: 20 i hodet (5 hodeskudd)
+const AK_HEAD = 25;            // [NY] AK mot spillere: 25 i hodet (4 hodeskudd)
 const SNIPER_BODY = 60;        // snikskytter i kroppen (2 treff)
 const SNIPER_MIN_MS = 900;     // snikskytteren skyter ca. én gang i sekundet
 const MIN_HIT_MS = 80;         // våpenet skyter hvert 100. ms – litt slingringsmonn
