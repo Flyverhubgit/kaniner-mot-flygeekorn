@@ -20,6 +20,7 @@ const GEAR = [
   { id: 'crown', name: 'Krone', icon: '👑', level: 10, slot: 'head' },
   { id: 'halo', name: 'Glorie', icon: '😇', level: 12, slot: 'head' },
   { id: 'goldfur', name: 'Gullpels', icon: '✨', level: 15, slot: 'fur' },
+  { id: 'unihat', name: 'Enhjørninghatt', icon: '🦄', level: 17, slot: 'head' }, // [NY] enhjørning-hette
   { id: 'sharkhat', name: 'Haihatt', icon: '🦈', level: 20, slot: 'head' },     // [NY] haihode som hette
   { id: 'dinohat', name: 'Dinosaurhatt', icon: '🦖', level: 25, slot: 'head' }   // [NY] T-rex-hode som hette
 ];
@@ -151,6 +152,26 @@ function buildGearPart(id, team) {
     const ring = new THREE.Mesh(new THREE.TorusGeometry(0.2, 0.03, 8, 24), new THREE.MeshBasicMaterial({ color: 0xfff3a0 }));
     ring.rotation.x = Math.PI / 2; ring.position.y = y + 0.3; g.add(ring);
     g.userData.spin = ring;
+  } else if (id === 'unihat') {
+    // [NY] Enhjørning-hette: hvit hestemule over pannen, gullhorn, ører, store øyne og regnbuemanke
+    const WHT = 0xfdfaff, PINK = 0xffb3c7, GOLDH = 0xffd84a;
+    const RAIN = [0xff6b8a, 0xffa94d, 0xffe14d, 0x6be07a, 0x5ab4ff, 0xa36bff];
+    const W = H.w + 0.1, D = H.d + 0.1;
+    blk(g, W, 0.2, D, 0, y + 0.06, -0.02, WHT);                                 // toppen av hodet
+    blk(g, W * 0.7, 0.13, 0.24, 0, y + 0.02, H.front + 0.1, WHT);               // mulen over pannen
+    blk(g, W * 0.72, 0.1, 0.06, 0, y + 0.0, H.front + 0.23, PINK);              // rosa mulespiss
+    [-1, 1].forEach(sd => {
+      blk(g, 0.04, 0.03, 0.03, sd * 0.06, y + 0.04, H.front + 0.26, 0xc06a8a);  // nesebor
+      blk(g, 0.04, 0.08, 0.06, sd * (W / 2 - 0.01), y + 0.1, H.front - 0.02, 0x1a1020);    // store øyne
+      blk(g, 0.042, 0.025, 0.02, sd * (W / 2 - 0.005), y + 0.12, H.front + 0.0, 0xffffff); // glimt
+      blk(g, 0.06, H.eyeY - 0.95, 0.12, sd * (W / 2), (y + 0.95) / 2 - 0.05, 0.0, WHT);    // sidene
+      blk(g, 0.08, 0.16, 0.06, sd * (W / 2 - 0.06), y + 0.22, -0.08, WHT, [0, 0, -sd * 0.2]);   // ører
+      blk(g, 0.04, 0.1, 0.02, sd * (W / 2 - 0.06), y + 0.22, -0.045, PINK, [0, 0, -sd * 0.2]);
+    });
+    const horn = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.38, 8), new THREE.MeshStandardMaterial({ color: GOLDH, emissive: 0x6a4a00 }));
+    horn.position.set(0, y + 0.33, H.front - 0.02); horn.rotation.x = 0.35; g.add(horn);   // gullhorn
+    for (let i = 0; i < 3; i++) { const r = new THREE.Mesh(new THREE.TorusGeometry(0.05 - i * 0.012, 0.012, 4, 10), horn.material); r.rotation.x = Math.PI / 2 + 0.35; r.position.set(0, y + 0.22 + i * 0.08, H.front - 0.06 + i * 0.03); g.add(r); }
+    RAIN.forEach((c, i) => blk(g, 0.08, 0.14, 0.09, 0, y + 0.2 - i * 0.07, -D / 2 + 0.1 - i * 0.06, c));   // regnbuemanke nedover nakken
   } else if (id === 'sharkhat') {
     // [NY] Hai-hette: spiss snute over pannen, tannrader, svarte øyne, gjeller og stor ryggfinne på toppen
     const TOP = 0x5f7888, BELLY = 0xeef0ec, WH = 0xffffff, RED = 0x9a2a3a;
