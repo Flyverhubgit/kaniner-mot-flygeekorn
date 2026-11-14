@@ -1718,7 +1718,19 @@ setInterval(() => {
 // Bare på klosse-banene (Klosseslottet og Ridderborgen) der serveren vet hvor veggene er.
 // De er med vilje ganske dårlige: treg reaksjon, bommer mye, går saktere enn deg.
 // ===================================================================
-const BOT_MAPS = ['castle', 'medieval'];
+const BOT_MAPS = ['castle', 'medieval', 'room', 'temple'];
+// [NY] Barnerommet og tempelet er bygd av vanlige bokser (ikke klosser). Boksene er hentet fra nettleseren
+// (room.js / game.js) og lagret i filer, så serveren vet hvor veggene er. Endres banen, må filene lages på nytt.
+const BOX_MAPS = {
+  room: { boxes: require('./public/roomcolliders.json'), xMax: 76, zMax: 47 },
+  temple: { boxes: require('./public/templecolliders.json'), xMax: 28, zMax: 20 }
+};
+function boxMap() { return BOX_MAPS[mapName]; }
+function inBox(x, y, z) {
+  const B = boxMap().boxes;
+  for (let i = 0; i < B.length; i++) { const b = B[i]; if (x > b[0] && x < b[3] && y > b[1] && y < b[4] && z > b[2] && z < b[5]) return true; }
+  return false;
+}
 const BOT_SPEED = 4.2;                       // du går 6
 const BOT_REACT_MS = 650;                    // tid fra de ser deg til første skudd
 let botSeq = 0;
@@ -1726,6 +1738,7 @@ function isBot(p) { return p && p.isBot; }
 function botOn() { return BOT_MAPS.includes(mapName) && worldName === 'main'; }
 function BV() { return VOX[mapName]; }
 function bSolid(x, y, z) {                   // er det en kloss her? (verdens-koordinater)
+  if (boxMap()) return y < 0 || inBox(x, y, z);
   const V = BV(), L = V.LIB, ix = Math.floor(x), iy = Math.floor(y), iz = Math.floor(z);
   if (iy < 0) return true;
   if (ix < L.X0 || ix >= L.X0 + L.NX || iz < L.Z0 || iz >= L.Z0 + L.NZ) return true;   // kanten av kartet
@@ -1737,6 +1750,11 @@ function bodyHits(x, y, z) {                 // står kroppen (0,6 bred, 1,6 hø
   return false;
 }
 function groundBelow(x, y, z) {              // høyeste klosstopp under føttene
+  if (boxMap()) {                            // bokser: høyeste topp under føttene, ellers gulvet
+    let g = 0;
+    for (const b of boxMap().boxes) if (b[4] <= y + 0.01 && b[4] > g && x + 0.25 > b[0] && x - 0.25 < b[3] && z + 0.25 > b[2] && z - 0.25 < b[5]) g = b[4];
+    return g;
+  }
   for (let iy = Math.floor(y + 0.01) - 1; iy >= 0; iy--) {
     for (const ox of [-0.25, 0.25]) for (const oz of [-0.25, 0.25]) if (bSolid(x + ox, iy + 0.5, z + oz)) return iy + 1;
   }
@@ -1749,15 +1767,17 @@ function losClear(a, b) {                    // fri sikt mellom to punkter?
 }
 function freeSpot(x, z) {                    // kan en robot stå her på bakken?
   const y = groundBelow(x, 6, z);
+  if (boxMap()) { const g = groundBelow(x, 0.5, z); return g <= 0.3 && !bodyHits(x, g, z) ? g : -1; }
   return y <= 1 && !bodyHits(x, y, z) ? y : -1;
 }
 // Veien ut av egen borg (kaninsiden; flygeekornene er speilet: x -> -x, z -> -z)
 const BOT_OUT = {
   castle: [[0, 31.5], [0, 26], [0, 19]],
-  medieval: [[0, 30.5], [0, 26.5], [0, 22.5], [0, 18]]
+  medieval: [[0, 30.5], [0, 26.5], [0, 22.5], [0, 18]],
+  room: [], temple: []                        // åpne baner: rett ut på gulvet
 };
 function botField() {                        // tilfeldig ledig punkt ute på slagmarka
-  const zMax = mapName === 'medieval' ? 16 : 17, xMax = mapName === 'medieval' ? 55 : 60;
+  const bm = boxMap(), zMax = bm ? bm.zMax : mapName === 'medieval' ? 16 : 17, xMax = bm ? bm.xMax : mapName === 'medieval' ? 55 : 60;
   for (let k = 0; k < 40; k++) {
     const x = (Math.random() * 2 - 1) * xMax, z = (Math.random() * 2 - 1) * zMax;
     if (freeSpot(x, z) >= 0) return [x, z];
@@ -1813,7 +1833,10 @@ function botMove(b, dirX, dirZ, speed, dt) {
     if (!ax && !az) return;
     const nx = b.x + ax, nz = b.z + az;
     if (!bodyHits(nx, b.y, nz)) { b.x = nx; b.z = nz; moved = true; }
-    else if (!bodyHits(nx, b.y + 1.05, nz) && groundBelow(nx, b.y + 1.05, nz) <= b.y + 1.05) { b.x = nx; b.z = nz; b.y = Math.floor(b.y + 1.05); moved = true; }
+    else {                                    // ett trinn opp: en kloss, eller en lav boks (maks 0,6 m)
+      const up = boxMap() ? 0.6 : 1.05;
+      if (!bodyHits(nx, b.y + up, nz)) { b.x = nx; b.z = nz; b.y = boxMap() ? groundBelow(nx, b.y + up, nz) : Math.floor(b.y + up); moved = true; }
+    }
   });
   const g = groundBelow(b.x, b.y, b.z);   // tyngdekraft
   if (b.y > g) b.y = Math.max(g, b.y - 9 * dt);
@@ -1865,7 +1888,7 @@ setInterval(() => {
     } else {
       // --- Ingen fiende: følg ruta (ut av borgen), så rundt på slagmarka ---
       if (!b.route || !b.route.length) {
-        if (Math.random() < 0.25) b.route = BOT_OUT[mapName].slice().reverse().map(pt => mir(b.team === 'bunny' ? 'squirrel' : 'bunny', pt));   // raid: inn i fiendens borg
+        if (Math.random() < 0.25 && BOT_OUT[mapName].length) b.route = BOT_OUT[mapName].slice().reverse().map(pt => mir(b.team === 'bunny' ? 'squirrel' : 'bunny', pt));   // raid: inn i fiendens borg
         else b.route = [botField()];
       }
       const wp = b.route[0], dx = wp[0] - b.x, dz = wp[1] - b.z;
@@ -1881,7 +1904,7 @@ setInterval(() => {
     if (Math.hypot(b.x - b.lastX, b.z - b.lastZ) < 0.15 && (dirX || dirZ)) {
       b.stuck += dt;
       if (b.stuck > 0.8 && now > b.sideUntil) { b.side = Math.random() < 0.5 ? -1 : 1; b.sideUntil = now + 900; }
-      if (b.stuck > 4) { b.stuck = 0; if (b.route && b.route.length) b.route.shift(); }
+      if (b.stuck > 2.5) { b.stuck = 0; b.route = b.mode === 'out' && b.route && b.route.length > 1 ? b.route.slice(1) : [botField()]; b.mode = 'roam'; }   // gi opp: nytt mål
     } else b.stuck = 0;
     b.lastX = b.x; b.lastZ = b.z;
   }
