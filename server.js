@@ -1850,11 +1850,13 @@ setInterval(() => {
 // når neste bølge starter. Er hele laget dødt samtidig, har dragene vunnet. Klar bølge 10 (med sjefen) = seier.
 const SHRINE_ON = false;                         // (pagoden hadde eget liv før – sett true for å slå det på igjen)
 // ===================================================================
-const DRAGON_T = ['small', 'fire', 'boss'];
+const DRAGON_T = ['small', 'fire', 'boss', 'skyboss'];   // [NY] skyboss = himmeldragen i bølge 10
 const DRAGON = {
   small: { hp: 90, speed: 10, dmg: 12, r: 1.4, shrine: 40, walk: 5.2, wr: 0.7, h: 1.6, smash: 3, atkMs: 900 },
   fire: { hp: 260, speed: 8, dmg: 20, r: 2.0, shrine: 60, fireMs: 3800, walk: 3.8, wr: 1.0, h: 2.4, smash: 5, atkMs: 1300 },
-  boss: { hp: 2500, speed: 6.5, dmg: 35, r: 4.0, shrine: 150, fireMs: 1800, walk: 2.8, wr: 2.0, h: 5, smash: 99, atkMs: 1600 }
+  boss: { hp: 2500, speed: 6.5, dmg: 35, r: 4.0, shrine: 150, fireMs: 1800, walk: 2.8, wr: 2.0, h: 5, smash: 99, atkMs: 1600 },
+  // [NY] HIMMELDRAGEN (bølge 10): en kjempestor drage som FLYR, spytter ildkuler og får det til å regne meteorer
+  skyboss: { hp: 4000, speed: 11, dmg: 40, r: 5.5, shrine: 0, fireMs: 1400, walk: 0, wr: 3, h: 4, smash: 99, atkMs: 1500, meteorMs: 7000 }
 };
 // [NY] Dragene GÅR på bakken (fire bein). Sett false for flygende slangedrager igjen.
 const DRAGON_WALK = true;
@@ -1924,7 +1926,8 @@ let dragonGame = null, dragonSeq = 0, dragonRecord = 0;
 function dragonMap() { return mapName === 'dragon' && worldName === 'main'; }
 function resetDragons() {
   const np = Math.max(1, Object.values(players).filter(p => !p.isBot).length);
-  dragonGame = { wave: 0, state: 'prep', nextAt: Date.now() + DRAGON_PREP_MS, queue: [], spawnAt: 0, list: new Map(), balls: [],
+  dragonGame = { wave: Math.max(0, (+process.env.DRAGON_START_WAVE || 1) - 1), state: 'prep',   // (DRAGON_START_WAVE er for testing)
+    nextAt: Date.now() + DRAGON_PREP_MS, queue: [], spawnAt: 0, list: new Map(), balls: [],
     shrine: SHRINE_HP * (1 + 0.3 * (np - 1)), shrineMax: SHRINE_HP * (1 + 0.3 * (np - 1)) };
   dragonWaveMsg();
 }
@@ -1939,20 +1942,23 @@ function dragonWaveList(n) {
   for (let i = 0; i < Math.round((3 + 2 * n) * k); i++) list.push('small');
   for (let i = 0; i < Math.round((n >= 2 ? Math.floor(n * 0.8) : 0) * k); i++) list.push('fire');
   list.sort(() => Math.random() - 0.5);
-  if (n === 5 || n === 10) list.splice(Math.floor(list.length / 3), 0, 'boss');
+  if (n === 5) list.splice(Math.floor(list.length / 3), 0, 'boss');
+  if (n === 10) list.splice(Math.floor(list.length / 3), 0, 'skyboss');   // [NY] den flygende himmeldragen
   return list;
 }
 function spawnDragon(type) {
   const T = DRAGON[type], np = Math.max(1, Object.values(players).filter(p => !p.isBot).length);
   const a = Math.random() * Math.PI * 2;
-  const hp = type === 'boss' ? Math.round(T.hp * (dragonGame.wave >= 10 ? 1.6 : 1) * (1 + 0.5 * (np - 1))) : T.hp;
+  const hp = type === 'boss' || type === 'skyboss' ? Math.round(T.hp * (1 + 0.5 * (np - 1))) : T.hp;
+  const sky = type === 'skyboss';
   const gate = DRAGON_GATES[Math.floor(Math.random() * DRAGON_GATES.length)];
-  const d = { id: ++dragonSeq, type, t: DRAGON_T.indexOf(type), x: DRAGON_WALK ? gate[0] + (Math.random() - 0.5) * 3 : Math.cos(a) * 75, y: DRAGON_WALK ? 0 : 28 + Math.random() * 8, z: DRAGON_WALK ? gate[1] + (Math.random() - 0.5) * 3 : Math.sin(a) * 75,
-    vx: 0, vy: 0, vz: 0, hp, max: hp, mode: 'circle', ang: a, rad: type === 'boss' ? 26 : 30 + Math.random() * 12,
-    alt: (type === 'boss' ? 22 : 15) + Math.random() * 8, nextAttack: Date.now() + 3000 + Math.random() * 5000, fireAt: Date.now() + 2500 + Math.random() * 2000,
+  const walk = DRAGON_WALK && !sky;
+  const d = { id: ++dragonSeq, type, t: DRAGON_T.indexOf(type), x: walk ? gate[0] + (Math.random() - 0.5) * 3 : Math.cos(a) * 75, y: walk ? 0 : 28 + Math.random() * 8, z: walk ? gate[1] + (Math.random() - 0.5) * 3 : Math.sin(a) * 75,
+    vx: 0, vy: 0, vz: 0, hp, max: hp, mode: 'circle', ang: a, rad: sky ? 24 : type === 'boss' ? 26 : 30 + Math.random() * 12,
+    alt: (sky ? 20 : type === 'boss' ? 22 : 15) + Math.random() * 8, meteorAt: Date.now() + 5000, nextAttack: Date.now() + 3000 + Math.random() * 5000, fireAt: Date.now() + 2500 + Math.random() * 2000,
     target: null, climbUntil: 0, dir: Math.random() < 0.5 ? 1 : -1 };
   dragonGame.list.set(d.id, d);
-  if (type === 'boss') io.emit('dragonBoss', { id: d.id });
+  if (type === 'boss' || sky) io.emit('dragonBoss', { id: d.id, sky });
 }
 function dragonTargets() { return Object.values(players).filter(p => p.alive && !p.isBot); }
 function hurtShrine(dmg) {
@@ -1983,12 +1989,12 @@ function areaHurtDragons(x, y, z, r, max, p) {
   });
 }
 // Ildkule: flyr mot målet, smeller når den kommer fram (eller treffer en kloss)
-function dragonFire(d, tx, ty, tz, big) {
+function dragonFire(d, tx, ty, tz, big, meteor) {
   const from = [d.x, d.y - 0.5, d.z], dist = Math.hypot(tx - from[0], ty - from[1], tz - from[2]);
-  const speed = big ? 20 : 24, ms = Math.max(300, dist / speed * 1000);
-  const id = 'df' + d.id + '_' + Date.now();
+  const speed = meteor ? 26 : big ? 20 : 24, ms = Math.max(meteor ? 1600 : 300, dist / speed * 1000);   // meteorer: minst 1,6 sek varsel
+  const id = 'df' + d.id + '_' + Date.now() + '_' + Math.floor(Math.random() * 1e4);
   dragonGame.balls.push({ id, from, to: [tx, ty, tz], at: Date.now(), ms, big });
-  io.emit('dragonFire', { id, from: from.map(v => +v.toFixed(1)), to: [+tx.toFixed(1), +ty.toFixed(1), +tz.toFixed(1)], ms: Math.round(ms), big: !!big });
+  io.emit('dragonFire', { id, from: from.map(v => +v.toFixed(1)), to: [+tx.toFixed(1), +ty.toFixed(1), +tz.toFixed(1)], ms: Math.round(ms), big: !!big, meteor: !!meteor });
 }
 function fireballBoom(b) {
   const [x, y, z] = b.to, r = b.big ? 3.6 : 2.6, dmg = b.big ? 40 : 25;
@@ -2052,7 +2058,16 @@ setInterval(() => {
   const targets = dragonTargets();
   g.list.forEach(d => {
     const T = DRAGON[d.type];
-    if (DRAGON_WALK) { stepWalkingDragon(d, T, targets, now, dt); return; }
+    if (DRAGON_WALK && d.type !== 'skyboss') { stepWalkingDragon(d, T, targets, now, dt); return; }
+    // [NY] Himmeldragen: meteorregn rundt spillerne (et lysende merke på bakken først, så smell)
+    if (d.type === 'skyboss' && now >= d.meteorAt && targets.length) {
+      d.meteorAt = now + T.meteorMs;
+      targets.forEach(t => { for (let k = 0; k < 3; k++) {
+        const mx = t.x + (Math.random() - 0.5) * 12, mz = t.z + (Math.random() - 0.5) * 12, my = dGround(mx, 30, mz, 0.3);
+        setTimeout(() => { if (dragonGame) dragonFire({ id: 'm' + d.id + k, x: mx + 8, y: 46, z: mz + 6 }, mx, my + 0.3, mz, true, true); }, k * 350);
+      } });
+      io.emit('meteorRain', {});
+    }
     let gx, gy, gz, sp = T.speed;
     if (d.mode === 'circle') {
       d.ang += d.dir * sp / d.rad * dt;
@@ -2064,7 +2079,7 @@ setInterval(() => {
         if (!SHRINE_ON && targets.length) best = targets[Math.floor(Math.random() * targets.length)];   // tilfeldig spiller (ikke alltid den nærmeste)
         d.target = best && (!SHRINE_ON || Math.random() < 0.6) ? best.id : SHRINE_ON ? 'shrine' : null;
         if (!d.target) { d.nextAttack = now + 2000; return; }
-        d.mode = d.type === 'small' ? 'dive' : 'strafe';
+        d.mode = d.type === 'small' || (d.type === 'skyboss' && Math.random() < 0.25) ? 'dive' : 'strafe';   // himmeldragen stuper innimellom
         d.modeUntil = now + (d.type === 'small' ? 6000 : 7000);
       }
     } else {
@@ -2075,15 +2090,15 @@ setInterval(() => {
         gx = tx; gy = ty; gz = tz; sp = T.speed * 1.4;
         const dist = Math.hypot(tx - d.x, ty - d.y, tz - d.z);
         if (dist < T.r + 1.2) {                                     // BITT!
-          if (t) chickHurt(t, T.dmg, d.type === 'boss' ? 'Kjempedragen 🐉' : 'Drageunge 🐉', 'dragon', d.x, d.z);
+          if (t) chickHurt(t, T.dmg, d.type === 'skyboss' ? 'Himmeldragen 🐉' : d.type === 'boss' ? 'Kjempedragen 🐉' : 'Drageunge 🐉', 'dragon', d.x, d.z);
           else hurtShrine(T.shrine);
           d.mode = 'climb'; d.climbUntil = now + 1500;
         }
         if (now > d.modeUntil) { d.mode = 'climb'; d.climbUntil = now + 1200; }
       } else if (d.mode === 'strafe') {                            // fly over målet i passe høyde og spytt ild
         const hx = tx - d.x, hz = tz - d.z, hd = Math.hypot(hx, hz) || 1;
-        gx = tx + hx / hd * 10; gz = tz + hz / hd * 10; gy = (t ? t.y : 0) + (d.type === 'boss' ? 16 : 11);
-        if (hd < 28 && now >= d.fireAt) { d.fireAt = now + T.fireMs; dragonFire(d, tx + (Math.random() - 0.5) * 2, ty - 0.5, tz + (Math.random() - 0.5) * 2, d.type === 'boss'); }
+        gx = tx + hx / hd * 10; gz = tz + hz / hd * 10; gy = (t ? t.y : 0) + (d.type === 'skyboss' ? 17 : d.type === 'boss' ? 16 : 11);
+        if (hd < 32 && now >= d.fireAt) { d.fireAt = now + T.fireMs; dragonFire(d, tx + (Math.random() - 0.5) * 2, ty - 0.5, tz + (Math.random() - 0.5) * 2, d.type === 'boss' || d.type === 'skyboss'); }
         if (d.type === 'boss' && !t && hd < 8 && Math.random() < 0.02) { d.mode = 'dive'; d.modeUntil = now + 4000; }   // kjempedragen stuper mot pagoden innimellom
         if (now > d.modeUntil) { d.mode = 'circle'; d.nextAttack = now + 4000 + Math.random() * 4000; }
       } else if (d.mode === 'climb') {

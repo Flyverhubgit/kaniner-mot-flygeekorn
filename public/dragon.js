@@ -71,7 +71,8 @@ for (let i = 0; i < 70; i++) {
 const DRAGON_LOOK = [
   { body: 0x2aa86a, belly: 0xe8d890, mane: 0xffd040, segs: 12, r: 0.6, name: 'Drageunge' },     // liten, grønn
   { body: 0xc0282a, belly: 0xffb050, mane: 0xffe070, segs: 16, r: 0.95, name: 'Ilddrage' },        // rød, spytter ild
-  { body: 0xe0b030, belly: 0xfff0c0, mane: 0xd02020, segs: 24, r: 2.0, name: 'Kjempedragen' }   // gull, sjefen
+  { body: 0xe0b030, belly: 0xfff0c0, mane: 0xd02020, segs: 24, r: 2.0, name: 'Kjempedragen' },   // gull, sjefen
+  { body: 0x3a1a4a, belly: 0xff8a3a, mane: 0xff3a1a, segs: 24, r: 2.4, name: 'Himmeldragen' }    // [NY] bølge 10: flygende, mørk lilla med glødende buk
 ];
 function buildDragon(t) {
   const L = DRAGON_LOOK[t], S = L.r / 0.45;          // skalering i forhold til den lille
@@ -116,7 +117,7 @@ function buildDragon(t) {
 }
 
 // ---------- [NY] Gående drager: fire bein, hals, hode med horn, hale og små vinger ----------
-const WALK_SCALE = [1, 1.5, 3.1];        // liten, ild, kjempe (1 = ca. 1,6 m høy)
+const WALK_SCALE = [1, 1.5, 3.1, 4.2];   // liten, ild, kjempe, himmeldragen (1 = ca. 1,6 m høy)
 function buildWalkingDragon(t) {
   const L = DRAGON_LOOK[t], S = WALK_SCALE[t];
   const g = new THREE.Group(), root = new THREE.Group(); root.scale.setScalar(S); g.add(root);
@@ -168,8 +169,20 @@ function buildWalkingDragon(t) {
     const m = new THREE.Mesh(new THREE.ConeGeometry(0.45, 1.0, 3), new THREE.MeshStandardMaterial({ color: L.mane, roughness: 0.7, side: THREE.DoubleSide }));
     m.scale.z = 0.15; m.rotation.z = s2 * -1.1; m.position.x = s2 * 0.35; w.add(m); return w;
   });
-  g.traverse(o => { o.raycast = () => {}; if (o.isMesh) o.castShadow = t === 2 || !isTouch; });
-  g.userData = { walk: true, root, head, jaw, neck, body, legs, tail, wings, S, phase: Math.random() * 6, yaw: 0 };
+  // [NY] Himmeldragen: store vinger som slår, og glødende øyne/buk
+  let bigWings = null;
+  if (t === 3) {
+    bigWings = [-1, 1].map(s2 => {
+      const w = new THREE.Group(); w.position.set(s2 * 0.45, 1.3, 0.2); root.add(w);
+      const mW = new THREE.MeshStandardMaterial({ color: 0x5a2a6a, roughness: 0.7, side: THREE.DoubleSide, emissive: 0x1a0820 });
+      const bone = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.08, 0.1), mBody); bone.position.x = s2 * 1.3; w.add(bone);
+      const sail = new THREE.Mesh(new THREE.ConeGeometry(1.4, 2.6, 3), mW); sail.scale.z = 0.05; sail.rotation.z = s2 * Math.PI / 2; sail.rotation.y = 0; sail.position.set(s2 * 1.3, -0.05, -0.55); w.add(sail);
+      return w;
+    });
+    wings.forEach(w => { w.visible = false; });
+  }
+  g.traverse(o => { o.raycast = () => {}; if (o.isMesh) o.castShadow = t >= 2 || !isTouch; });
+  g.userData = { walk: true, fly: t === 3, bigWings, root, head, jaw, neck, body, legs, tail, wings, S, phase: Math.random() * 6, yaw: 0, pitch: 0 };
   return g;
 }
 const dragons = new Map();              // id -> { t, pos, target, vel, hp, model, hist, histT }
@@ -194,12 +207,12 @@ socket.on('dragonDie', d => {
   if (dr) {
     dragonGroup.remove(dr.model); dragons.delete(d.id);
     const p = new THREE.Vector3(...d.p);
-    for (let i = 0; i < (d.t === 2 ? 8 : 3); i++) addStuffing(p.clone().add(new THREE.Vector3((Math.random() - 0.5) * 2, Math.random() * 2, (Math.random() - 0.5) * 2)));
+    for (let i = 0; i < (d.t >= 2 ? 10 : 3); i++) addStuffing(p.clone().add(new THREE.Vector3((Math.random() - 0.5) * 2, Math.random() * 2, (Math.random() - 0.5) * 2)));
     playDragonRoar(d.t === 2 ? 0.4 : 0.15, d.t, true);
   }
   if (d.by === myId) {                  // XP og mynter for dragen du tok
-    if (typeof gainXP === 'function') gainXP(d.t === 2 ? 40 : d.t === 1 ? 6 : 3);
-    if (typeof gainCoins === 'function') gainCoins(d.t === 2 ? 30 : d.t === 1 ? 3 : 1);
+    if (typeof gainXP === 'function') gainXP(d.t === 3 ? 80 : d.t === 2 ? 40 : d.t === 1 ? 6 : 3);
+    if (typeof gainCoins === 'function') gainCoins(d.t === 3 ? 50 : d.t === 2 ? 30 : d.t === 1 ? 3 : 1);
   }
 });
 
@@ -237,8 +250,16 @@ function dragonNear(pos, r) {           // er en rakett nær nok en drage til å
 // ---------- Ildkuler ----------
 const dragonBalls = [];
 const fbTex = jTex(32, 32, x => { const g = x.createRadialGradient(16, 16, 1, 16, 16, 15); g.addColorStop(0, 'rgba(255,255,200,1)'); g.addColorStop(0.4, 'rgba(255,150,30,0.9)'); g.addColorStop(1, 'rgba(255,60,0,0)'); x.fillStyle = g; x.fillRect(0, 0, 32, 32); });
+const meteorRings = [];
+socket.on('meteorRain', () => { if (dragonOn()) playDragonRoar(0.4, 2); });
 socket.on('dragonFire', f => {
   if (!dragonOn()) return;
+  if (f.meteor) {                                     // [NY] meteor: lysende ring på bakken der den lander
+    const ring = new THREE.Mesh(new THREE.RingGeometry(1.8, 2.6, 24), new THREE.MeshBasicMaterial({ color: 0xff3a1a, transparent: true, opacity: 0.7, side: THREE.DoubleSide, depthWrite: false }));
+    ring.rotation.x = -Math.PI / 2; ring.position.set(f.to[0], f.to[1] + 0.06, f.to[2]); ring.raycast = () => {}; dragonGroup.add(ring);
+    meteorRings.push({ m: ring, t0: performance.now(), ms: f.ms });
+    playMeteorWhistle(Math.max(0.05, 0.25 - Math.hypot(f.to[0] - player.x, f.to[2] - player.z) * 0.006), f.ms);
+  }
   const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: fbTex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
   s.scale.setScalar(f.big ? 3.2 : 2); dragonGroup.add(s);
   dragonBalls.push({ s, from: new THREE.Vector3(...f.from), to: new THREE.Vector3(...f.to), t0: performance.now(), ms: f.ms, trail: 0 });
@@ -247,6 +268,14 @@ socket.on('dragonFire', f => {
 });
 
 // ---------- Lyder ----------
+function playMeteorWhistle(vol, ms) {                 // fallende plystring
+  if (!audioCtx) return;
+  const t0 = audioCtx.currentTime, dur = ms / 1000;
+  const o = audioCtx.createOscillator(), gn = audioCtx.createGain();
+  o.type = 'sine'; o.frequency.setValueAtTime(1600, t0); o.frequency.exponentialRampToValueAtTime(300, t0 + dur);
+  gn.gain.setValueAtTime(0.001, t0); gn.gain.linearRampToValueAtTime(vol * 0.5, t0 + dur * 0.8); gn.gain.linearRampToValueAtTime(0.001, t0 + dur);
+  o.connect(gn); gn.connect(audioCtx.destination); o.start(t0); o.stop(t0 + dur);
+}
 function playDragonRoar(vol, t, death) {
   if (!audioCtx || !dragonOn()) return;
   const t0 = audioCtx.currentTime, dur = death ? 1.2 : 0.9, base = t === 2 ? 70 : t === 1 ? 140 : 260;
@@ -312,6 +341,20 @@ function updateDragons(dt) {
     const ud = d.model.userData, L = DRAGON_LOOK[d.t];
     if (ud.walk) {                                                    // [NY] gående drage: bein, hale, kjeve og vinger
       d.model.position.copy(d.pos);
+      if (ud.fly) {                                                 // [NY] himmeldragen flyr: vingeslag, bein inntrukket, nese opp/ned
+        d.model.position.y -= 0.95 * ud.S;
+        const sp2 = Math.hypot(d.vel.x, d.vel.z);
+        if (sp2 > 0.1) { const want = Math.atan2(d.vel.x, d.vel.z); let df = want - ud.yaw; df = Math.atan2(Math.sin(df), Math.cos(df)); ud.yaw += df * Math.min(1, dt * 4); }
+        ud.pitch += (Math.atan2(-d.vel.y, Math.max(1, sp2)) - ud.pitch) * Math.min(1, dt * 3);
+        d.model.rotation.set(ud.pitch * 0.6, ud.yaw, 0, 'YXZ');
+        ud.phase += dt * 3.2;
+        ud.bigWings.forEach((w, i) => { w.rotation.z = (i ? -1 : 1) * Math.sin(ud.phase) * 0.7; });
+        ud.legs.forEach(l => { l.rotation.x = -1.1; });
+        ud.tail.forEach((s2, i) => { s2.rotation.y = Math.sin(ud.phase * 0.5 - i * 0.6) * 0.2; s2.rotation.x = Math.sin(ud.phase * 0.5 - i) * 0.1; });
+        ud.jaw.rotation.x = 0.2 + Math.abs(Math.sin(t * 2)) * 0.4;
+        boss = d;
+        return;
+      }
       const sp = Math.hypot(d.vel.x, d.vel.z);
       if (sp > 0.01) { const want = Math.atan2(d.vel.x, d.vel.z); let df = want - ud.yaw; df = Math.atan2(Math.sin(df), Math.cos(df)); ud.yaw += df * Math.min(1, dt * 8); }
       d.model.rotation.y = ud.yaw;
@@ -346,6 +389,12 @@ function updateDragons(dt) {
     f.s.position.lerpVectors(f.from, f.to, k);
     f.s.material.rotation += dt * 6;
   }
+  // Meteor-ringene blinker og blir mindre til smellet
+  for (let i = meteorRings.length - 1; i >= 0; i--) {
+    const r = meteorRings[i], k = (performance.now() - r.t0) / r.ms;
+    if (k >= 1) { dragonGroup.remove(r.m); meteorRings.splice(i, 1); continue; }
+    r.m.scale.setScalar(1.4 - k * 0.6); r.m.material.opacity = 0.4 + Math.abs(Math.sin(k * 20)) * 0.5;
+  }
   // Karper og kirsebærblader
   const P = JP.POND, cx = (P.x0 + P.x1 + 1) / 2, cz = (P.z0 + P.z1 + 1) / 2;
   koi.forEach(k => { const a = t * 0.5 + k.ph; k.m.position.set(cx + Math.cos(a) * k.r, 0.08, cz + Math.sin(a) * k.r * 0.8); k.m.rotation.y = -a; });
@@ -364,6 +413,6 @@ function updateDragons(dt) {
     dragonHud.innerHTML = '&#128009; Bølge ' + Math.max(1, w.n) + '/' + w.of +
       (sh >= 0 ? ' &nbsp;·&nbsp; &#9961;&#65039; <span style="color:' + (sh > 50 ? '#9f9' : sh > 25 ? '#fd6' : '#f66') + '">' + sh + '%</span>' : '') +
       (w.team > 1 ? ' &nbsp;·&nbsp; &#128101; ' + w.alive + '/' + w.team + ' i live' : '') + ' &nbsp;·&nbsp; ' + state +
-      (boss ? ' &nbsp;·&nbsp; <span style="color:#fd4">Kjempedragen ' + boss.hp + '%</span>' : '');
+      (boss ? ' &nbsp;·&nbsp; <span style="color:#fd4">' + DRAGON_LOOK[boss.t].name + ' ' + boss.hp + '%</span>' : '');
   }
 }
