@@ -1852,10 +1852,72 @@ const SHRINE_ON = false;                         // (pagoden hadde eget liv før
 // ===================================================================
 const DRAGON_T = ['small', 'fire', 'boss'];
 const DRAGON = {
-  small: { hp: 90, speed: 10, dmg: 12, r: 1.4, shrine: 40 },
-  fire: { hp: 260, speed: 8, dmg: 20, r: 2.0, shrine: 60, fireMs: 3800 },
-  boss: { hp: 2500, speed: 6.5, dmg: 35, r: 4.0, shrine: 150, fireMs: 1800 }
+  small: { hp: 90, speed: 10, dmg: 12, r: 1.4, shrine: 40, walk: 5.2, wr: 0.7, h: 1.6, smash: 3, atkMs: 900 },
+  fire: { hp: 260, speed: 8, dmg: 20, r: 2.0, shrine: 60, fireMs: 3800, walk: 3.8, wr: 1.0, h: 2.4, smash: 5, atkMs: 1300 },
+  boss: { hp: 2500, speed: 6.5, dmg: 35, r: 4.0, shrine: 150, fireMs: 1800, walk: 2.8, wr: 2.0, h: 5, smash: 99, atkMs: 1600 }
 };
+// [NY] Dragene GÅR på bakken (fire bein). Sett false for flygende slangedrager igjen.
+const DRAGON_WALK = true;
+const DRAGON_GATES = [[0, 50], [0, -51], [50, 0], [-51, 0]];          // de kommer inn gjennom de fire portene
+function dCell(x, y, z) {                                             // kloss på dette punktet? (dragetempelet)
+  const L = JM, ix = Math.floor(x), iy = Math.floor(y), iz = Math.floor(z);
+  if (iy < 0) return -2;
+  if (ix < L.X0 || ix >= L.X0 + L.NX || iz < L.Z0 || iz >= L.Z0 + L.NZ) return -1;
+  if (iy >= L.NY) return 0;
+  return VOX.dragon.grid[L.idx(ix, iy, iz)] ? L.idx(ix, iy, iz) : 0;
+}
+function dBlocked(x, y, z, r, h) {                                    // første kloss kroppen står i (eller 0)
+  for (let ox = -r; ox <= r + 0.01; ox += Math.max(0.5, r)) for (let oz = -r; oz <= r + 0.01; oz += Math.max(0.5, r))
+    for (let oy = 0.1; oy < h; oy += 0.9) { const c = dCell(x + ox, y + oy, z + oz); if (c) return c; }
+  return 0;
+}
+function dGround(x, y, z, r) {                                        // høyeste klosstopp under føttene
+  let g = 0;
+  for (const ox of [-r * 0.6, r * 0.6]) for (const oz of [-r * 0.6, r * 0.6])
+    for (let iy = Math.floor(y + 0.01) - 1; iy >= 0; iy--) { if (dCell(x + ox, iy + 0.5, z + oz) > 0) { g = Math.max(g, iy + 1); break; } }
+  return g;
+}
+function walkDragon(d, T, gx, gz, now, dt) {
+  const dx = gx - d.x, dz = gz - d.z, dist = Math.hypot(dx, dz);
+  let moved = false;
+  if (dist > 0.3) {
+    const ux = dx / dist, uz = dz / dist, st = T.walk * dt * (d.mode === 'charge' ? 1.5 : 1);
+    for (const a of [0, 0.5, -0.5, 1.0, -1.0, 1.6, -1.6]) {
+      const cx = ux * Math.cos(a) - uz * Math.sin(a), cz = ux * Math.sin(a) + uz * Math.cos(a);
+      const nx = d.x + cx * st, nz = d.z + cz * st;
+      if (!dBlocked(nx, d.y, nz, T.wr, T.h)) { d.x = nx; d.z = nz; moved = true; break; }
+      if (!dBlocked(nx, d.y + 1.05, nz, T.wr, T.h)) { d.x = nx; d.z = nz; d.y = Math.floor(d.y + 1.05); moved = true; break; }   // ett trinn opp
+    }
+    d.vx = moved ? ux * T.walk : 0; d.vz = moved ? uz * T.walk : 0;
+    // [NY] Står fast (eller har ikke kommet nærmere på 3 sek)? KNUS klossene rett foran – dragene setter seg ikke fast.
+    if (d.ax === undefined || Math.hypot(d.x - d.ax, d.z - d.az) > 1.2) { d.ax = d.x; d.az = d.z; d.anchorAt = now; }
+    const stuck = !moved || now - d.anchorAt > 3000;
+    if (stuck && now >= (d.smashAt || 0)) {
+      d.smashAt = now + 350;
+      const fx = d.x + ux * (T.wr + 0.7), fz = d.z + uz * (T.wr + 0.7), hit = [];
+      for (let oy = 0.1; oy < T.h; oy += 0.9) for (const o of [-T.wr, 0, T.wr]) {
+        const c = dCell(fx - uz * o, d.y + oy, fz + ux * o);
+        if (c > 0 && !hit.includes(c)) hit.push(c);
+      }
+      let hard = 0;
+      hit.forEach(c => {
+        const t = VOX.dragon.grid[c];
+        if (!t) return;
+        if (JM.INFO[t].hp > 0) { VOX.dragon.hp[c] = Math.max(0, VOX.dragon.hp[c] - T.smash); if (VOX.dragon.hp[c] === 0) destroyCells([c]); }
+        else hard++;
+      });
+      if (hard) { d.sideUntil = now + 1500; d.side = d.side ? -d.side : 1; }   // pagoden/fjell: gå rundt
+      if (now - d.anchorAt > 9000) {                                  // helt fast lenge: hopp tilbake til nærmeste port
+        const g = DRAGON_GATES.slice().sort((a, b) => Math.hypot(a[0] - d.x, a[1] - d.z) - Math.hypot(b[0] - d.x, b[1] - d.z))[0];
+        d.x = g[0]; d.z = g[1]; d.y = 0; d.ax = d.x; d.az = d.z; d.anchorAt = now;
+      }
+    }
+  }
+  const g = dGround(d.x, d.y, d.z, T.wr);                              // tyngdekraft
+  if (d.y > g) d.y = Math.max(g, d.y - 9 * dt);
+  d.vy = 0;
+  d.x = Math.max(-58, Math.min(58, d.x)); d.z = Math.max(-58, Math.min(58, d.z));
+}
 const DRAGON_WAVES = 10, SHRINE_HP = 4000, DRAGON_PREP_MS = +process.env.DRAGON_PREP || 15000, DRAGON_BREAK_MS = 8000, DRAGON_SECONDS = 20 * 60;
 const DRAGON_HIT = { ak: 20, sniper: 90, dart: 30, bow: 45, crossbow: 85, sword: 40, flail: 70 };
 let dragonGame = null, dragonSeq = 0, dragonRecord = 0;
@@ -1884,7 +1946,8 @@ function spawnDragon(type) {
   const T = DRAGON[type], np = Math.max(1, Object.values(players).filter(p => !p.isBot).length);
   const a = Math.random() * Math.PI * 2;
   const hp = type === 'boss' ? Math.round(T.hp * (dragonGame.wave >= 10 ? 1.6 : 1) * (1 + 0.5 * (np - 1))) : T.hp;
-  const d = { id: ++dragonSeq, type, t: DRAGON_T.indexOf(type), x: Math.cos(a) * 75, y: 28 + Math.random() * 8, z: Math.sin(a) * 75,
+  const gate = DRAGON_GATES[Math.floor(Math.random() * DRAGON_GATES.length)];
+  const d = { id: ++dragonSeq, type, t: DRAGON_T.indexOf(type), x: DRAGON_WALK ? gate[0] + (Math.random() - 0.5) * 3 : Math.cos(a) * 75, y: DRAGON_WALK ? 0 : 28 + Math.random() * 8, z: DRAGON_WALK ? gate[1] + (Math.random() - 0.5) * 3 : Math.sin(a) * 75,
     vx: 0, vy: 0, vz: 0, hp, max: hp, mode: 'circle', ang: a, rad: type === 'boss' ? 26 : 30 + Math.random() * 12,
     alt: (type === 'boss' ? 22 : 15) + Math.random() * 8, nextAttack: Date.now() + 3000 + Math.random() * 5000, fireAt: Date.now() + 2500 + Math.random() * 2000,
     target: null, climbUntil: 0, dir: Math.random() < 0.5 ? 1 : -1 };
@@ -1937,6 +2000,31 @@ function fireballBoom(b) {
   });
   if (Math.hypot(x - JM.PAGODA.x, z - JM.PAGODA.z) < JM.PAGODA.r && y < JM.PAGODA.top) hurtShrine(b.big ? 90 : 45);
 }
+// [NY] Gående drager: går mot nærmeste spiller, biter når de er nær, ilddragene og kjempedragen spytter ild.
+function stepWalkingDragon(d, T, targets, now, dt) {
+  let best = null, bd = 1e9;
+  targets.forEach(t => { const dd = Math.hypot(t.x - d.x, t.z - d.z) + Math.abs(t.y - d.y) * 2; if (dd < bd) { bd = dd; best = t; } });
+  if (!best) { walkDragon(d, T, 0, 0, now, dt); return; }
+  const hd = Math.hypot(best.x - d.x, best.z - d.z), dy = best.y - d.y;
+  let gx = best.x, gz = best.z;
+  if (now < (d.sideUntil || 0)) { const px = -(best.z - d.z) / (hd || 1) * d.side, pz = (best.x - d.x) / (hd || 1) * d.side; gx = d.x + px * 4; gz = d.z + pz * 4; }   // gå rundt hindringen
+  if (hd > T.wr + 1.0) walkDragon(d, T, gx, gz, now, dt);
+  else {                                                           // står ved deg: snu deg mot målet (liten fart = retning til klienten)
+    walkDragon(d, T, d.x, d.z, now, dt);
+    const f = Math.atan2(best.x - d.x, best.z - d.z); d.vx = Math.sin(f) * 0.05; d.vz = Math.cos(f) * 0.05;
+  }
+  // Bitt
+  if (hd < T.wr + 1.6 && dy > -1 && dy < T.h + 0.5 && now >= (d.atkAt || 0)) {
+    d.atkAt = now + T.atkMs; d.bite = now;
+    chickHurt(best, T.dmg, d.type === 'boss' ? 'Kjempedragen 🐉' : d.type === 'fire' ? 'Ilddrage 🐉' : 'Drageunge 🐉', 'dragon', d.x, d.z);
+  }
+  // Ild: ilddragene og sjefen på avstand, små drager bare når du står høyt (på et tak) og de ikke når deg
+  const canFire = T.fireMs ? hd < 28 && hd > 4 : (dy > 2.5 && hd < 10);
+  if (canFire && now >= d.fireAt) {
+    d.fireAt = now + (T.fireMs || 2600);
+    dragonFire({ id: d.id, x: d.x, y: d.y + T.h * 0.85, z: d.z }, best.x + (Math.random() - 0.5) * 1.5, best.y + 0.6, best.z + (Math.random() - 0.5) * 1.5, d.type === 'boss');
+  }
+}
 const DRAGON_TICK = 100;
 setInterval(() => {
   if (!dragonMap() || intermission) return;
@@ -1964,6 +2052,7 @@ setInterval(() => {
   const targets = dragonTargets();
   g.list.forEach(d => {
     const T = DRAGON[d.type];
+    if (DRAGON_WALK) { stepWalkingDragon(d, T, targets, now, dt); return; }
     let gx, gy, gz, sp = T.speed;
     if (d.mode === 'circle') {
       d.ang += d.dir * sp / d.rad * dt;

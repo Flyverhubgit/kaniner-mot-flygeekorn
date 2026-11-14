@@ -115,6 +115,63 @@ function buildDragon(t) {
   return g;
 }
 
+// ---------- [NY] Gående drager: fire bein, hals, hode med horn, hale og små vinger ----------
+const WALK_SCALE = [1, 1.5, 3.1];        // liten, ild, kjempe (1 = ca. 1,6 m høy)
+function buildWalkingDragon(t) {
+  const L = DRAGON_LOOK[t], S = WALK_SCALE[t];
+  const g = new THREE.Group(), root = new THREE.Group(); root.scale.setScalar(S); g.add(root);
+  const mBody = new THREE.MeshStandardMaterial({ color: L.body, roughness: 0.55, metalness: 0.1 });
+  const mBelly = new THREE.MeshStandardMaterial({ color: L.belly, roughness: 0.65 });
+  const mMane = new THREE.MeshStandardMaterial({ color: L.mane, roughness: 0.6 });
+  const mGold = new THREE.MeshStandardMaterial({ color: 0xffd040, metalness: 0.4, roughness: 0.3, emissive: 0x302000 });
+  const mEye = new THREE.MeshBasicMaterial({ color: 0xffee40 });
+  const mDark = new THREE.MeshStandardMaterial({ color: 0x2a1a14 });
+  const box = (w, h, d, x, y, z, m, par) => { const o = new THREE.Mesh(typeof softBox === 'function' ? softBox(w, h, d) : new THREE.BoxGeometry(w, h, d), m); o.position.set(x, y, z); (par || root).add(o); return o; };
+  const body = box(0.95, 0.8, 1.6, 0, 0.95, 0, mBody);                       // kropp
+  box(0.75, 0.25, 1.3, 0, 0.6, 0.05, mBelly);                                 // lys buk
+  for (let i = 0; i < 5; i++) { const sp = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.32, 4), mMane); sp.position.set(0, 1.42, -0.6 + i * 0.3); root.add(sp); }   // rygg-pigger
+  // Hals og hode
+  const neck = box(0.42, 0.9, 0.42, 0, 1.35, 0.85, mBody); neck.rotation.x = 0.6;
+  const head = new THREE.Group(); head.position.set(0, 1.75, 1.2); root.add(head);
+  box(0.55, 0.45, 0.6, 0, 0, 0, mBody, head);                                 // skalle
+  box(0.4, 0.25, 0.55, 0, -0.04, 0.5, mBody, head);                           // snute
+  const jaw = new THREE.Group(); jaw.position.set(0, -0.18, 0.15); head.add(jaw);
+  box(0.36, 0.1, 0.6, 0, -0.03, 0.3, mBelly, jaw);                            // underkjeve
+  [-1, 1].forEach(s2 => {
+    box(0.1, 0.1, 0.06, s2 * 0.24, 0.1, 0.27, mEye, head);                    // gule øyne
+    const h = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.45, 5), mGold); h.position.set(s2 * 0.18, 0.32, -0.2); h.rotation.x = -0.8; h.rotation.z = s2 * 0.3; head.add(h);   // horn
+    box(0.04, 0.04, 0.04, s2 * 0.1, 0.07, 0.78, mDark, head);                 // nesebor
+    for (let k = 0; k < 3; k++) { const tooth = new THREE.Mesh(new THREE.ConeGeometry(0.025, 0.08, 4), new THREE.MeshStandardMaterial({ color: 0xffffff })); tooth.rotation.x = Math.PI; tooth.position.set(s2 * 0.13, -0.17, 0.35 + k * 0.12); head.add(tooth); }
+  });
+  // Bein (diagonalt par går sammen)
+  const legs = [];
+  [[-1, 1], [1, 1], [-1, -1], [1, -1]].forEach(([sx, sz], i) => {
+    const leg = new THREE.Group(); leg.position.set(sx * 0.42, 0.75, sz * 0.55); root.add(leg);
+    box(0.24, 0.45, 0.28, 0, -0.18, 0, mBody, leg);                           // lår
+    box(0.18, 0.4, 0.2, 0, -0.55, 0.04, mBody, leg);                          // legg
+    box(0.24, 0.08, 0.3, 0, -0.73, 0.1, mBody, leg);                          // fot
+    [-0.07, 0.07].forEach(cx => { const c = new THREE.Mesh(new THREE.ConeGeometry(0.03, 0.12, 4), mGold); c.rotation.x = Math.PI / 2; c.position.set(cx, -0.74, 0.28); leg.add(c); });   // klør
+    leg.userData.ph = (i === 0 || i === 3) ? 0 : Math.PI;
+    legs.push(leg);
+  });
+  // Hale (ledd som svinger)
+  const tail = []; let prev = root, px = 0, py = 0.95, pz = -0.8;
+  for (let i = 0; i < 6; i++) {
+    const seg = new THREE.Group(); seg.position.set(px, py, pz); prev.add(seg);
+    const k = 1 - i * 0.13; box(0.42 * k, 0.36 * k, 0.45, 0, 0, -0.2, mBody, seg);
+    if (i === 5) { const tip = new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.4, 4), mMane); tip.rotation.x = -Math.PI / 2; tip.position.z = -0.55; seg.add(tip); }
+    tail.push(seg); prev = seg; px = 0; py = i === 0 ? -0.05 : 0; pz = -0.42;
+  }
+  // Små vinger på ryggen
+  const wings = [-1, 1].map(s2 => {
+    const w = new THREE.Group(); w.position.set(s2 * 0.4, 1.35, 0.25); root.add(w);
+    const m = new THREE.Mesh(new THREE.ConeGeometry(0.45, 1.0, 3), new THREE.MeshStandardMaterial({ color: L.mane, roughness: 0.7, side: THREE.DoubleSide }));
+    m.scale.z = 0.15; m.rotation.z = s2 * -1.1; m.position.x = s2 * 0.35; w.add(m); return w;
+  });
+  g.traverse(o => { o.raycast = () => {}; if (o.isMesh) o.castShadow = t === 2 || !isTouch; });
+  g.userData = { walk: true, root, head, jaw, neck, body, legs, tail, wings, S, phase: Math.random() * 6, yaw: 0 };
+  return g;
+}
 const dragons = new Map();              // id -> { t, pos, target, vel, hp, model, hist, histT }
 socket.on('dragons', list => {
   const seen = new Set();
@@ -122,7 +179,7 @@ socket.on('dragons', list => {
     seen.add(id);
     let d = dragons.get(id);
     if (!d) {
-      d = { t, pos: new THREE.Vector3(x, y, z), target: new THREE.Vector3(x, y, z), vel: new THREE.Vector3(vx, vy, vz), hp, model: buildDragon(t), hist: [], histT: 0 };
+      d = { t, pos: new THREE.Vector3(x, y, z), target: new THREE.Vector3(x, y, z), vel: new THREE.Vector3(vx, vy, vz), hp, model: buildWalkingDragon(t), hist: [], histT: 0 };   // [NY] gående drage (buildDragon = flygende slange)
       d.model.position.set(0, 0, 0);
       dragonGroup.add(d.model); dragons.set(id, d);
       for (let i = 0; i < 420; i++) d.hist.push(d.pos.clone());
@@ -152,10 +209,12 @@ function dragonRayTest(o, dir, maxT) {
   let best = null, bt = maxT;
   const tmp = new THREE.Vector3();
   dragons.forEach((d, id) => {
-    const L = DRAGON_LOOK[d.t], parts = [d.model.userData.head].concat(d.model.userData.segs.filter((_, i) => i % 2 === 0));
+    const L = DRAGON_LOOK[d.t], ud = d.model.userData;
+    const parts = ud.walk ? [ud.head, ud.body, ud.neck, ud.tail[0], ud.tail[2]] : [ud.head].concat(ud.segs.filter((_, i) => i % 2 === 0));
+    const radii = ud.walk ? [0.5, 0.75, 0.4, 0.35, 0.3].map(r => r * ud.S) : null;
     parts.forEach((p, i) => {
       p.getWorldPosition(tmp);
-      const r = (i === 0 ? L.r * 1.5 : L.r * 1.15);
+      const r = radii ? radii[i] : (i === 0 ? L.r * 1.5 : L.r * 1.15);
       const oc = tmp.clone().sub(o), tc = oc.dot(dir);
       if (tc < 0) return;
       const d2 = oc.lengthSq() - tc * tc;
@@ -168,7 +227,10 @@ function dragonRayTest(o, dir, maxT) {
 }
 function dragonNear(pos, r) {           // er en rakett nær nok en drage til å smelle?
   if (!dragonOn()) return false;
-  for (const d of dragons.values()) if (pos.distanceTo(d.pos) < r + DRAGON_LOOK[d.t].r * 2) return true;
+  for (const d of dragons.values()) {
+    const S = WALK_SCALE[d.t];
+    if (Math.hypot(pos.x - d.pos.x, (pos.y - d.pos.y - S * 0.9) * 0.8, pos.z - d.pos.z) < r + S * 0.9) return true;
+  }
   return false;
 }
 
@@ -248,6 +310,22 @@ function updateDragons(dt) {
     d.pos.addScaledVector(d.vel, dt);
     d.pos.lerp(d.target, Math.min(1, dt * 6));
     const ud = d.model.userData, L = DRAGON_LOOK[d.t];
+    if (ud.walk) {                                                    // [NY] gående drage: bein, hale, kjeve og vinger
+      d.model.position.copy(d.pos);
+      const sp = Math.hypot(d.vel.x, d.vel.z);
+      if (sp > 0.01) { const want = Math.atan2(d.vel.x, d.vel.z); let df = want - ud.yaw; df = Math.atan2(Math.sin(df), Math.cos(df)); ud.yaw += df * Math.min(1, dt * 8); }
+      d.model.rotation.y = ud.yaw;
+      const moving = sp > 0.5;
+      ud.phase += dt * (moving ? sp * 2.2 / ud.S + 2 : 1.5);
+      ud.legs.forEach(l => { l.rotation.x = moving ? Math.sin(ud.phase + l.userData.ph) * 0.7 : 0; });
+      ud.tail.forEach((s, i) => { s.rotation.y = Math.sin(ud.phase * 0.6 - i * 0.7) * 0.25; s.rotation.x = 0.06; });
+      ud.jaw.rotation.x = moving ? 0.1 : 0.15 + Math.abs(Math.sin(t * 6)) * 0.5;      // biter når den står ved deg
+      ud.head.rotation.x = moving ? 0 : Math.sin(t * 6) * 0.15;
+      ud.wings.forEach((w, i) => { w.rotation.z = (i ? -1 : 1) * (0.15 + Math.sin(t * (moving ? 5 : 2)) * 0.15); });
+      ud.root.position.y = moving ? Math.abs(Math.sin(ud.phase)) * 0.05 : 0;
+      if (d.t === 2) boss = d;
+      return;
+    }
     ud.head.position.copy(d.pos);
     const v = d.vel.lengthSq() > 0.01 ? d.vel : new THREE.Vector3(0, 0, 1);
     ud.head.lookAt(d.pos.clone().add(v));
