@@ -108,12 +108,14 @@ function activeWorldGroup() {
   if (currentMap === 'lobby' && typeof lobbyGroup !== 'undefined') return lobbyGroup;   // [NY] loungen
   if (currentMap === 'medieval' && typeof medGroup !== 'undefined') return medGroup;     // [NY] Ridderborgen
   if (currentMap === 'west' && typeof westGroup !== 'undefined') return westGroup;       // [NY] Ville Vesten
+  if (currentMap === 'dragon' && typeof dragonGroup !== 'undefined') return dragonGroup; // [NY] Dragetempelet
   return currentMap === 'room' ? roomGroup : world;
 }
 function applyMap() {
   if (inUnderworld) return;               // underverdenen bestemmer selv
-  const room = currentMap === 'room', castle = currentMap === 'castle', space = currentMap === 'space', farm = currentMap === 'farm', sea = currentMap === 'sea', lobby = currentMap === 'lobby', med = currentMap === 'medieval', west = currentMap === 'west';
-  world.visible = !room && !castle && !space && !farm && !sea && !lobby && !med && !west;
+  const room = currentMap === 'room', castle = currentMap === 'castle', space = currentMap === 'space', farm = currentMap === 'farm', sea = currentMap === 'sea', lobby = currentMap === 'lobby', med = currentMap === 'medieval', west = currentMap === 'west', drag = currentMap === 'dragon';
+  world.visible = !room && !castle && !space && !farm && !sea && !lobby && !med && !west && !drag;
+  if (typeof dragonGroup !== 'undefined') dragonGroup.visible = drag;   // [NY] Dragetempelet
   if (typeof medGroup !== 'undefined') medGroup.visible = med;      // [NY] Ridderborgen
   if (typeof westGroup !== 'undefined') westGroup.visible = west;   // [NY] Ville Vesten
   if (typeof seaGroup !== 'undefined') seaGroup.visible = sea;      // [NY] dyphavet
@@ -123,20 +125,20 @@ function applyMap() {
   roomGroup.visible = room;
   if (typeof castleGroup !== 'undefined') castleGroup.visible = castle;   // [NY] klosseslottet
   colliders.length = 0;
-  (room ? roomColliders : castle ? castleColliders : space ? spaceColliders : farm ? farmColliders : sea ? seaColliders : lobby ? lobbyColliders : med ? medColliders : west ? westColliders : mainColliders).forEach(c => colliders.push(c));
-  const big = room || castle || space || farm || sea || med || west;
-  const sky = west ? 0xf2c890 : med ? 0x565e6c : lobby ? 0xf4e8d8 : sea ? 0x06304a : farm ? 0x0c1428 : space ? 0x03040c : room ? 0xfdf0dc : castle ? 0x9fd0ff : 0x87a7c4;
+  (room ? roomColliders : castle ? castleColliders : space ? spaceColliders : farm ? farmColliders : sea ? seaColliders : lobby ? lobbyColliders : med ? medColliders : west ? westColliders : drag ? dragonColliders : mainColliders).forEach(c => colliders.push(c));
+  const big = room || castle || space || farm || sea || med || west || drag;
+  const sky = drag ? 0xf4b8a8 : west ? 0xf2c890 : med ? 0x565e6c : lobby ? 0xf4e8d8 : sea ? 0x06304a : farm ? 0x0c1428 : space ? 0x03040c : room ? 0xfdf0dc : castle ? 0x9fd0ff : 0x87a7c4;
   // [NY] Natt på kyllingfarmen: svakere, blått månelys
   // [NY] Dyphavet: blågrønt, dempet lys ovenfra
   // [NY] Ridderborgen: overskyet og grått, regn i lufta
-  hemi.intensity = west ? 0.75 : med ? 0.5 : sea ? 0.55 : farm ? 0.42 : 0.7;
-  sun.color.setHex(west ? 0xfff0d0 : med ? 0xd8dce8 : sea ? 0x7fd6ff : farm ? 0xa9bcff : 0xffffff);
-  sun.intensity = west ? 0.95 : med ? 0.45 : sea ? 0.6 : farm ? 0.55 : 0.8;
+  hemi.intensity = drag ? 0.72 : west ? 0.75 : med ? 0.5 : sea ? 0.55 : farm ? 0.42 : 0.7;
+  sun.color.setHex(drag ? 0xffd8b8 : west ? 0xfff0d0 : med ? 0xd8dce8 : sea ? 0x7fd6ff : farm ? 0xa9bcff : 0xffffff);
+  sun.intensity = drag ? 0.85 : west ? 0.95 : med ? 0.45 : sea ? 0.6 : farm ? 0.55 : 0.8;
   sun.castShadow = !sea;                    // [NY] ytelse: ingen skygger under vann (synes knapt i mørket)
   scene.background.setHex(sky);
   scene.fog.color.setHex(sky);
-  scene.fog.near = west ? 90 : med ? 40 : lobby ? 200 : sea ? 14 : farm ? 30 : space ? 450 : big ? 140 : 70;      // [NY] dyphavet: tett tåke, ser ikke langt
-  scene.fog.far = west ? 300 : med ? 175 : lobby ? 400 : sea ? 85 : farm ? 125 : space ? 1500 : big ? 340 : 150;
+  scene.fog.near = drag ? 90 : west ? 90 : med ? 40 : lobby ? 200 : sea ? 14 : farm ? 30 : space ? 450 : big ? 140 : 70;      // [NY] dyphavet: tett tåke, ser ikke langt
+  scene.fog.far = drag ? 320 : west ? 300 : med ? 175 : lobby ? 400 : sea ? 85 : farm ? 125 : space ? 1500 : big ? 340 : 150;
   renderer.setClearColor(sky);
   camera.far = space ? 2000 : big ? 400 : 200;
   camera.updateProjectionMatrix();
@@ -149,12 +151,13 @@ function applyMap() {
   if (big) setFoam(false);
 }
 
-function mapFromName(n) { return ['room', 'castle', 'space', 'farm', 'sea', 'lobby', 'medieval', 'west'].includes(n) ? n : 'temple'; }
+function mapFromName(n) { return ['room', 'castle', 'space', 'farm', 'sea', 'lobby', 'medieval', 'west', 'dragon'].includes(n) ? n : 'temple'; }
 socket.on('map', d => {
   currentMap = mapFromName(d.name);
   applyMap();
   bannerMsg = '&#127918; Ny bane: ' + (currentMap === 'room' ? 'KJEMPE-BARNEROMMET &#129528;<br><span style="font-size:20px">Stor bane – bruk snikskytteren (2)!</span>'
     : currentMap === 'castle' ? 'KLOSSESLOTTET &#127984;<br><span style="font-size:20px">Alt kan skytes i stykker!</span>'
+    : currentMap === 'dragon' ? 'DRAGETEMPELET &#128009;&#9961;&#65039;<br><span style="font-size:20px">Alle sammen: forsvar pagoden mot dragene!</span>'
     : currentMap === 'west' ? 'VILLE VESTEN &#129312;&#127797;<br><span style="font-size:20px">Pass deg for toget!</span>'
     : currentMap === 'medieval' ? 'RIDDERBORGEN &#9876;&#65039;&#127984;<br><span style="font-size:20px">Storm fiendens borg!</span>'
     : currentMap === 'lobby' ? 'LOUNGEN &#127968;<br><span style="font-size:20px">Gå inn i en portal for å velge bane</span>'

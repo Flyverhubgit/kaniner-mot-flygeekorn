@@ -192,8 +192,9 @@ function drawScreen(res) {
     x.fillText('Gå inn i en portal for å velge bane', 512, 230);
     x.fillText('Kjøp skins hos kyllingen 🐔', 512, 300);
   } else {
-    const names = { temple: 'Tempelet', room: 'Barnerommet', castle: 'Klosseslottet', space: 'Verdensrommet', farm: 'Zombie-kyllinger', sea: 'Dyphavsbasen' };
-    const head = res.farm ? (res.farm.result === 'win' ? '🎉 SEIER! Bølge ' + res.farm.wave : '😵 Tap på bølge ' + res.farm.wave)
+    const names = { temple: 'Tempelet', room: 'Barnerommet', castle: 'Klosseslottet', space: 'Verdensrommet', farm: 'Zombie-kyllinger', sea: 'Dyphavsbasen', medieval: 'Ridderborgen', west: 'Ville Vesten', dragon: 'Dragetempelet' };
+    const co = res.farm || res.dragon;                 // [NY] samarbeids-baner (kyllinger / drager)
+    const head = co ? (co.result === 'win' ? '🎉 SEIER! Bølge ' + co.wave : '😵 Tap på bølge ' + co.wave)
       : res.winner === 'draw' ? 'Uavgjort!' : res.winner === 'bunny' ? '🐰 Kaninene vant!' : '🐿️ Flygeekornene vant!';
     x.fillText('Forrige runde: ' + (names[res.map] || ''), 512, 70);
     x.fillStyle = '#fff'; x.font = 'bold 48px sans-serif'; x.fillText(head, 512, 150);

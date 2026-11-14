@@ -305,7 +305,8 @@ function voxelOn() {
   return typeof currentMap !== 'undefined' && (currentMap === 'castle' || (currentMap === 'farm' && typeof farmWorld !== 'undefined' && farmWorld) ||
     (currentMap === 'sea' && typeof seaWorld !== 'undefined' && seaWorld) ||
     (currentMap === 'medieval' && typeof medWorld !== 'undefined' && medWorld) ||
-    (currentMap === 'west' && typeof westWorld !== 'undefined' && westWorld)) && !underNow() && typeof castleBlocked === 'function';   // [NY] + dyphavet + Ridderborgen
+    (currentMap === 'west' && typeof westWorld !== 'undefined' && westWorld) ||
+    (currentMap === 'dragon' && typeof dragonWorld !== 'undefined' && dragonWorld)) && !underNow() && typeof castleBlocked === 'function';   // [NY] + dyphavet + Ridderborgen
 }
 
 // Høyden på bakken (eller trinnet) under spilleren
@@ -1043,7 +1044,7 @@ function throwNade() {
   if (currentMap === 'lobby') return;                // [NY] ingen granater i loungen
   if (typeof spaceThrow === 'function' && spaceThrow()) return;   // [NY] torpedo fra jagerflyet
   if (typeof holyThrow === 'function' && holyThrow()) return;   // [NY] har du den hellige ferskenen, kastes den
-  const endless = underNow() || (typeof hordeOn === 'function' && hordeOn());   // [NY] uendelig i underverdenen og på kyllingfarmen
+  const endless = underNow() || (typeof hordeOn === 'function' && hordeOn()) || (typeof dragonOn === 'function' && dragonOn());   // [NY] uendelig i underverdenen, på kyllingfarmen og i dragetempelet
   if (!joined || !alive || (!endless && grenades <= 0) || nadeCooldown > 0) return;
   if (!endless) grenades--;            // [NY] uendelig med granater i underverdenen
   myProtectUntil = 0;
@@ -1268,7 +1269,7 @@ function removeRocket(id) {
 }
 function fireRocket() {
   if (weapon.mag <= 0) return;
-  if (typeof hordeOn === 'function' && hordeOn()) bazW.reserve = 9;   // [NY] kyllingfarmen: uendelig med raketter (men du lader om)
+  if ((typeof hordeOn === 'function' && hordeOn()) || (typeof dragonOn === 'function' && dragonOn())) bazW.reserve = 9;   // [NY] kyllingfarmen / dragetempelet: uendelig med raketter (men du lader om)
   weapon.mag--;
   fireCooldown = weapon.fireDelay;
   recoil = 1.5;
@@ -1305,6 +1306,7 @@ function updateRockets(dt) {
         if (!o.alive || o.team === myTeam) continue;
         if (Math.hypot(r.pos.x - o.cur.x, r.pos.y - (o.cur.y + 0.9), r.pos.z - o.cur.z) < 0.9) { hit = true; break; }
       }
+      if (!hit && typeof dragonNear === 'function' && dragonNear(r.pos, 1)) hit = true;   // [NY] raketten smeller ved en drage
     }
     r.mesh.position.copy(r.pos);
     r.mesh.rotateZ(dt * 8);                       // snurrer litt
@@ -1574,9 +1576,19 @@ function shoot() {
     const fr = farmRayTest(o, d, bestT);
     if (fr) { bestT = fr.t; target = null; if (fr.chick) chick = fr; else barrelHit = fr; }
   }
+  // [NY] Drager i Dragetempelet (dragon.js)
+  let dragonHit = null;
+  if (typeof dragonRayTest === 'function') {
+    const dh = dragonRayTest(o, d, bestT);
+    if (dh) { bestT = dh.t; target = null; chick = null; barrelHit = null; dragonHit = dh; }
+  }
   const end = o.clone().addScaledVector(d, bestT);
 
-  if (chick) {
+  if (dragonHit) {
+    socket.emit('dragonHit', { id: dragonHit.id, w: weapon.id });   // [NY]
+    addStuffing(end);
+    hitmarkTime = 0.1;
+  } else if (chick) {
     socket.emit('chickenHit', { id: chick.id, head: chick.head, w: egg ? 'egg' : weapon.id });
     if (chick.head && typeof playPop === 'function') playPop();   // [NY] pop på hodeskudd
     addStuffing(end);                                             // fjær!
@@ -1697,7 +1709,7 @@ function updateWeapon(dt) {
     return;
   }
   hud.textContent = wIcon + (medHud ? '∞' : reloading > 0 ? 'LADER...' : weapon.mag + ' / ' + (weapon.reserve === Infinity ? '∞' : weapon.reserve)) +
-    (medHud ? '   🔥 ' : '   💣 ') + (underNow() || (typeof hordeOn === 'function' && hordeOn()) ? '∞' : grenades) + (window.holyMine ? '   🍑 HELLIG FERSKEN (G)' : '');   // [NY] viser granater også (uendelig i underverdenen)
+    (medHud ? '   🔥 ' : '   💣 ') + (underNow() || (typeof hordeOn === 'function' && hordeOn()) || (typeof dragonOn === 'function' && dragonOn()) ? '∞' : grenades) + (window.holyMine ? '   🍑 HELLIG FERSKEN (G)' : '');   // [NY] viser granater også (uendelig i underverdenen)
 }
 
 // ===================================================================
@@ -2260,6 +2272,7 @@ function animate(now) {
     if (typeof updateMedieval === 'function') updateMedieval(dt);   // [NY] Ridderborgen
     if (typeof updateHammer === 'function') updateHammer(dt);       // [NY] hammeren: byggeklosser
     if (typeof updateWest === 'function') updateWest(dt);           // [NY] Ville Vesten: toget, tumbleweeds
+    if (typeof updateDragons === 'function') updateDragons(dt);     // [NY] Dragetempelet: dragene
     if (typeof updateFarmVehicles === 'function') updateFarmVehicles(dt);   // [NY] doser og A-10
     if (typeof updateEasterEggs === 'function') updateEasterEggs(dt);       // [NY] påskeegget
     if (typeof updateFun === 'function') updateFun(dt);         // [NY] fyrverkeri

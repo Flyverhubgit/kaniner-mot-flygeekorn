@@ -12,6 +12,7 @@ const SM = require('./public/seamap.js');      // [NY] dyphavsbasen (samme kloss
 const LM = require('./public/lobbymap.js');    // [NY] loungen der alle møtes mellom rundene
 const MM = require('./public/medievalmap.js'); // [NY] Ridderborgen (middelalder-borgene)
 const WM = require('./public/westmap.js');     // [NY] Ville Vesten (cowboybyen)
+const JM = require('./public/japanmap.js');    // [NY] Dragetempelet (japansk tempel, drager)
 
 const app = express();
 app.use(require('compression')());                // [NY] pakker filene (ca. 1 MB -> 250 KB) – raskere lasting på mobil
@@ -68,7 +69,7 @@ let foamHoles = [];            // [x, z] for hvert granat-hull (til nye spillere
 // Underverdenen: et skjult håndtak sender alle ned til lava-arenaen til neste runde
 let worldName = 'main';        // 'main' eller 'underworld'
 // Baner byttes hver runde: tempelet og det kjempestore barnerommet (snikskytterbane)
-const MAPS = ['temple', 'room', 'castle', 'space', 'farm', 'sea', 'medieval', 'west']       // rekkefølgen banene byttes i
+const MAPS = ['temple', 'room', 'castle', 'space', 'farm', 'sea', 'medieval', 'west', 'dragon']       // rekkefølgen banene byttes i
   .filter(m => !LM.HIDDEN_MAPS.includes(m) || process.env.START_MAP === m);   // [NY] zombie-kyllinger og dyphavet er tatt bort (se lobbymap.js)
 // [NY] Alle starter i LOUNGEN ('lobby'). Der stemmer man ved å stå i en portal. (START_MAP er for testing)
 let mapName = MAPS.includes(process.env.START_MAP) || process.env.START_MAP === 'lobby' ? process.env.START_MAP : 'lobby';
@@ -96,7 +97,7 @@ function makeVox(LIB) {
   const pristine = LIB.build();
   return { LIB, pristine, grid: pristine.slice(), hp: new Uint8Array(pristine.length), gone: [], built: [] };
 }
-const VOX = { castle: makeVox(CM), farm: makeVox(FM), sea: makeVox(SM), medieval: makeVox(MM), west: makeVox(WM) };
+const VOX = { castle: makeVox(CM), farm: makeVox(FM), sea: makeVox(SM), medieval: makeVox(MM), west: makeVox(WM), dragon: makeVox(JM) };
 function resetVox(name) {
   const V = VOX[name];
   if (!V) return;
@@ -105,7 +106,7 @@ function resetVox(name) {
   V.gone = [];
   V.built = [];                                     // [NY] byggeklosser forsvinner ved ny runde
 }
-resetVox('castle'); resetVox('farm'); resetVox('sea'); resetVox('medieval'); resetVox('west');
+resetVox('castle'); resetVox('farm'); resetVox('sea'); resetVox('medieval'); resetVox('west'); resetVox('dragon');
 // [NY] "Horde"-baner: alle spillerne sammen mot monstre (kyllingfarmen og dyphavsbasen)
 function hordeMap() { return mapName === 'farm' || mapName === 'sea'; }
 function HL() { return mapName === 'sea' ? SM : FM; }          // kartet til horde-banen
@@ -982,6 +983,19 @@ function spawnFor(team) {
     return { x: -6.5, y: 0, z: 3.5, yaw: 0 };
   }
   if (mapName === 'lobby') return LM.spawnPoint();          // [NY] loungen: midt i rommet
+  if (mapName === 'dragon') {                               // [NY] Dragetempelet: alle på gårdsplassen rundt pagoden
+    const G = VOX.dragon.grid;
+    for (let k = 0; k < 60; k++) {
+      const a = Math.random() * Math.PI * 2, r = JM.SPAWN.rMin + Math.random() * (JM.SPAWN.rMax - JM.SPAWN.rMin);
+      const x = Math.cos(a) * r, z = Math.sin(a) * r;
+      let ok = true;
+      for (let ix = Math.floor(x - 0.5); ix <= Math.floor(x + 0.5); ix++)
+        for (let iz = Math.floor(z - 0.5); iz <= Math.floor(z + 0.5); iz++)
+          for (let y = 0; y < 2; y++) if (G[JM.idx(ix, y, iz)]) ok = false;
+      if (ok) return { x, y: 0, z, yaw: Math.atan2(x, z) + Math.PI };   // se utover (mot dragene)
+    }
+    return { x: 0, y: 0, z: 14, yaw: Math.PI };
+  }
   if (mapName === 'west') {                                 // [NY] Ville Vesten: i innhegningen i egen ende av byen
     const S = WM.SPAWNS.bunny, G = VOX.west.grid, sq = team === 'squirrel';
     for (let k = 0; k < 60; k++) {
@@ -1209,7 +1223,7 @@ io.on('connection', socket => {
   socket.on('hit', d => {
     const p = players[socket.id];
     if (!p || !p.alive || intermission || !d) return;
-    if (hordeMap() || mapName === 'lobby') return;     // [NY] kyllingfarmen/dyphavet: samme lag. Loungen: ingen skade
+    if (hordeMap() || mapName === 'lobby' || mapName === 'dragon') return;     // [NY] kyllingfarmen/dyphavet/dragetempelet: samme lag. Loungen: ingen skade
     const t = players[d.target];
     if (!t || !t.alive || t.team === p.team) return;
     const now = Date.now();
@@ -1261,7 +1275,7 @@ io.on('connection', socket => {
       return;
     }
     // Uendelig med granater i underverdenen
-    const endless = worldName === 'underworld' || hordeMap();   // [NY] uendelig i underverdenen og på kyllingfarmen
+    const endless = worldName === 'underworld' || hordeMap() || mapName === 'dragon';   // [NY] uendelig i underverdenen og på kyllingfarmen
     if (!p || !p.alive || (!endless && p.nades <= 0) || !d || typeof d.id !== 'string' || d.id.length > 40) return;
     if (!Array.isArray(d.p) || !Array.isArray(d.v)) return;
     const pos = d.p.map(v => num(v, -250, 250)), vel = d.v.map(v => num(v, -40, 40));   // [FIKS] dyphavet er 220 m bredt
@@ -1301,6 +1315,7 @@ io.on('connection', socket => {
     blastOwner = p; blastCells(pos[0], pos[1], pos[2], 3); blastOwner = null;   // granaten sprenger klosser (klosse-baner)
     if (foamOn && pos[1] < 3) foamHoles.push([pos[0], pos[2]]);   // hullet i skummet blir stående
     if (intermission) return;
+    if (dragonMap()) { areaHurtDragons(pos[0], pos[1], pos[2], NADE_RADIUS, NADE_MAX_DMG, p); return; }   // [NY] bare drager tar skade
     if (farmActive()) {                               // [NY] kyllingfarmen: skader kyllinger, tenner på høy, smeller tønner
       areaHurtChicks(pos[0], pos[2], NADE_RADIUS, NADE_MAX_DMG, p);
       igniteAt(pos[0], pos[1], pos[2], 5);           // ilden når litt lenger enn hullet
@@ -1548,7 +1563,7 @@ io.on('connection', socket => {
   // Bazooka: rakett skutt (vises for de andre)
   socket.on('rocketFire', d => {
     const p = players[socket.id];
-    if (!p || !p.alive || (p.rockets <= 0 && !hordeMap()) || !d || typeof d.id !== 'string' || d.id.length > 40) return;   // [NY] uendelig på kyllingfarmen
+    if (!p || !p.alive || (p.rockets <= 0 && !hordeMap() && mapName !== 'dragon') || !d || typeof d.id !== 'string' || d.id.length > 40) return;   // [NY] uendelig på kyllingfarmen
     if (!Array.isArray(d.p) || !Array.isArray(d.v)) return;
     const pos = d.p.map(v => num(v, -100, 100)), vel = d.v.map(v => num(v, -40, 40));
     if (pos.includes(null) || vel.includes(null)) return;
@@ -1568,6 +1583,7 @@ io.on('connection', socket => {
     io.emit('boom', { id: d.id, p: pos, big: 1.6 });
     blastOwner = p; blastCells(pos[0], pos[1], pos[2], ROCKET_BLOCKS); blastOwner = null;
     if (intermission) return;
+    if (dragonMap()) { areaHurtDragons(pos[0], pos[1], pos[2], ROCKET_RADIUS * 1.2, ROCKET_MAX_DMG * 1.5, p); return; }   // [NY] bazooka mot drager
     if (farmActive()) {                               // [NY] kyllingfarmen
       areaHurtChicks(pos[0], pos[2], ROCKET_RADIUS, ROCKET_MAX_DMG, p);
       igniteAt(pos[0], pos[1], pos[2], 5.5);
@@ -1658,6 +1674,20 @@ io.on('connection', socket => {
     socket.emit('stash', { n: p.blocks });
   });
 
+  // [NY] Skudd som treffer en drage (klienten sjekker treffet, serveren bestemmer skaden)
+  socket.on('dragonHit', d => {
+    const p = players[socket.id];
+    if (!p || !p.alive || !d || !dragonMap() || !dragonGame || intermission) return;
+    const dr = dragonGame.list.get(d.id);
+    if (!dr) return;
+    const now = Date.now(), w = DRAGON_HIT[d.w] ? d.w : 'ak', sn = w === 'sniper' || w === 'crossbow';
+    if (now - (sn ? (p.lastDragonSn || 0) : (p.lastDragonHit || 0)) < (sn ? SNIPER_MIN_MS : MIN_HIT_MS)) return;
+    if (sn) p.lastDragonSn = now; else p.lastDragonHit = now;
+    if (Math.hypot(dr.x - p.x, dr.y - p.y, dr.z - p.z) > 220) return;
+    p.protectedUntil = 0;
+    hurtDragon(dr, DRAGON_HIT[w], p);
+  });
+
   socket.on('blockHit', d => {
     const p = players[socket.id];
     const V = vox();
@@ -1729,7 +1759,8 @@ function startMap(name) {
   io.emit('map', { name: mapName, lastResult });
   balanceBots();                                                   // [NY] roboter inn/ut med en gang
   Object.values(players).forEach(p => { leaveVehicle(p); p.kills = 0; p.deaths = 0; p.streak = 0; respawn(p); });
-  roundEndsAt = mapName === 'lobby' ? Infinity : Date.now() + (hordeMap() ? FARM_SECONDS : ROUND_SECONDS) * 1000;
+  roundEndsAt = mapName === 'lobby' ? Infinity : Date.now() + (hordeMap() ? FARM_SECONDS : mapName === 'dragon' ? DRAGON_SECONDS : ROUND_SECONDS) * 1000;
+  if (mapName === 'dragon') resetDragons(); else dragonGame = null;   // [NY] dragebølgene
   intermission = false;
   if (hordeMap()) resetFarm(); else farm = null;
   foamOn = false; foamHoles = [];
@@ -1788,9 +1819,16 @@ setInterval(() => {
       winner = 'farm';
       farm.chicks.clear(); io.emit('chix', []);
     }
+    let dragonResult = null;
+    if (mapName === 'dragon' && dragonGame) {        // [NY] dragetempelet: seier eller tap for alle sammen
+      dragonResult = { result: dragonGame.state === 'win' ? 'win' : 'lose', wave: dragonGame.wave, record: dragonRecord,
+        stats: Object.values(players).filter(q => !q.isBot).map(q => ({ name: q.name, team: q.team, kills: q.kills, deaths: q.deaths })) };
+      winner = 'dragon';
+      dragonGame.list.clear(); io.emit('dragons', []);
+    }
     votes = {};
-    io.emit('roundOver', { winner, score, board: board(), maps: MAPS, votes: voteCounts(), voteSeconds: BREAK_SECONDS, farm: farmResult });
-    lastResult = { winner, board: board(), farm: farmResult, map: mapName };   // [NY] vises på skjermen i loungen
+    io.emit('roundOver', { winner, score, board: board(), maps: MAPS, votes: voteCounts(), voteSeconds: BREAK_SECONDS, farm: farmResult, dragon: dragonResult });
+    lastResult = { winner, board: board(), farm: farmResult, dragon: dragonResult, map: mapName };   // [NY] vises på skjermen i loungen
     setTimeout(() => startMap('lobby'), BREAK_SECONDS * 1000);   // [NY] etter runden: alle tilbake til loungen
   }
   if (fleet) TEAMS.forEach(t => fleet[t].turrets.forEach(u => {   // [NY] ødelagte kanontårn repareres
@@ -1803,6 +1841,173 @@ setInterval(() => {
   });
 }, 1000);
 
+
+// ===================================================================
+// [NY] DRAGETEMPELET 🐉⛩️ – alle spiller sammen mot bølger av drager.
+// Dragene flyr (ingen veifinning trengs): de sirkler over tempelet og stuper ned
+// mot spillere eller pagoden. Ilddragene spytter ildkuler. Kjempedragen kommer i bølge 5 og 10.
+// Pagoden har eget liv – faller den, har dragene vunnet. Klarer dere 10 bølger, har dere vunnet.
+// ===================================================================
+const DRAGON_T = ['small', 'fire', 'boss'];
+const DRAGON = {
+  small: { hp: 90, speed: 10, dmg: 12, r: 1.4, shrine: 40 },
+  fire: { hp: 260, speed: 8, dmg: 20, r: 2.0, shrine: 60, fireMs: 3800 },
+  boss: { hp: 2500, speed: 6.5, dmg: 35, r: 4.0, shrine: 150, fireMs: 1800 }
+};
+const DRAGON_WAVES = 10, SHRINE_HP = 4000, DRAGON_PREP_MS = +process.env.DRAGON_PREP || 15000, DRAGON_BREAK_MS = 8000, DRAGON_SECONDS = 20 * 60;
+const DRAGON_HIT = { ak: 20, sniper: 90, dart: 30, bow: 45, crossbow: 85, sword: 40, flail: 70 };
+let dragonGame = null, dragonSeq = 0, dragonRecord = 0;
+function dragonMap() { return mapName === 'dragon' && worldName === 'main'; }
+function resetDragons() {
+  const np = Math.max(1, Object.values(players).filter(p => !p.isBot).length);
+  dragonGame = { wave: 0, state: 'prep', nextAt: Date.now() + DRAGON_PREP_MS, queue: [], spawnAt: 0, list: new Map(), balls: [],
+    shrine: SHRINE_HP * (1 + 0.3 * (np - 1)), shrineMax: SHRINE_HP * (1 + 0.3 * (np - 1)) };
+  dragonWaveMsg();
+}
+function dragonWaveMsg(extra) {
+  const g = dragonGame;
+  io.emit('dwave', Object.assign({ n: g.wave, of: DRAGON_WAVES, state: g.state, shrine: Math.round(g.shrine), max: Math.round(g.shrineMax), left: g.list.size + g.queue.length, record: dragonRecord }, extra || {}));
+}
+function dragonWaveList(n) {
+  const np = Math.max(1, Object.values(players).filter(p => !p.isBot).length), k = 1 + 0.4 * (np - 1), list = [];
+  for (let i = 0; i < Math.round((3 + 2 * n) * k); i++) list.push('small');
+  for (let i = 0; i < Math.round((n >= 2 ? Math.floor(n * 0.8) : 0) * k); i++) list.push('fire');
+  list.sort(() => Math.random() - 0.5);
+  if (n === 5 || n === 10) list.splice(Math.floor(list.length / 3), 0, 'boss');
+  return list;
+}
+function spawnDragon(type) {
+  const T = DRAGON[type], np = Math.max(1, Object.values(players).filter(p => !p.isBot).length);
+  const a = Math.random() * Math.PI * 2;
+  const hp = type === 'boss' ? Math.round(T.hp * (dragonGame.wave >= 10 ? 1.6 : 1) * (1 + 0.5 * (np - 1))) : T.hp;
+  const d = { id: ++dragonSeq, type, t: DRAGON_T.indexOf(type), x: Math.cos(a) * 75, y: 28 + Math.random() * 8, z: Math.sin(a) * 75,
+    vx: 0, vy: 0, vz: 0, hp, max: hp, mode: 'circle', ang: a, rad: type === 'boss' ? 26 : 30 + Math.random() * 12,
+    alt: (type === 'boss' ? 22 : 15) + Math.random() * 8, nextAttack: Date.now() + 3000 + Math.random() * 5000, fireAt: Date.now() + 2500 + Math.random() * 2000,
+    target: null, climbUntil: 0, dir: Math.random() < 0.5 ? 1 : -1 };
+  dragonGame.list.set(d.id, d);
+  if (type === 'boss') io.emit('dragonBoss', { id: d.id });
+}
+function dragonTargets() { return Object.values(players).filter(p => p.alive && !p.isBot); }
+function hurtShrine(dmg) {
+  const g = dragonGame;
+  if (!g || g.state === 'lose' || g.state === 'win') return;
+  g.shrine = Math.max(0, g.shrine - dmg);
+  if (g.shrine <= 0) { g.state = 'lose'; roundEndsAt = Date.now() + 2500; }
+  g.shrineDirty = true;
+}
+function killDragon(d, p) {
+  if (!dragonGame.list.has(d.id)) return;
+  dragonGame.list.delete(d.id);
+  if (p) { p.kills++; if (players[p.id]) io.to(p.id).emit('hitConfirm', { head: false, kill: true }); }
+  io.emit('dragonDie', { id: d.id, t: d.t, by: p ? p.id : null, p: [+d.x.toFixed(1), +d.y.toFixed(1), +d.z.toFixed(1)] });
+  dragonWaveMsg();
+}
+function hurtDragon(d, dmg, p) {
+  if (!dragonGame || !dragonGame.list.has(d.id)) return;
+  d.hp -= dmg;
+  if (d.hp <= 0) killDragon(d, p);
+}
+function areaHurtDragons(x, y, z, r, max, p) {
+  if (!dragonMap() || !dragonGame) return;
+  [...dragonGame.list.values()].forEach(d => {
+    const dist = Math.hypot(d.x - x, d.y - y, d.z - z) - DRAGON[d.type].r;
+    if (dist < r) hurtDragon(d, Math.round(max * Math.max(0.3, 1 - Math.max(0, dist) / r)), p);
+  });
+}
+// Ildkule: flyr mot målet, smeller når den kommer fram (eller treffer en kloss)
+function dragonFire(d, tx, ty, tz, big) {
+  const from = [d.x, d.y - 0.5, d.z], dist = Math.hypot(tx - from[0], ty - from[1], tz - from[2]);
+  const speed = big ? 20 : 24, ms = Math.max(300, dist / speed * 1000);
+  const id = 'df' + d.id + '_' + Date.now();
+  dragonGame.balls.push({ id, from, to: [tx, ty, tz], at: Date.now(), ms, big });
+  io.emit('dragonFire', { id, from: from.map(v => +v.toFixed(1)), to: [+tx.toFixed(1), +ty.toFixed(1), +tz.toFixed(1)], ms: Math.round(ms), big: !!big });
+}
+function fireballBoom(b) {
+  const [x, y, z] = b.to, r = b.big ? 3.6 : 2.6, dmg = b.big ? 40 : 25;
+  io.emit('boom', { id: b.id, p: [x, y, z], big: b.big ? 2 : 1.3 });
+  blastCells(x, y, z, b.big ? 2.2 : 1.6);
+  dragonTargets().forEach(t => {
+    const dd = Math.hypot(t.x - x, t.y + 0.9 - y, t.z - z);
+    if (dd < r) chickHurt(t, Math.round(dmg * (1 - dd / r) + 5), 'Dragebål 🔥', 'dragonfire', x, z);
+  });
+  if (Math.hypot(x - JM.PAGODA.x, z - JM.PAGODA.z) < JM.PAGODA.r && y < JM.PAGODA.top) hurtShrine(b.big ? 90 : 45);
+}
+const DRAGON_TICK = 100;
+setInterval(() => {
+  if (!dragonMap() || intermission) return;
+  if (!dragonGame) resetDragons();                                  // (f.eks. START_MAP=dragon)
+  const g = dragonGame, now = Date.now(), dt = DRAGON_TICK / 1000;
+  // --- Bølgene ---
+  if ((g.state === 'prep' || g.state === 'break') && now >= g.nextAt) {
+    g.wave++; g.state = 'fight'; g.queue = dragonWaveList(g.wave); g.spawnAt = now;
+    if (g.wave > 1) g.shrine = Math.min(g.shrineMax, g.shrine + g.shrineMax * 0.15);   // litt reparasjon hver bølge
+    Object.values(players).forEach(p => { if (!p.alive) respawn(p); });
+    dragonWaveMsg({ start: true });
+  }
+  if (g.state === 'fight') {
+    if (g.queue.length && now >= g.spawnAt && g.list.size < 40) { spawnDragon(g.queue.shift()); g.spawnAt = now + 700; }
+    if (!g.queue.length && !g.list.size) {
+      dragonRecord = Math.max(dragonRecord, g.wave);
+      if (g.wave >= DRAGON_WAVES) { g.state = 'win'; roundEndsAt = now + 2500; dragonWaveMsg({ cleared: true, result: 'win' }); }
+      else { g.state = 'break'; g.nextAt = now + DRAGON_BREAK_MS; dragonWaveMsg({ cleared: true }); }
+    }
+  }
+  // --- Hver drage ---
+  const targets = dragonTargets();
+  g.list.forEach(d => {
+    const T = DRAGON[d.type];
+    let gx, gy, gz, sp = T.speed;
+    if (d.mode === 'circle') {
+      d.ang += d.dir * sp / d.rad * dt;
+      gx = Math.cos(d.ang) * d.rad; gz = Math.sin(d.ang) * d.rad; gy = d.alt + Math.sin(now / 900 + d.id) * 2;
+      if (now >= d.nextAttack) {
+        // Velg: en spiller (nærmeste) eller pagoden
+        let best = null, bd = 1e9;
+        targets.forEach(t => { const dd = Math.hypot(t.x - d.x, t.z - d.z); if (dd < bd) { bd = dd; best = t; } });
+        d.target = best && Math.random() < 0.6 ? best.id : 'shrine';
+        d.mode = d.type === 'small' ? 'dive' : 'strafe';
+        d.modeUntil = now + (d.type === 'small' ? 6000 : 7000);
+      }
+    } else {
+      const t = d.target === 'shrine' ? null : players[d.target];
+      if (d.target !== 'shrine' && (!t || !t.alive)) { d.mode = 'circle'; d.nextAttack = now + 1500; }
+      const tx = t ? t.x : JM.PAGODA.x + Math.cos(d.ang) * 5, tz = t ? t.z : JM.PAGODA.z + Math.sin(d.ang) * 5, ty = t ? t.y + 1 : 6 + (d.id % 3) * 4;
+      if (d.mode === 'dive') {
+        gx = tx; gy = ty; gz = tz; sp = T.speed * 1.4;
+        const dist = Math.hypot(tx - d.x, ty - d.y, tz - d.z);
+        if (dist < T.r + 1.2) {                                     // BITT!
+          if (t) chickHurt(t, T.dmg, d.type === 'boss' ? 'Kjempedragen 🐉' : 'Drageunge 🐉', 'dragon', d.x, d.z);
+          else hurtShrine(T.shrine);
+          d.mode = 'climb'; d.climbUntil = now + 1500;
+        }
+        if (now > d.modeUntil) { d.mode = 'climb'; d.climbUntil = now + 1200; }
+      } else if (d.mode === 'strafe') {                            // fly over målet i passe høyde og spytt ild
+        const hx = tx - d.x, hz = tz - d.z, hd = Math.hypot(hx, hz) || 1;
+        gx = tx + hx / hd * 10; gz = tz + hz / hd * 10; gy = (t ? t.y : 0) + (d.type === 'boss' ? 16 : 11);
+        if (hd < 28 && now >= d.fireAt) { d.fireAt = now + T.fireMs; dragonFire(d, tx + (Math.random() - 0.5) * 2, ty - 0.5, tz + (Math.random() - 0.5) * 2, d.type === 'boss'); }
+        if (d.type === 'boss' && !t && hd < 8 && Math.random() < 0.02) { d.mode = 'dive'; d.modeUntil = now + 4000; }   // kjempedragen stuper mot pagoden innimellom
+        if (now > d.modeUntil) { d.mode = 'circle'; d.nextAttack = now + 4000 + Math.random() * 4000; }
+      } else if (d.mode === 'climb') {
+        gx = d.x + d.vx; gz = d.z + d.vz; gy = d.alt + 4;
+        if (now > d.climbUntil) { d.mode = 'circle'; d.ang = Math.atan2(d.z, d.x); d.nextAttack = now + 3000 + Math.random() * 4000; }
+      }
+    }
+    // Styr mykt mot målet
+    const dx = gx - d.x, dy = gy - d.y, dz = gz - d.z, dl = Math.hypot(dx, dy, dz) || 1;
+    const k = Math.min(1, dt * (d.mode === 'dive' ? 3.5 : 2.2));
+    d.vx += (dx / dl * sp - d.vx) * k; d.vy += (dy / dl * sp - d.vy) * k; d.vz += (dz / dl * sp - d.vz) * k;
+    d.x += d.vx * dt; d.y += d.vy * dt; d.z += d.vz * dt;
+    d.y = Math.max(d.mode === 'dive' ? 0.8 : 4, Math.min(40, d.y));
+    d.x = Math.max(-90, Math.min(90, d.x)); d.z = Math.max(-90, Math.min(90, d.z));
+  });
+  // --- Ildkuler ---
+  g.balls = g.balls.filter(b => { if (now >= b.at + b.ms) { fireballBoom(b); return false; } return true; });
+  // --- Send til alle (10 ganger i sekundet) ---
+  const out = [];
+  g.list.forEach(d => out.push([d.id, d.t, +d.x.toFixed(2), +d.y.toFixed(2), +d.z.toFixed(2), +d.vx.toFixed(1), +d.vy.toFixed(1), +d.vz.toFixed(1), Math.round(d.hp / d.max * 100)]));
+  io.emit('dragons', out);
+  if (g.shrineDirty || now - (g.lastMsg || 0) > 2000) { g.shrineDirty = false; g.lastMsg = now; dragonWaveMsg(); }
+}, DRAGON_TICK);
 
 // ===================================================================
 // [NY] ROBOTER: fyller opp det minste laget så lagene alltid er like store.
