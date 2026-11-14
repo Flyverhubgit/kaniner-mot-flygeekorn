@@ -14,7 +14,10 @@ const spaceGroup = new THREE.Group();
 spaceGroup.visible = false;
 scene.add(spaceGroup);
 const spaceColliders = [];             // vegger i hangarene (for å gå)
-const SHIP_Z = { bunny: 135, squirrel: -135 };
+// [NY] 3x større slagmark: moderskipene står 3 ganger så langt fra hverandre (var ±135)
+const SPACE_SHIFT = 270;                 // hvor mye lenger ut hvert skip er flyttet
+const SHIP_Z = { bunny: 135 + SPACE_SHIFT, squirrel: -135 - SPACE_SHIFT };
+const ASTEROIDS_ON = false;              // [NY] asteroidene er fjernet (sett true for å få dem tilbake)
 const TEAMS2 = ['bunny', 'squirrel'];
 const TEAM_COL = { bunny: 0xd23b2f, squirrel: 0x7fb02a };
 const LASER_COL = { bunny: 0xff3a2a, squirrel: 0x5dff4a };
@@ -23,8 +26,9 @@ function spaceOn() { return typeof currentMap !== 'undefined' && currentMap === 
 function noRay(o) { o.traverse(c => { c.raycast = () => {}; }); return o; }
 // Speil til flygeekornenes side: (x, z) -> (-x, -z)
 function sideX(team, x) { return team === 'bunny' ? x : -x; }
-function sideZ(team, z) { return team === 'bunny' ? z : -z; }
+function sideZ(team, z) { z += SPACE_SHIFT; return team === 'bunny' ? z : -z; }   // [NY] skipsmål er bygd rundt z=135, flyttes ut
 function boxFor(team, x0, x1, y0, y1, z0, z1) {
+  z0 += SPACE_SHIFT; z1 += SPACE_SHIFT;
   return team === 'bunny' ? { minX: x0, maxX: x1, minY: y0, maxY: y1, minZ: z0, maxZ: z1 }
     : { minX: -x1, maxX: -x0, minY: y0, maxY: y1, minZ: -z1, maxZ: -z0 };
 }
@@ -81,7 +85,7 @@ const asteroids = [];
   let seed = 12345;
   const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
   const mats = [0x6d6259, 0x7d7166, 0x5a524b].map(c => new THREE.MeshStandardMaterial({ color: c, roughness: 1, flatShading: true }));
-  for (let i = 0; i < 22; i++) {
+  for (let i = 0; i < (ASTEROIDS_ON ? 22 : 0); i++) {
     const r = 3 + rnd() * 9, x = (rnd() - 0.5) * 280, y = (rnd() - 0.4) * 120, z = 8 + rnd() * 75;
     [1, -1].forEach(sg => {
       const m = new THREE.Mesh(new THREE.IcosahedronGeometry(r, 1), mats[i % 3]);
@@ -208,6 +212,7 @@ function buildMothership(team) {
     PARKED[team].push(f);
   });
   if (team === 'squirrel') g.rotation.y = Math.PI;
+  g.position.z = team === 'bunny' ? SPACE_SHIFT : -SPACE_SHIFT;   // [NY] skipet lenger ut
   spaceGroup.add(noRay(g));
   g.userData.field = field;
   // Treff-bokser (verdens-koordinater) og vegger å gå inn i
@@ -478,7 +483,7 @@ function spaceFlyUpdate(dt) {
   const f = fwdVec(player.yaw, player.pitch);
   player.x += f.x * fl.speed * dt; player.feetY += f.y * fl.speed * dt; player.z += f.z * fl.speed * dt;
   // Utenfor kartet? Snu automatisk tilbake
-  const lim = { x: 230, y: 130, z: 260 };
+  const lim = { x: 690, y: 390, z: 780 };      // [NY] 3x større (var 230 / 130 / 260)
   fl.outside = Math.abs(player.x) > lim.x || Math.abs(player.feetY) > lim.y || Math.abs(player.z) > lim.z;
   if (fl.outside) {
     const want2 = Math.atan2(player.x, player.z);            // yaw som peker mot midten

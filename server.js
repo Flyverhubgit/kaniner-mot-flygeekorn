@@ -225,7 +225,7 @@ function startFresh(map) {
 const SHIP_HP = +process.env.SHIP_HP || 2500, FIGHTERS_PER_ROUND = 12, TURRET_HP = 250, TURRET_REPAIR_MS = 30000;
 const LASER_DMG = 20, TURRET_DMG = 34;                     // mot spillere/jagerfly
 const HULL_LASER = 8, HULL_TORP = 300, TURRET_LASER = 10, TURRET_TORP = 250;
-const SHIP_Z = { bunny: 135, squirrel: -135 };             // moderskipenes midtpunkt
+const SHIP_Z = { bunny: 405, squirrel: -405 };             // moderskipenes midtpunkt [NY] 3x lenger fra hverandre (var ±135)
 let fleet = null, spaceWinner = null, fleetDirty = false;
 function resetFleet() {
   fleet = {};
