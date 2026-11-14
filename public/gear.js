@@ -170,7 +170,21 @@ function buildGearPart(id, team) {
     });
     const tail = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.15, 6), yel); tail.position.set(0, y + 0.22, -0.27); tail.rotation.x = -0.9; g.add(tail);
     const tuft = new THREE.Mesh(new THREE.ConeGeometry(0.025, 0.08, 5), yel); tuft.position.set(0, y + 0.46, 0.08); tuft.rotation.x = -0.4; g.add(tuft);   // liten hårtust
-    g.traverse(o => { if (o.isMesh) o.castShadow = true; });
+    // [NY] Reiret anda sitter i: en rund kvistkrans med strå som stikker ut, og et lite egg som titter frem
+    g.children.forEach(c => { c.position.y += 0.09; });           // løft anda opp i reiret
+    const twig = new THREE.MeshStandardMaterial({ color: 0x8a5a2e, roughness: 1 });
+    const twig2 = new THREE.MeshStandardMaterial({ color: 0x6b4423, roughness: 1 });
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.22, 0.075, 6, 16), twig);
+    ring.rotation.x = Math.PI / 2; ring.scale.z = 0.8; ring.position.set(0, y + 0.06, -0.02); g.add(ring);
+    const bottom = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.17, 0.06, 12), twig2); bottom.position.set(0, y + 0.03, -0.02); g.add(bottom);
+    for (let i = 0; i < 14; i++) {                                 // strå og kvister på kryss og tvers
+      const a = i / 14 * Math.PI * 2, st = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.02, 0.2 + (i % 3) * 0.05), i % 2 ? twig : twig2);
+      st.position.set(Math.cos(a) * 0.25, y + 0.06 + (i % 3 - 1) * 0.025, -0.02 + Math.sin(a) * 0.25);
+      st.rotation.y = -a + 0.6 + (i % 2) * 0.5; st.rotation.x = (i % 3 - 1) * 0.35; g.add(st);
+    }
+    const egg = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 6), new THREE.MeshStandardMaterial({ color: 0xf4f0e0 }));
+    egg.scale.y = 1.3; egg.position.set(0.2, y + 0.12, 0.1); egg.rotation.z = -0.4; g.add(egg);
+    g.traverse(o => { if (o.isMesh) { o.castShadow = true; o.raycast = () => {}; } });
   } else if (id === 'froggles') {
     // [NY] Froskebriller: to store grønne froskeøyne som buler ut, med svarte speilglass og et rosa smil-bånd
     const GR = 0x5fc23a, DK = 0x2f7a1e;
