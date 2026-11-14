@@ -992,7 +992,7 @@ function cleanProfile(d) {
 
 function lobbyCounts() {
   const c = { bunny: 0, squirrel: 0, map: mapName };   // [NY] map: menyen viser hvilken bane som er på
-  Object.values(players).forEach(p => c[p.team]++);
+  Object.values(players).forEach(p => { if (!p.isBot) c[p.team]++; });   // [NY] roboter teller ikke
   return c;
 }
 
@@ -1053,6 +1053,7 @@ function respawn(p) {
   p.hp = MAX_HP;
   p.alive = true;
   p.x = sp.x; p.y = 0; p.z = sp.z; p.yaw = sp.yaw;
+  if (p.isBot) { p.y = sp.y || 0; p.target = null; botPlan(p); }   // [NY] roboten starter ruta på nytt
   io.to(p.id).emit('respawn', sp);
   io.emit('alive', { id: p.id });
 }
@@ -1064,7 +1065,7 @@ io.on('connection', socket => {
     if (players[socket.id] || !data) return;
     const team = TEAMS.includes(data.team) ? data.team : 'bunny';
     // [NY] Første spiller på en tom server velger banen, og runden starter på nytt
-    if (Object.keys(players).length === 0 && mapName !== 'lobby' && !process.env.START_MAP) startMap('lobby');   // [NY] tom server: begynn i loungen
+    if (Object.values(players).filter(o => !o.isBot).length === 0 && mapName !== 'lobby' && !process.env.START_MAP) startMap('lobby');   // [NY] tom server: begynn i loungen
     const name = String(data.name || '').replace(/[<>]/g, '').trim().slice(0, 16) || 'Spiller';
     const sp = spawnFor(team);
     const p = players[socket.id] = {
@@ -1635,6 +1636,7 @@ function startMap(name) {
   io.emit('fleet', fleetState());
   io.emit('holy', holyState());
   io.emit('map', { name: mapName, lastResult });
+  balanceBots();                                                   // [NY] roboter inn/ut med en gang
   Object.values(players).forEach(p => { leaveVehicle(p); p.kills = 0; p.deaths = 0; p.streak = 0; respawn(p); });
   roundEndsAt = mapName === 'lobby' ? Infinity : Date.now() + (hordeMap() ? FARM_SECONDS : ROUND_SECONDS) * 1000;
   intermission = false;
@@ -1709,6 +1711,181 @@ setInterval(() => {
     score, intermission, board: board()
   });
 }, 1000);
+
+
+// ===================================================================
+// [NY] ROBOTER: fyller opp det minste laget så lagene alltid er like store.
+// Bare på klosse-banene (Klosseslottet og Ridderborgen) der serveren vet hvor veggene er.
+// De er med vilje ganske dårlige: treg reaksjon, bommer mye, går saktere enn deg.
+// ===================================================================
+const BOT_MAPS = ['castle', 'medieval'];
+const BOT_SPEED = 4.2;                       // du går 6
+const BOT_REACT_MS = 650;                    // tid fra de ser deg til første skudd
+let botSeq = 0;
+function isBot(p) { return p && p.isBot; }
+function botOn() { return BOT_MAPS.includes(mapName) && worldName === 'main'; }
+function BV() { return VOX[mapName]; }
+function bSolid(x, y, z) {                   // er det en kloss her? (verdens-koordinater)
+  const V = BV(), L = V.LIB, ix = Math.floor(x), iy = Math.floor(y), iz = Math.floor(z);
+  if (iy < 0) return true;
+  if (ix < L.X0 || ix >= L.X0 + L.NX || iz < L.Z0 || iz >= L.Z0 + L.NZ) return true;   // kanten av kartet
+  if (iy >= L.NY) return false;
+  return V.grid[L.idx(ix, iy, iz)] !== 0;
+}
+function bodyHits(x, y, z) {                 // står kroppen (0,6 bred, 1,6 høy) i en kloss?
+  for (const ox of [-0.3, 0.3]) for (const oz of [-0.3, 0.3]) for (const oy of [0.05, 0.9, 1.6]) if (bSolid(x + ox, y + oy, z + oz)) return true;
+  return false;
+}
+function groundBelow(x, y, z) {              // høyeste klosstopp under føttene
+  for (let iy = Math.floor(y + 0.01) - 1; iy >= 0; iy--) {
+    for (const ox of [-0.25, 0.25]) for (const oz of [-0.25, 0.25]) if (bSolid(x + ox, iy + 0.5, z + oz)) return iy + 1;
+  }
+  return 0;
+}
+function losClear(a, b) {                    // fri sikt mellom to punkter?
+  const dx = b.x - a.x, dy = b.y - a.y, dz = b.z - a.z, d = Math.hypot(dx, dy, dz), n = Math.ceil(d / 0.4);
+  for (let i = 1; i < n; i++) { const k = i / n; if (bSolid(a.x + dx * k, a.y + dy * k, a.z + dz * k)) return false; }
+  return true;
+}
+function freeSpot(x, z) {                    // kan en robot stå her på bakken?
+  const y = groundBelow(x, 6, z);
+  return y <= 1 && !bodyHits(x, y, z) ? y : -1;
+}
+// Veien ut av egen borg (kaninsiden; flygeekornene er speilet: x -> -x, z -> -z)
+const BOT_OUT = {
+  castle: [[0, 31.5], [0, 26], [0, 19]],
+  medieval: [[0, 30.5], [0, 26.5], [0, 22.5], [0, 18]]
+};
+function botField() {                        // tilfeldig ledig punkt ute på slagmarka
+  const zMax = mapName === 'medieval' ? 16 : 17, xMax = mapName === 'medieval' ? 55 : 60;
+  for (let k = 0; k < 40; k++) {
+    const x = (Math.random() * 2 - 1) * xMax, z = (Math.random() * 2 - 1) * zMax;
+    if (freeSpot(x, z) >= 0) return [x, z];
+  }
+  return [mapName === 'medieval' ? 10 : 12, 0];
+}
+function mir(team, pt) { return team === 'squirrel' ? [-pt[0], -pt[1]] : pt; }
+function botPlan(b) {                        // ny rute: ut av borgen, så rundt på slagmarka
+  b.route = BOT_OUT[mapName].map(pt => mir(b.team, pt));
+  b.mode = 'out';
+}
+const BOT_NAMES = { bunny: '🤖 Robo-Kanin', squirrel: '🤖 Robo-Ekorn' };
+function addBot(team) {
+  const id = 'bot' + (++botSeq), sp = spawnFor(team);
+  const same = Object.values(players).filter(p => p.isBot && p.team === team).length;
+  const b = players[id] = {
+    id, name: BOT_NAMES[team] + (same ? ' ' + (same + 1) : ''), team, isBot: true,
+    x: sp.x, y: sp.y || 0, z: sp.z, yaw: sp.yaw, pitch: 0, slide: 0,
+    hp: MAX_HP, alive: true, kills: 0, deaths: 0, lastHit: 0,
+    nades: 0, rockets: 0, pending: {}, streak: 0, protectedUntil: Date.now() + SPAWN_PROTECT_MS,
+    level: 2 + Math.floor(Math.random() * 8), wear: Math.random() < 0.5 ? ['shades'] : ['cap'], skins: {},
+    weapon: 0, target: null, seenAt: 0, nextShot: 0, stuck: 0, lastX: sp.x, lastZ: sp.z, side: 0, sideUntil: 0, strafe: 1, strafeAt: 0
+  };
+  botPlan(b);
+  io.emit('playerJoined', publicPlayer(b));
+}
+function removeBot(id) {
+  if (!players[id]) return;
+  delete players[id];
+  io.emit('playerLeft', { id });
+}
+// Like mange på hvert lag: robotene fyller opp det minste laget
+function balanceBots() {
+  const all = Object.values(players), humans = all.filter(p => !p.isBot), bots = all.filter(p => p.isBot);
+  if (!botOn() || humans.length === 0) { bots.forEach(b => removeBot(b.id)); return; }
+  const h = { bunny: 0, squirrel: 0 };
+  humans.forEach(p => h[p.team]++);
+  const want = { bunny: Math.max(0, h.squirrel - h.bunny), squirrel: Math.max(0, h.bunny - h.squirrel) };
+  TEAMS.forEach(team => {
+    const mine = bots.filter(b => b.team === team);
+    for (let i = mine.length; i < want[team]; i++) addBot(team);
+    mine.slice(want[team]).forEach(b => removeBot(b.id));
+  });
+}
+setInterval(balanceBots, 2000);
+
+function botMove(b, dirX, dirZ, speed, dt) {
+  const len = Math.hypot(dirX, dirZ) || 1, step = speed * dt;
+  const mx = dirX / len * step, mz = dirZ / len * step;
+  let moved = false;
+  // Prøv x og z hver for seg (glir langs vegger). Ett trinn opp går fint (trapper, haugen).
+  [[mx, 0], [0, mz]].forEach(([ax, az]) => {
+    if (!ax && !az) return;
+    const nx = b.x + ax, nz = b.z + az;
+    if (!bodyHits(nx, b.y, nz)) { b.x = nx; b.z = nz; moved = true; }
+    else if (!bodyHits(nx, b.y + 1.05, nz) && groundBelow(nx, b.y + 1.05, nz) <= b.y + 1.05) { b.x = nx; b.z = nz; b.y = Math.floor(b.y + 1.05); moved = true; }
+  });
+  const g = groundBelow(b.x, b.y, b.z);   // tyngdekraft
+  if (b.y > g) b.y = Math.max(g, b.y - 9 * dt);
+  if (dirX || dirZ) b.yaw = Math.atan2(-dirX, -dirZ);
+  return moved;
+}
+
+const BOT_TICK = 100;
+setInterval(() => {
+  if (!botOn() || intermission) return;
+  const now = Date.now(), dt = BOT_TICK / 1000, med = mapName === 'medieval';
+  for (const id in players) {
+    const b = players[id];
+    if (!b.isBot || !b.alive) continue;
+    // --- Se etter fiender (nærmeste med fri sikt) ---
+    const eye = { x: b.x, y: b.y + 1.4, z: b.z };
+    let best = null, bestD = 42;
+    for (const oid in players) {
+      const t = players[oid];
+      if (!t.alive || t.team === b.team || t.vehicle) continue;
+      const d = Math.hypot(t.x - b.x, t.z - b.z);
+      if (d < bestD && losClear(eye, { x: t.x, y: t.y + 1.2, z: t.z })) { best = t; bestD = d; }
+    }
+    if (best && (!b.target || b.target !== best.id)) { b.target = best.id; b.seenAt = now; }
+    if (!best) b.target = null;
+
+    let dirX = 0, dirZ = 0;
+    if (best) {
+      // --- Kamp: gå nærmere hvis langt unna, ellers gå litt fra side til side ---
+      const dx = best.x - b.x, dz = best.z - b.z;
+      if (now > b.strafeAt) { b.strafe = Math.random() < 0.5 ? -1 : 1; b.strafeAt = now + 1200 + Math.random() * 1500; }
+      if (bestD > 14) { dirX = dx; dirZ = dz; }
+      else { dirX = -dz * b.strafe; dirZ = dx * b.strafe; }
+      botMove(b, dirX, dirZ, BOT_SPEED * (bestD > 14 ? 1 : 0.6), dt);
+      b.yaw = Math.atan2(-dx, -dz);                                   // se på fienden
+      b.pitch = Math.atan2((best.y + 1.1) - (b.y + 1.4), bestD) ;
+      // --- Skyt (etter reaksjonstid, sakte tempo, bommer ofte) ---
+      if (now - b.seenAt > BOT_REACT_MS && now >= b.nextShot) {
+        b.nextShot = now + (med ? 1300 : 450) + Math.random() * 250;
+        b.protectedUntil = 0;
+        const chance = Math.max(0.1, 0.4 - bestD * 0.007) * (best.crouch ? 0.7 : 1);
+        const hit = Math.random() < chance;
+        const head = hit && Math.random() < 0.08;
+        const miss = hit ? 0 : 0.8 + Math.random() * 1.5;
+        const to = [+(best.x + (Math.random() - 0.5) * miss).toFixed(2), +(best.y + (head ? 1.3 : 0.9) + (Math.random() - 0.5) * miss).toFixed(2), +(best.z + (Math.random() - 0.5) * miss).toFixed(2)];
+        io.emit('shot', { id: b.id, to, w: med ? 'bow' : 'ak' });
+        if (hit) applyDamage(b, best, med ? 20 : (head ? AK_HEAD : AK_BODY), head, med ? 'bow' : 'gun');
+      }
+    } else {
+      // --- Ingen fiende: følg ruta (ut av borgen), så rundt på slagmarka ---
+      if (!b.route || !b.route.length) {
+        if (Math.random() < 0.25) b.route = BOT_OUT[mapName].slice().reverse().map(pt => mir(b.team === 'bunny' ? 'squirrel' : 'bunny', pt));   // raid: inn i fiendens borg
+        else b.route = [botField()];
+      }
+      const wp = b.route[0], dx = wp[0] - b.x, dz = wp[1] - b.z;
+      if (Math.hypot(dx, dz) < 1.2) b.route.shift();
+      else {
+        dirX = dx; dirZ = dz;
+        if (now < b.sideUntil) { dirX = -dz * b.side; dirZ = dx * b.side; }   // gå rundt hindringen
+        botMove(b, dirX, dirZ, BOT_SPEED, dt);
+        b.pitch = 0;
+      }
+    }
+    // --- Står fast? Gå til siden en stund, og etter hvert: velg et nytt mål ---
+    if (Math.hypot(b.x - b.lastX, b.z - b.lastZ) < 0.15 && (dirX || dirZ)) {
+      b.stuck += dt;
+      if (b.stuck > 0.8 && now > b.sideUntil) { b.side = Math.random() < 0.5 ? -1 : 1; b.sideUntil = now + 900; }
+      if (b.stuck > 4) { b.stuck = 0; if (b.route && b.route.length) b.route.shift(); }
+    } else b.stuck = 0;
+    b.lastX = b.x; b.lastZ = b.z;
+  }
+}, BOT_TICK);
 
 server.listen(PORT, () => {
   console.log('');
