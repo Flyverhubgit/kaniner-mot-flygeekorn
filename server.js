@@ -24,7 +24,7 @@ const ROUND_SECONDS = +process.env.ROUND_SECONDS || 300;     // 5 minutter per r
 const BREAK_SECONDS = 8;       // [NY] resultater i 8 sek, så tilbake til loungen
 const RESPAWN_SECONDS = 3;
 const MAX_HP = 100;
-// [NY] Liv kommer tilbake: etter 5 sek uten skade. Raskt når du har lite liv (5/sek), saktere jo mer du har (1/sek nær 100)
+// [NY] Liv kommer tilbake: etter 5 sek uten skade, 5 liv i sekundet hele veien opp til 100
 const REGEN_DELAY = 5000, REGEN_TICK = 200;
 setInterval(() => {
   const now = Date.now();
@@ -33,7 +33,7 @@ setInterval(() => {
     if (!p.alive) { p.regenHp = p.hp; continue; }
     if (p.regenHp === undefined || p.hp < p.regenHp) { p.hurtAt = now; p.regenAcc = 0; }   // tok skade siden sist (fra hva som helst)
     if (p.hp > 0 && p.hp < MAX_HP && now - (p.hurtAt || 0) >= REGEN_DELAY) {
-      const rate = 5 - 4 * (p.hp / MAX_HP);                      // liv per sekund: 5 ved 0 liv, 1 ved 100
+      const rate = 5;                                            // liv per sekund (var 5 ned til 1 nær 100)
       p.regenAcc = (p.regenAcc || 0) + rate * REGEN_TICK / 1000;
       if (p.regenAcc >= 1) {
         const add = Math.floor(p.regenAcc); p.regenAcc -= add;
