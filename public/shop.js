@@ -13,9 +13,11 @@ if (!profile.skins || typeof profile.skins !== 'object') profile.skins = {};
 
 // ---------- Skinnene ----------
 // level = må også ha dette nivået for å kjøpe (de dyreste)
+const HEART_SKIN = true;
+const HEART_WRAP = false;   // [NY] true = hjerter malt på (innpakning). false = blank rosa med ekte 3D-hjerter   // [NY] false = den gamle rene rosa skinnen
 const SKINS = [
   { id: 'camo', name: 'Kamuflasje', icon: '🌿', price: 100 },
-  { id: 'pink', name: 'Rosa', icon: '🩷', price: 150 },
+  HEART_SKIN ? { id: 'pink', name: 'Hjerter', icon: '💖', price: 150 } : { id: 'pink', name: 'Rosa', icon: '🩷', price: 150 },   // [NY] rosa ble til hjerter (samme id, så de som har den beholder den)
   { id: 'tiger', name: 'Tiger', icon: '🐯', price: 200 },
   { id: 'ice', name: 'Is', icon: '🧊', price: 400 },
   { id: 'lava', name: 'Lava', icon: '🌋', price: 550 },
@@ -72,6 +74,15 @@ const SKIN_TEX = {
     x.fillStyle = '#4c6372'; for (let i = 0; i < 18; i++) x.fillRect(rnd() * 64, rnd() * 34, 3 + rnd() * 6, 1);
     x.fillStyle = '#c9d2d6'; for (let i = 0; i < 4; i++) x.fillRect(rnd() * 56, 6 + rnd() * 24, 7, 1);         // skrammer
   }),
+  pink: patternTex(x => {                        // [NY] hjerter: rosa med røde og hvite hjerter
+    x.fillStyle = '#ff8fc4'; x.fillRect(0, 0, 64, 64);
+    const heart = (hx, hy, c, k) => { x.fillStyle = c; const R = (a, b, w, h) => x.fillRect(hx + a * k, hy + b * k, w * k, h * k);
+      R(1, 0, 3, 1); R(6, 0, 3, 1); R(0, 1, 10, 4); R(1, 5, 8, 1); R(2, 6, 6, 1); R(3, 7, 4, 1); R(4, 8, 2, 1); };
+    heart(4, 4, '#e8174f', 2.4); heart(38, 36, '#2f7dff', 2.4);          // stort rødt og stort blått hjerte
+    heart(40, 6, '#ffffff', 1.6); heart(8, 40, '#ffffff', 1.6);           // hvite hjerter
+    x.fillStyle = '#ffffff'; x.fillRect(7, 7, 3, 3); x.fillRect(41, 39, 3, 3);   // lite glimt
+    x.fillStyle = '#ffd6ea'; for (let i = 0; i < 10; i++) x.fillRect(rnd() * 64, rnd() * 64, 1, 1);
+  }),
   butterfly: patternTex(x => {                    // [NY] sommerfugl: lyseblå med rosa vingemønster og hvite prikker
     x.fillStyle = '#7ec8ff'; x.fillRect(0, 0, 64, 64);
     x.fillStyle = '#4a9eea'; for (let yy = 0; yy < 64; yy += 16) x.fillRect(0, yy, 64, 3);
@@ -91,7 +102,7 @@ const SKIN_TEX = {
 };
 const SKIN_MAT = {
   camo: { map: SKIN_TEX.camo, roughness: 0.9 },
-  pink: { color: 0xff7ab8, roughness: 0.45 },
+  pink: HEART_SKIN && HEART_WRAP ? { map: SKIN_TEX.pink, roughness: 0.45, emissive: 0x2a0a18 } : HEART_SKIN ? { color: 0xff6fb2, roughness: 0.3, metalness: 0.1 } : { color: 0xff7ab8, roughness: 0.45 },
   tiger: { map: SKIN_TEX.tiger, roughness: 0.7 },
   ice: { color: 0xbff0ff, emissive: 0x2a6a8a, metalness: 0.3, roughness: 0.15 },
   lava: { map: SKIN_TEX.lava, emissiveMap: SKIN_TEX.lava, emissive: 0xffffff, roughness: 0.8, glow: true },
@@ -320,8 +331,9 @@ function rexOn(container, key, on, fp, kind) {
   if (on && !r) {
     const o = Object.assign({}, REX[key], { fp: fp || REX[key].fp });
     if (kind === 'rex' && (key === 'akFP' || key === 'akHeld')) o.s *= REX_AK_SCALE;   // [NY] litt mindre T-rex-hode på AK
-    r = kind === 'fly' ? buildButterfly(o) : kind === 'shark' ? buildShark(o) : kind === 'uni' ? buildUnicorn(o) : (RAPTOR_AK && (key === 'akFP' || key === 'akHeld')) ? buildRaptor(o) : (CUTE_REX_AK && (key === 'akFP' || key === 'akHeld')) ? buildCuteRex(o) : buildRex(o); r.position.set(...o.pos); r.rotation.y = o.rotY;
+    r = kind === 'heart' ? buildHearts(o) : kind === 'fly' ? buildButterfly(o) : kind === 'shark' ? buildShark(o) : kind === 'uni' ? buildUnicorn(o) : (RAPTOR_AK && (key === 'akFP' || key === 'akHeld')) ? buildRaptor(o) : (CUTE_REX_AK && (key === 'akFP' || key === 'akHeld')) ? buildCuteRex(o) : buildRex(o); r.position.set(...o.pos); r.rotation.y = o.rotY;
     container.add(r); container.userData[kind + '_' + key] = r;
+    if (kind === 'heart') settleHearts(container, r);   // [NY] sett hjertene rett på våpenet
   }
   if (r) r.visible = !!on;
   return r;
@@ -332,6 +344,67 @@ function creatureOn(container, key, skin, show, fp) {
   rexOn(container, key, show && skin === 'shark', fp, 'shark');
   rexOn(container, key, show && skin === 'unicorn', fp, 'uni');
   rexOn(container, key, show && skin === 'butterfly', fp, 'fly');   // [NY] sommerfuglvinger
+  rexOn(container, key, show && skin === 'pink' && HEART_SKIN && HEART_3D, fp, 'heart');   // [NY] hjerter oppå våpenet
+}
+// ---------- [NY] HJERTER: 4 små kloss-hjerter som står oppå våpenet – rødt, blått, hvitt og regnbue ----------
+const HEART_3D = true;                             // false = bare mønsteret
+const HEART_ROWS = ['.XX.XX.', 'XXXXXXX', 'XXXXXXX', '.XXXXX.', '..XXX..', '...X...'];
+function buildHearts(o) {
+  const g = new THREE.Group();
+  const mat = c => new THREE.MeshStandardMaterial({ color: c, roughness: 0.4 });
+  const RAIN = [0xff3b3b, 0xff9a1f, 0xffe11f, 0x3bd65a, 0x2fa8ff, 0x9a4dff].map(mat);
+  const RED = mat(0xe8174f), BLUE = mat(0x2f7dff), WHITE = mat(0xffffff);
+  const base = 0.011 * o.s * (o.fp ? 0.85 : 1);
+  // [farge, side, hvor langt bak (0 = munning, 1 = kolbe), størrelse]
+  const list = [
+    [RED, 'top', 0.2, 1], [null, 'top', 0.45, 1.15], [BLUE, 'top', 0.62, 1], [WHITE, 'top', 0.8, 0.9],   // null = regnbue (bare én)
+    [RED, 'left', 0.25, 0.8], [WHITE, 'left', 0.5, 0.7], [BLUE, 'left', 0.75, 0.8],
+    [BLUE, 'right', 0.25, 0.8], [RED, 'right', 0.5, 0.7], [WHITE, 'right', 0.75, 0.8]
+  ];
+  list.forEach(([m, face, t, k]) => {
+    const p = base * k, h = new THREE.Group();
+    HEART_ROWS.forEach((row, r) => {
+      const runs = []; let st = -1;
+      for (let c = 0; c <= row.length; c++) { if (row[c] === 'X' && st < 0) st = c; if (row[c] !== 'X' && st >= 0) { runs.push([st, c]); st = -1; } }
+      runs.forEach(([a, b]) => {
+        const box = new THREE.Mesh(new THREE.BoxGeometry(p * 1.6, p, p * (b - a)), m || RAIN[r]);
+        box.position.set(0, (5 - r) * p + p / 2 - (face === 'top' ? 0 : 3 * p), ((a + b) / 2 - 3.5) * p);   // sidehjerter: midt på flaten
+        h.add(box);
+      });
+    });
+    h.userData.face = face; h.userData.t = t; h.visible = false;   // vises når den er plassert
+    g.add(h);
+  });
+  g.traverse(c => { if (c.isMesh) { c.userData.noSkin = true; c.raycast = () => {}; c.castShadow = !o.fp; if (o.fp) c.layers.set(2); } });
+  return g;
+}
+// Finn overflaten på våpenet (oppå og på sidene) og sett hjertene der, så de stikker ut av det
+function settleHearts(container, r) {
+  try {
+    container.updateWorldMatrix(true, true);
+    const meshes = []; container.traverse(m => { if (m.isMesh && !m.userData.noSkin && m.userData.baseMat) meshes.push(m); });
+    if (!meshes.length) return;
+    const inv = new THREE.Matrix4().copy(container.matrixWorld).invert();
+    const box = new THREE.Box3(), tmp = new THREE.Box3();
+    meshes.forEach(m => { if (!m.geometry.boundingBox) m.geometry.computeBoundingBox(); tmp.copy(m.geometry.boundingBox).applyMatrix4(new THREE.Matrix4().multiplyMatrices(inv, m.matrixWorld)); box.union(tmp); });
+    const size = box.getSize(new THREE.Vector3());
+    const muzzleZ = r.position.z, backZ = Math.abs(box.max.z - muzzleZ) > Math.abs(box.min.z - muzzleZ) ? box.max.z : box.min.z;   // kolbe-enden
+    const rc = new THREE.Raycaster(); rc.layers.enableAll();
+    const toW = v => v.applyMatrix4(container.matrixWorld);
+    const dirW = v => v.transformDirection(container.matrixWorld);
+    r.children.forEach(h => {
+      const f = h.userData.face, z = muzzleZ + (backZ - muzzleZ) * (0.08 + 0.8 * h.userData.t);
+      let o, d;
+      if (f === 'top') { o = new THREE.Vector3(0, box.max.y + 0.5, z); d = new THREE.Vector3(0, -1, 0); }
+      else { const sd = f === 'left' ? -1 : 1; o = new THREE.Vector3(sd * (box.max.x + 0.5), box.min.y + size.y * 0.72, z); d = new THREE.Vector3(-sd, 0, 0); }
+      rc.set(toW(o), dirW(d));
+      const hit = rc.intersectObjects(meshes, false)[0];
+      if (!hit) return;
+      h.position.copy(h.parent.worldToLocal(hit.point.clone()));
+      if (f === 'top') h.position.y -= 0.002;
+      h.visible = true;
+    });
+  } catch (err) {}
 }
 // ---------- [NY] SOMMERFUGL: to par vinger (rosa og blå) oppå våpenet som blafrer, og små følehorn foran ----------
 const flyWings = [];
