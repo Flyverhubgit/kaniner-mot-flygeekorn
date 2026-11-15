@@ -26,7 +26,7 @@ const GEAR = [
   { id: 'froggles', name: 'Froskebriller', icon: '🐸', level: 27, slot: 'face' }, // [NY] solbriller som froskeøyne
   { id: 'duckhat', name: 'Andehatt', icon: '🦆', level: 30, slot: 'head' },      // [NY] gul badeand som sitter på hodet
   { id: 'kit', name: 'Fotballdrakt', icon: '⚽', level: 1, slot: 'body', quest: true },  // [NY] fås fra fotballkyllingen (oppdrag), ikke nivå
-  { id: 'norway', name: 'Norge VM 2026', icon: '🦁', level: 1, slot: 'body' },  // [NY] Norges VM-drakt 2026: rød med blått kors, hvit shorts, blå strømper
+  { id: 'norway', name: 'Norge VM 2026', icon: '🦁', level: 15, slot: 'body', price: 1000 },  // [NY] nivå 15 + kjøpes for 1000 mynter  // [NY] Norges VM-drakt 2026: rød med blått kors, hvit shorts, blå strømper
   { id: 'nor10', name: 'Ødegaard 10', icon: '👕', level: 1, slot: 'shirtno', needs: 'norway', back: ['ØDEGAARD', '10'] },  // [NY] navn og nummer på ryggen
   { id: 'nor9', name: 'Haaland 9', icon: '👕', level: 1, slot: 'shirtno', needs: 'norway', back: ['HAALAND', '9'] },
   { id: 'nor20', name: 'Nusa 20', icon: '👕', level: 1, slot: 'shirtno', needs: 'norway', back: ['NUSA', '20'] },
@@ -48,7 +48,10 @@ const profile = (() => {
 function saveProfile() { try { localStorage.setItem('kmf-profile', JSON.stringify(profile)); } catch (e) {} }
 function myLevel() { return levelOf(profile.xp); }
 // [NY] Er tingen låst opp? Oppdrags-ting låses opp av oppdraget, resten av nivå
-function gearUnlocked(g, L) { return g.quest ? !!profile.kit : g.level <= (L || myLevel()); }
+function gearUnlocked(g, L) { return g.quest ? !!profile.kit : g.level <= (L || myLevel()) && (!g.price || gearOwned(g.id)); }
+// [NY] Utstyr som kjøpes med mynter (Norge-drakten). Lagres i profile.gearOwned
+function gearOwned(id) { return Array.isArray(profile.gearOwned) && profile.gearOwned.includes(id); }
+let gearConfirm = null;   // første trykk = "kjøp?", andre trykk = kjøp
 function myWear() { const L = myLevel(); return profile.wear.filter(id => { const g = GEAR.find(x => x.id === id); return g && gearUnlocked(g, L); }); }
 
 // ---------- Hemmelig kode (flytt nivået til en annen PC / mobil) ----------
@@ -463,6 +466,14 @@ function renderGearMenu() {
   GEAR.forEach(g => {
     if (g.needs && !profile.wear.includes(g.needs)) return;   // [NY] navn/nummer vises bare når Norge-drakten er på
     const open = gearUnlocked(g, L), on = open && (g.invert ? !profile.wear.includes(g.id) : profile.wear.includes(g.id));   // [NY] kulebelter: lyser når de er PÅ
+    const buy = !open && g.price && g.level <= L;   // [NY] nivået er nådd, men ikke kjøpt ennå
+    if (buy) {
+      const coins = Math.floor(profile.coins || 0), short = coins < g.price;
+      const txt = gearConfirm === g.id ? 'Kjøp for ' + g.price + ' mynter?' : g.icon + ' ' + g.name + ' – ' + g.price + ' mynter' + (short ? ' (mangler ' + (g.price - coins) + ')' : '');
+      h += '<button class="gearBtn" data-id="' + g.id + '" title="' + g.name + '" style="padding:4px 7px;border-radius:8px;border:2px solid ' + (gearConfirm === g.id ? '#7dff7a' : 'rgba(255,255,255,.25)') +
+        ';background:' + (gearConfirm === g.id ? 'rgba(80,200,80,.35)' : 'rgba(0,0,0,.25)') + ';color:#fff;font-size:13px;cursor:pointer;opacity:' + (short ? 0.6 : 1) + '">' + txt + '</button>';
+      return;
+    }
     h += '<button class="gearBtn" data-id="' + g.id + '" ' + (open ? '' : 'disabled') + ' title="' + g.name + '" style="padding:4px 7px;border-radius:8px;border:2px solid ' +
       (on ? '#ffd23a' : 'rgba(255,255,255,.25)') + ';background:' + (on ? 'rgba(255,210,58,.3)' : 'rgba(0,0,0,.25)') + ';color:#fff;font-size:13px;cursor:' + (open ? 'pointer' : 'default') + ';opacity:' + (open ? 1 : 0.45) + '">' +
       (open ? g.icon + ' ' + g.name : g.quest ? '🔒 Oppdrag' : '🔒 Nivå ' + g.level) + '</button>';
@@ -478,6 +489,17 @@ function renderGearMenu() {
 }
 function toggleGear(id) {
   const g = GEAR.find(x => x.id === id);
+  if (g && g.price && !gearOwned(id) && g.level <= myLevel()) {   // [NY] kjøp med mynter: første trykk spør, andre trykk kjøper
+    if ((profile.coins || 0) < g.price) { gearConfirm = null; renderGearMenu(); return; }
+    if (gearConfirm !== id) { gearConfirm = id; renderGearMenu(); return; }
+    profile.coins -= g.price;
+    if (!Array.isArray(profile.gearOwned)) profile.gearOwned = [];
+    profile.gearOwned.push(id);
+    gearConfirm = null;
+    if (typeof playLevelUp === 'function') playLevelUp();
+    if (typeof renderShop === 'function') renderShop();          // myntene i butikken
+  }
+  gearConfirm = null;
   if (!g || !gearUnlocked(g)) return;
   if (profile.wear.includes(id)) profile.wear = profile.wear.filter(w => w !== id);
   else profile.wear = profile.wear.filter(w => { const o = GEAR.find(x => x.id === w); return o && o.slot !== g.slot; }).concat(id);   // én per plass
