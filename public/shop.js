@@ -168,12 +168,14 @@ const REX = {
   sniper: { pos: [0, 0.01, 0.72], rotY: 0, s: 0.9, ridgeY: 0.15, ridgeLen: 0.6 },
   baz: { pos: [0, 0, 0.62], rotY: 0, s: 1.25, ridgeY: 0.11, ridgeLen: 0.8 }
 };
+const REX_AK_SCALE = 0.8;   // [NY] 1 = gammel størrelse
 function rexOn(container, key, on, fp, kind) {
   if (!container) return null;
   kind = kind || 'rex';
   let r = container.userData[kind + '_' + key];
   if (on && !r) {
     const o = Object.assign({}, REX[key], { fp: fp || REX[key].fp });
+    if (kind === 'rex' && (key === 'akFP' || key === 'akHeld')) o.s *= REX_AK_SCALE;   // [NY] litt mindre T-rex-hode på AK
     r = kind === 'shark' ? buildShark(o) : kind === 'uni' ? buildUnicorn(o) : buildRex(o); r.position.set(...o.pos); r.rotation.y = o.rotY;
     container.add(r); container.userData[kind + '_' + key] = r;
   }
