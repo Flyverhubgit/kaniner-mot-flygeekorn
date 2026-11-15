@@ -222,6 +222,8 @@ function buildRaptor(o) {
 }
 // ---------- [NY] SØT T-REX på AK: store runde øyne med glimt, rosa kinn, kort rund snute, smil ----------
 // Munnen i (0,0,0), snuten mot +z, løpet går gjennom gapet (som den vanlige T-rexen).
+const CUTE_EYES = true;   // [NY] behold de store søte øynene
+const CUTE_BLOCKY = true;   // [NY] klossete hode (false = runde former)
 const CUTE_LESS = true;   // [NY] litt mindre søt (false = helt søt)
 const CUTE_CHEEKS = false;   // [NY] true = rosa kinn på den søte T-rexen
 function buildCuteRex(o) {
@@ -233,7 +235,10 @@ function buildCuteRex(o) {
   const belly = new THREE.MeshStandardMaterial({ color: 0xc8e86a, roughness: 0.7 });
   const orange = new THREE.MeshStandardMaterial({ color: 0xffa040, roughness: 0.6 });
   const box = (w, h, d, x, y, z, m, rx, par) => { const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); b.position.set(x, y, z); if (rx) b.rotation.x = rx; (par || g).add(b); return b; };
-  const ball = (r, x, y, z, m, par, sx, sy, sz) => { const b = new THREE.Mesh(new THREE.SphereGeometry(r, 12, 10), m); b.position.set(x, y, z); b.scale.set(sx || 1, sy || 1, sz || 1); (par || g).add(b); return b; };
+  const ball = (r, x, y, z, m, par, sx, sy, sz) => {   // [NY] CUTE_BLOCKY: klosser i stedet for kuler
+    const geo = CUTE_BLOCKY ? new THREE.BoxGeometry(r * 1.8, r * 1.8, r * 1.8) : new THREE.SphereGeometry(r, 12, 10);
+    const b = new THREE.Mesh(geo, m); b.position.set(x, y, z); b.scale.set(sx || 1, sy || 1, sz || 1); (par || g).add(b); return b; };
+  const eye = (r, x, y, z, m, par, sx, sy, sz) => { const b = new THREE.Mesh(new THREE.SphereGeometry(r, 12, 10), m); b.position.set(x, y, z); b.scale.set(sx || 1, sy || 1, sz || 1); (par || g).add(b); return b; };   // øyne er alltid runde
   const head = new THREE.Group(); head.scale.setScalar(o.s); g.add(head);
   // Rundt hode og kort, rund snute
   ball(0.13, 0, 0.1, -0.24, sk.light, head, 1, 0.75, 1);                // stort rundt hode (lavt, så siktet er fritt)
@@ -251,11 +256,12 @@ function buildCuteRex(o) {
   if (CUTE_LESS) [-1, 1].forEach(sd => { const br = box(0.045, 0.018, 0.07, sd * 0.08, 0.19, -0.2, sk.dark, 0, head); br.rotation.z = -sd * 0.25; });   // lite pannebrask
   // Store runde øyne med glimt
   [-1, 1].forEach(sd => {
-    const e = CUTE_LESS ? 0.75 : 1;                                     // øyestørrelse
-    ball(0.05 * e, sd * 0.085, 0.14, -0.2, white, head, 0.6, 1, 1);
-    ball(0.034 * e, sd * (CUTE_LESS ? 0.1 : 0.11), 0.135, -0.19, black, head, 0.5, 1, 1);
-    ball(0.012 * e, sd * (CUTE_LESS ? 0.11 : 0.125), 0.15, -0.18, white, head);   // glimt
-    if (!CUTE_LESS) ball(0.006, sd * 0.125, 0.12, -0.2, white, head);   // lite glimt
+    const big = CUTE_EYES || !CUTE_LESS;                                // [NY] de søte øynene (runde, store, to glimt)
+    const eb = big ? eye : ball, e = big ? 1 : 0.75;
+    eb(0.05 * e, sd * (big && CUTE_BLOCKY ? 0.12 : 0.085), 0.14, -0.2, white, head, 0.6, 1, 1);
+    eb(0.034 * e, sd * (big ? (CUTE_BLOCKY ? 0.142 : 0.11) : 0.1), 0.135, -0.19, black, head, 0.5, 1, 1);
+    eb(0.012 * e, sd * (big ? (CUTE_BLOCKY ? 0.157 : 0.125) : 0.11), big ? 0.155 : 0.15, big ? -0.175 : -0.18, white, head);   // glimt
+    if (big) eb(0.006, sd * (CUTE_BLOCKY ? 0.157 : 0.125), 0.12, -0.2, white, head);   // lite glimt
     if (CUTE_CHEEKS) ball(0.03, sd * 0.1, 0.07, -0.12, pink, head, 0.4, 0.6, 1);   // rosa kinn (av)
     ball(0.008, sd * 0.03, 0.105, 0.02, black, head);                   // nesebor
   });
