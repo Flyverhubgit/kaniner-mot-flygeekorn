@@ -222,6 +222,7 @@ function buildRaptor(o) {
 }
 // ---------- [NY] SØT T-REX på AK: store runde øyne med glimt, rosa kinn, kort rund snute, smil ----------
 // Munnen i (0,0,0), snuten mot +z, løpet går gjennom gapet (som den vanlige T-rexen).
+const CUTE_TEETH3 = true;   // [NY] 3 tenner på hver side, oppe og nede (false = 4 bare oppe)
 const CUTE_EYES = true;   // [NY] behold de store søte øynene
 const CUTE_BLOCKY = true;   // [NY] klossete hode (false = runde former)
 const CUTE_LESS = true;   // [NY] litt mindre søt (false = helt søt)
@@ -250,8 +251,14 @@ function buildCuteRex(o) {
   box(0.09, 0.01, 0.14, 0, 0.012, 0.08, mouth, 0, jaw);
   // Bare to små runde tenner oppe (søte, ikke skumle)
   if (!CUTE_LESS) [-1, 1].forEach(sd => { const t = new THREE.Mesh(new THREE.ConeGeometry(0.012, 0.028, 6), white); t.rotation.x = Math.PI; t.position.set(sd * 0.035, 0.03, 0.02); head.add(t); });
-  else for (let i = 0; i < 4; i++) [-1, 1].forEach(sd => {      // 4 små spisse tenner på hver side
-    const t = new THREE.Mesh(new THREE.ConeGeometry(0.01, 0.034, 4), white); t.rotation.x = Math.PI; t.position.set(sd * (0.05 - i * 0.004), 0.03, 0.06 - i * 0.045); head.add(t);
+  else for (let i = 0; i < (CUTE_TEETH3 ? 3 : 4); i++) [-1, 1].forEach(sd => {      // små spisse tenner på hver side (oppe)
+    const t = CUTE_TEETH3 ? new THREE.Mesh(new THREE.ConeGeometry(0.014, 0.045, 4), white) : new THREE.Mesh(new THREE.ConeGeometry(0.01, 0.034, 4), white);
+    t.rotation.x = Math.PI;
+    if (CUTE_TEETH3) t.position.set(sd * 0.055, 0.006, 0.07 - i * 0.05); else t.position.set(sd * (0.05 - i * 0.004), 0.03, 0.06 - i * 0.045);
+    head.add(t);
+  });
+  if (CUTE_LESS && CUTE_TEETH3) for (let i = 0; i < 3; i++) [-1, 1].forEach(sd => {   // [NY] 3 små tenner på hver side nede også
+    const b = new THREE.Mesh(new THREE.ConeGeometry(0.013, 0.042, 4), white); b.position.set(sd * 0.05, 0.04, 0.15 - i * 0.05); jaw.add(b);
   });
   if (CUTE_LESS) [-1, 1].forEach(sd => { const br = box(0.045, 0.018, 0.07, sd * 0.08, 0.19, -0.2, sk.dark, 0, head); br.rotation.z = -sd * 0.25; });   // lite pannebrask
   // Store runde øyne med glimt
