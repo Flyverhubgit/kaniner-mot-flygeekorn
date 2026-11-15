@@ -51,7 +51,9 @@ function myLevel() { return levelOf(profile.xp); }
 function gearUnlocked(g, L) { return g.quest ? !!profile.kit : g.level <= (L || myLevel()) && (!g.price || gearOwned(g.id)); }
 // [NY] Utstyr som kjøpes med mynter (Norge-drakten). Lagres i profile.gearOwned
 function gearOwned(id) { return Array.isArray(profile.gearOwned) && profile.gearOwned.includes(id); }
-let gearConfirm = null;   // første trykk = "kjøp?", andre trykk = kjøp
+let gearConfirm = null;
+const NOR_PICK = true;   // [NY] Norge-drakten: velg Haaland 9 / Ødegaard 10 / Nusa 20 før du tar den på. false = drakten kan brukes uten navn
+let norPick = false;     // true = spiller-knappene vises og venter på et valg   // første trykk = "kjøp?", andre trykk = kjøp
 function myWear() { const L = myLevel(); return profile.wear.filter(id => { const g = GEAR.find(x => x.id === id); return g && gearUnlocked(g, L); }); }
 
 // ---------- Hemmelig kode (flytt nivået til en annen PC / mobil) ----------
@@ -464,8 +466,9 @@ function renderGearMenu() {
   h += '<div style="font-size:12px;opacity:.7;margin:4px 0">' + Math.floor(profile.xp) + ' XP – neste nivå om ' + Math.ceil(xpFor(L + 1) - profile.xp) + ' XP</div>' +
     '<div style="display:flex;flex-wrap:wrap;gap:5px;justify-content:center">';
   GEAR.forEach(g => {
-    if (g.needs && !profile.wear.includes(g.needs)) return;   // [NY] navn/nummer vises bare når Norge-drakten er på
-    const open = gearUnlocked(g, L), on = open && (g.invert ? !profile.wear.includes(g.id) : profile.wear.includes(g.id));   // [NY] kulebelter: lyser når de er PÅ
+    if (g.needs && !profile.wear.includes(g.needs) && !(NOR_PICK && norPick)) return;   // [NY] navn/nummer vises bare når Norge-drakten er på
+    const picking = NOR_PICK && norPick && g.id === 'norway';   // [NY] venter på spiller-valg
+    const open = gearUnlocked(g, L), on = open && (picking || (g.invert ? !profile.wear.includes(g.id) : profile.wear.includes(g.id)));   // [NY] kulebelter: lyser når de er PÅ
     const buy = !open && g.price && g.level <= L;   // [NY] nivået er nådd, men ikke kjøpt ennå
     if (buy) {
       const coins = Math.floor(profile.coins || 0), short = coins < g.price;
@@ -476,7 +479,7 @@ function renderGearMenu() {
     }
     h += '<button class="gearBtn" data-id="' + g.id + '" ' + (open ? '' : 'disabled') + ' title="' + g.name + '" style="padding:4px 7px;border-radius:8px;border:2px solid ' +
       (on ? '#ffd23a' : 'rgba(255,255,255,.25)') + ';background:' + (on ? 'rgba(255,210,58,.3)' : 'rgba(0,0,0,.25)') + ';color:#fff;font-size:13px;cursor:' + (open ? 'pointer' : 'default') + ';opacity:' + (open ? 1 : 0.45) + '">' +
-      (open ? g.icon + ' ' + g.name : g.quest ? '🔒 Oppdrag' : '🔒 Nivå ' + g.level) + '</button>';
+      (picking ? g.icon + ' Velg spiller:' : open ? g.icon + ' ' + g.name : g.quest ? '🔒 Oppdrag' : '🔒 Nivå ' + g.level) + '</button>';
   });
   h += '</div><div style="margin-top:6px;font-size:12px;opacity:.8">Din kode: <b style="user-select:all">' + makeCode() + '</b> &nbsp; ' +
     '<input id="codeIn" placeholder="Har du en kode?" style="width:150px;font-size:12px;padding:2px 4px"> <button id="codeBtn" style="font-size:12px">Bruk</button> <span id="codeMsg"></span></div>';
@@ -501,6 +504,17 @@ function toggleGear(id) {
   }
   gearConfirm = null;
   if (!g || !gearUnlocked(g)) return;
+  const send = () => { saveProfile(); renderGearMenu(); if (joined) socket.emit('profile', profilePayload()); };
+  if (NOR_PICK && id === 'norway') {            // [NY] Norge-drakten: av = ta av drakt og nummer, på = velg spiller først
+    if (profile.wear.includes('norway')) { profile.wear = profile.wear.filter(w => w !== 'norway' && !/^nor\d+$/.test(w)); norPick = false; send(); }
+    else { norPick = !norPick; renderGearMenu(); }
+    return;
+  }
+  if (NOR_PICK && g.needs === 'norway') {       // [NY] valgt spiller: ta på drakten med det nummeret (bytter bare nummer hvis den er på)
+    profile.wear = profile.wear.filter(w => { const o = GEAR.find(x => x.id === w); return o && o.slot !== 'shirtno' && o.slot !== 'body'; }).concat('norway', id);
+    norPick = false; send(); return;
+  }
+  norPick = false;
   if (profile.wear.includes(id)) profile.wear = profile.wear.filter(w => w !== id);
   else profile.wear = profile.wear.filter(w => { const o = GEAR.find(x => x.id === w); return o && o.slot !== g.slot; }).concat(id);   // én per plass
   saveProfile();
