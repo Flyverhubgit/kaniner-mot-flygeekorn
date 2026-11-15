@@ -222,6 +222,7 @@ function buildRaptor(o) {
 }
 // ---------- [NY] SØT T-REX på AK: store runde øyne med glimt, rosa kinn, kort rund snute, smil ----------
 // Munnen i (0,0,0), snuten mot +z, løpet går gjennom gapet (som den vanlige T-rexen).
+const CUTE_FLUSH = true;   // [NY] snute og hode i flukt (false = to klosser)
 const CUTE_TEETH3 = true;   // [NY] 3 tenner på hver side, oppe og nede (false = 4 bare oppe)
 const CUTE_EYES = true;   // [NY] behold de store søte øynene
 const CUTE_BLOCKY = true;   // [NY] klossete hode (false = runde former)
@@ -243,7 +244,8 @@ function buildCuteRex(o) {
   const head = new THREE.Group(); head.scale.setScalar(o.s); g.add(head);
   // Rundt hode og kort, rund snute
   ball(0.13, 0, 0.1, -0.24, sk.light, head, 1, 0.75, 1);                // stort rundt hode (lavt, så siktet er fritt)
-  ball(0.09, 0, 0.075, CUTE_LESS ? -0.03 : -0.06, sk.light, head, 1, 0.6, CUTE_LESS ? 1.45 : 1.1);   // snute (litt lengre når mindre søt)
+  if (CUTE_FLUSH && CUTE_BLOCKY) box(0.234, 0.162, 0.21, 0, 0.107, -0.018, sk.light, 0, head);   // [NY] snute i flukt med hodet (én kloss)
+  else ball(0.09, 0, 0.075, CUTE_LESS ? -0.03 : -0.06, sk.light, head, 1, 0.6, CUTE_LESS ? 1.45 : 1.1);   // snute (litt lengre når mindre søt)
   box(0.11, 0.012, 0.16, 0, 0.04, -0.06, mouth, 0, head);               // gane
   // Underkjeve med lys mage-farge, smiler
   const jaw = new THREE.Group(); jaw.position.set(0, -0.03, -0.15); jaw.rotation.x = 0.22; head.add(jaw);
@@ -270,7 +272,8 @@ function buildCuteRex(o) {
     eb(0.012 * e, sd * (big ? (CUTE_BLOCKY ? 0.157 : 0.125) : 0.11), big ? 0.155 : 0.15, big ? -0.175 : -0.18, white, head);   // glimt
     if (big) eb(0.006, sd * (CUTE_BLOCKY ? 0.157 : 0.125), 0.12, -0.2, white, head);   // lite glimt
     if (CUTE_CHEEKS) ball(0.03, sd * 0.1, 0.07, -0.12, pink, head, 0.4, 0.6, 1);   // rosa kinn (av)
-    ball(0.008, sd * 0.03, 0.105, 0.02, black, head);                   // nesebor
+    if (CUTE_FLUSH && CUTE_BLOCKY) box(0.025, 0.018, 0.01, sd * 0.04, 0.15, 0.089, black, 0, head);   // nesebor foran på snuten
+    else ball(0.008, sd * 0.03, 0.105, 0.02, black, head);              // nesebor
   });
   // Bitte små armer (fortsatt for korte!)
   [-1, 1].forEach(sd => box(0.035, 0.08, 0.035, sd * 0.07, -0.07, -0.33, sk.light, 0.6, head));
