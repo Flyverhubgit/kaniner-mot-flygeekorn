@@ -1811,7 +1811,7 @@ function startMap(name) {
   console.log('Bane: ' + mapName);
 }
 // Stemming: står alle i en portal -> 5 sek nedtelling. Ellers starter det 30 sek etter første stemme.
-const LOBBY_WAIT_MS = 30000, LOBBY_COUNT_MS = 5000;
+const LOBBY_WAIT_MS = 15000, LOBBY_COUNT_MS = 5000;   // [NY] venter 15 sek etter første stemme (var 30)
 let lobbyVote = { firstAt: 0, countdownAt: 0, chosen: null, sig: '' };
 setInterval(() => {
   if (mapName !== 'lobby' || intermission) return;
