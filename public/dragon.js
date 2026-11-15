@@ -238,7 +238,7 @@ function dragonRayTest(o, dir, maxT) {
       const d2 = oc.lengthSq() - tc * tc;
       if (d2 > r * r) return;
       const t = tc - Math.sqrt(r * r - d2);
-      if (t > 0 && t < bt) { bt = t; best = { id, t }; }
+      if (t > 0 && t < bt) { bt = t; best = { id, t, head: i === 0 }; }   // [NY] del 0 = hodet
     });
   });
   return best;

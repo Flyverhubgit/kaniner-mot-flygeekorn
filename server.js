@@ -1690,7 +1690,7 @@ io.on('connection', socket => {
     if (sn) p.lastDragonSn = now; else p.lastDragonHit = now;
     if (Math.hypot(dr.x - p.x, dr.y - p.y, dr.z - p.z) > 220) return;
     p.protectedUntil = 0;
-    hurtDragon(dr, DRAGON_HIT[w], p);
+    hurtDragon(dr, dragonShotDmg(dr.type, w, !!d.head), p);   // [NY] hodeskudd
   });
 
   socket.on('blockHit', d => {
@@ -1948,6 +1948,17 @@ function walkDragon(d, T, gx, gz, now, dt) {
 }
 const DRAGON_WAVES = 10, SHRINE_HP = 4000, DRAGON_PREP_MS = +process.env.DRAGON_PREP || 15000, DRAGON_BREAK_MS = 8000, DRAGON_SECONDS = 20 * 60;
 const DRAGON_HIT = { ak: 20, sniper: 90, dart: 30, bow: 45, crossbow: 85, sword: 40, flail: 70 };
+// [NY] Nye liv og hodeskudd (med AK): vanlig 150 liv / 2 hodeskudd, ilddrage 200 / 2, miniboss (bølge 5) 550 / 30, himmeldragen (bølge 10) 2500 / hodeskudd 200.
+//      Andre våpen: hodeskudd skaleres med hvor sterkt våpenet er i forhold til AK. Kroppsskudd er aldri sterkere enn 60 % av et hodeskudd.
+const DRAGON_HP_V2 = true;   // false = de gamle livene (og bossene vokser med antall spillere)
+const DRAGON_HP2 = { small: 150, fire: 200, boss: 550, skyboss: 2500 };
+const DRAGON_HEAD = { small: 75, fire: 100, boss: 550 / 30 + 0.01, skyboss: 200 };
+function dragonShotDmg(type, w, head) {
+  const base = DRAGON_HIT[w] || DRAGON_HIT.ak;
+  if (!DRAGON_HP_V2) return base;
+  const hd = (DRAGON_HEAD[type] || base) * (base / DRAGON_HIT.ak);
+  return head ? hd : Math.min(base, hd * 0.6);
+}
 let dragonGame = null, dragonSeq = 0, dragonRecord = 0;
 function dragonMap() { return mapName === 'dragon' && worldName === 'main'; }
 // [NY] Vanskelighet etter antall spillere: få spillere = lettere, mange = vanskeligere
@@ -1981,7 +1992,7 @@ function dragonWaveList(n) {
 function spawnDragon(type) {
   const T = DRAGON[type], np = Math.max(1, Object.values(players).filter(p => !p.isBot).length);
   const a = Math.random() * Math.PI * 2;
-  const hp = type === 'boss' || type === 'skyboss' ? Math.round(T.hp * dragonBossMul()) : T.hp;
+  const hp = DRAGON_HP_V2 ? DRAGON_HP2[type] : type === 'boss' || type === 'skyboss' ? Math.round(T.hp * dragonBossMul()) : T.hp;   // [NY] faste liv
   const sky = type === 'skyboss';
   const gate = DRAGON_GATES[Math.floor(Math.random() * DRAGON_GATES.length)];
   const walk = DRAGON_WALK && !sky;

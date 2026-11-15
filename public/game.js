@@ -1585,7 +1585,7 @@ function shoot() {
   const end = o.clone().addScaledVector(d, bestT);
 
   if (dragonHit) {
-    socket.emit('dragonHit', { id: dragonHit.id, w: weapon.id });   // [NY]
+    socket.emit('dragonHit', { id: dragonHit.id, w: weapon.id, head: !!dragonHit.head });   // [NY] head = hodeskudd
     addStuffing(end);
     hitmarkTime = 0.1;
   } else if (chick) {
