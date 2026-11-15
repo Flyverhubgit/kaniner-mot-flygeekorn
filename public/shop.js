@@ -222,6 +222,7 @@ function buildRaptor(o) {
 }
 // ---------- [NY] SØT T-REX på AK: store runde øyne med glimt, rosa kinn, kort rund snute, smil ----------
 // Munnen i (0,0,0), snuten mot +z, løpet går gjennom gapet (som den vanlige T-rexen).
+const CUTE_LESS = true;   // [NY] litt mindre søt (false = helt søt)
 const CUTE_CHEEKS = false;   // [NY] true = rosa kinn på den søte T-rexen
 function buildCuteRex(o) {
   const g = new THREE.Group(), sk = skinMats('dino');
@@ -236,20 +237,25 @@ function buildCuteRex(o) {
   const head = new THREE.Group(); head.scale.setScalar(o.s); g.add(head);
   // Rundt hode og kort, rund snute
   ball(0.13, 0, 0.1, -0.24, sk.light, head, 1, 0.75, 1);                // stort rundt hode (lavt, så siktet er fritt)
-  ball(0.09, 0, 0.075, -0.06, sk.light, head, 1, 0.6, 1.1);             // kort snute
+  ball(0.09, 0, 0.075, CUTE_LESS ? -0.03 : -0.06, sk.light, head, 1, 0.6, CUTE_LESS ? 1.45 : 1.1);   // snute (litt lengre når mindre søt)
   box(0.11, 0.012, 0.16, 0, 0.04, -0.06, mouth, 0, head);               // gane
   // Underkjeve med lys mage-farge, smiler
   const jaw = new THREE.Group(); jaw.position.set(0, -0.03, -0.15); jaw.rotation.x = 0.22; head.add(jaw);
   ball(0.08, 0, -0.01, 0.08, belly, jaw, 1, 0.45, 1.25);
   box(0.09, 0.01, 0.14, 0, 0.012, 0.08, mouth, 0, jaw);
   // Bare to små runde tenner oppe (søte, ikke skumle)
-  [-1, 1].forEach(sd => { const t = new THREE.Mesh(new THREE.ConeGeometry(0.012, 0.028, 6), white); t.rotation.x = Math.PI; t.position.set(sd * 0.035, 0.03, 0.02); head.add(t); });
+  if (!CUTE_LESS) [-1, 1].forEach(sd => { const t = new THREE.Mesh(new THREE.ConeGeometry(0.012, 0.028, 6), white); t.rotation.x = Math.PI; t.position.set(sd * 0.035, 0.03, 0.02); head.add(t); });
+  else for (let i = 0; i < 4; i++) [-1, 1].forEach(sd => {      // 4 små spisse tenner på hver side
+    const t = new THREE.Mesh(new THREE.ConeGeometry(0.01, 0.034, 4), white); t.rotation.x = Math.PI; t.position.set(sd * (0.05 - i * 0.004), 0.03, 0.06 - i * 0.045); head.add(t);
+  });
+  if (CUTE_LESS) [-1, 1].forEach(sd => { const br = box(0.045, 0.018, 0.07, sd * 0.08, 0.19, -0.2, sk.dark, 0, head); br.rotation.z = -sd * 0.25; });   // lite pannebrask
   // Store runde øyne med glimt
   [-1, 1].forEach(sd => {
-    ball(0.05, sd * 0.085, 0.14, -0.2, white, head, 0.6, 1, 1);
-    ball(0.034, sd * 0.11, 0.135, -0.19, black, head, 0.5, 1, 1);
-    ball(0.012, sd * 0.125, 0.155, -0.175, white, head);                // glimt
-    ball(0.006, sd * 0.125, 0.12, -0.2, white, head);                   // lite glimt
+    const e = CUTE_LESS ? 0.75 : 1;                                     // øyestørrelse
+    ball(0.05 * e, sd * 0.085, 0.14, -0.2, white, head, 0.6, 1, 1);
+    ball(0.034 * e, sd * (CUTE_LESS ? 0.1 : 0.11), 0.135, -0.19, black, head, 0.5, 1, 1);
+    ball(0.012 * e, sd * (CUTE_LESS ? 0.11 : 0.125), 0.15, -0.18, white, head);   // glimt
+    if (!CUTE_LESS) ball(0.006, sd * 0.125, 0.12, -0.2, white, head);   // lite glimt
     if (CUTE_CHEEKS) ball(0.03, sd * 0.1, 0.07, -0.12, pink, head, 0.4, 0.6, 1);   // rosa kinn (av)
     ball(0.008, sd * 0.03, 0.105, 0.02, black, head);                   // nesebor
   });
@@ -257,7 +263,11 @@ function buildCuteRex(o) {
   [-1, 1].forEach(sd => box(0.035, 0.08, 0.035, sd * 0.07, -0.07, -0.33, sk.light, 0.6, head));
   // Runde oransje kuler langs ryggen i stedet for spisse pigger
   const n = Math.max(3, Math.round(o.ridgeLen / 0.09));
-  for (let i = 0; i < n; i++) ball((i % 2 ? 0.018 : 0.024) * o.s, 0, o.ridgeY, -0.36 * o.s - i * (o.ridgeLen / n), orange);
+  for (let i = 0; i < n; i++) {
+    if (!CUTE_LESS) { ball((i % 2 ? 0.018 : 0.024) * o.s, 0, o.ridgeY, -0.36 * o.s - i * (o.ridgeLen / n), orange); continue; }
+    const sp = new THREE.Mesh(new THREE.ConeGeometry(0.022 * o.s, (i % 2 ? 0.045 : 0.065) * o.s, 6), orange);   // korte pigger
+    sp.position.set(0, o.ridgeY, -0.36 * o.s - i * (o.ridgeLen / n)); g.add(sp);
+  }
   g.traverse(c => { if (c.isMesh) { c.userData.noSkin = true; c.raycast = () => {}; c.castShadow = !o.fp; if (o.fp) c.layers.set(2); } });
   return g;
 }
