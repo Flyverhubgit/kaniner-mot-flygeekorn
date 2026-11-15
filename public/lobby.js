@@ -151,6 +151,8 @@ sign([{ t: '🤸 HOPP!', size: 60, bold: true }], 2, 0.6, T.x, 2.6, T.z, 0, null
 
 // ---------- Skytebanen (skivene faller når du treffer) ----------
 const R = LOB.RANGE, targets = [];
+const LOBBY_TARGETS = false;   // [NY] skytebanen er tatt bort (ingen våpen i loungen). true = tilbake
+const rangeStart = lobbyGroup.children.length;
 lbox(R.x1 - R.x0 + 2, 0.05, 0.4, (R.x0 + R.x1) / 2, 0.03, 6.5, 0xffffff);                     // skytelinje
 sign([{ t: '🎯 SKYTEBANE – test skinnen din', size: 40, bold: true }], 6, 0.6, (R.x0 + R.x1) / 2, 4.8, 14.7, Math.PI, '#20182a');
 for (let i = 0; i < 6; i++) {
@@ -166,6 +168,11 @@ for (let i = 0; i < 6; i++) {
   pivot.add(disc);
   targets.push({ pivot, disc, down: 0 });
 }
+// [NY] Samle alt fra skytebanen i én gruppe, så den kan skjules
+const rangeGroup = new THREE.Group(); rangeGroup.name = 'skytebane';
+lobbyGroup.children.slice(rangeStart).forEach(o => rangeGroup.add(o));
+lobbyGroup.add(rangeGroup);
+rangeGroup.visible = LOBBY_TARGETS;
 function lobbyShot(obj) {
   const k = obj && obj.userData.target;
   if (k === undefined) return;

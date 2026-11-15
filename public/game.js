@@ -468,7 +468,7 @@ if (isTouch) {
   scopeBtn.style.cssText = 'position:fixed;right:140px;bottom:240px;width:64px;height:64px;border-radius:50%;background:rgba(255,255,255,0.3);border:2px solid rgba(255,255,255,0.6);color:#fff;font:bold 13px sans-serif;display:none;align-items:center;justify-content:center;z-index:5;user-select:none;';
   document.body.appendChild(scopeBtn);
   window.__scopeBtn = scopeBtn;   // vises bare med snikskytter (se updateWeapon)
-  window.__mobBtns = { jumpBtn, slideBtn, reloadBtn, nadeBtn, crouchBtn, swapBtn, scopeBtn };   // [NY] verdensrommet bytter navn/skjuler knapper i flyet
+  window.__mobBtns = { jumpBtn, slideBtn, reloadBtn, nadeBtn, crouchBtn, swapBtn, scopeBtn, fireBtn };   // [NY] fireBtn: skjules i loungen   // [NY] verdensrommet bytter navn/skjuler knapper i flyet
 
   let moveId = null, lookId = null, fireId = null, lastLookTap = 0, jumpId = null;
   const origin = { x: 0, y: 0 }, lastLook = { x: 0, y: 0 }, lastFire = { x: 0, y: 0 };
@@ -1525,7 +1525,11 @@ function muzzleWorld() {
   return gun.localToWorld(flash.position.clone());
 }
 
+// [NY] Ingen våpen i loungen: ingen pistol i hånden, ingen skyting, ingen ammo-tekst. false = som før
+const LOBBY_NO_WEAPONS = true;
+function noWeapons() { return LOBBY_NO_WEAPONS && typeof currentMap !== 'undefined' && currentMap === 'lobby'; }
 function shoot() {
+  if (noWeapons()) return;                        // [NY] ingen våpen i loungen
   if (typeof seaRepairing !== 'undefined' && seaRepairing) return;   // [NY] reparerer basen: hendene er opptatt
   if (typeof farmShoot === 'function' && farmShoot()) return;   // [NY] dosertankens kanon / A-10 fra radioen
   if (typeof spaceShoot === 'function' && spaceShoot()) return;   // [NY] laser fra jagerfly / kanontårn
@@ -1651,7 +1655,7 @@ function updateWeapon(dt) {
       weapon.mag += take;
       weapon.reserve -= take;
     }
-  } else if (wantFire && fireCooldown <= 0) {
+  } else if (wantFire && fireCooldown <= 0 && !noWeapons()) {   // [NY] ingen skyting i loungen
     if (typeof inMortar !== 'undefined' && inMortar) fireMortar();   // [NY] morteren uansett hvilket våpen du har
     else if (weapon.mag > 0) shoot(); else startReload();
   }
@@ -1676,7 +1680,7 @@ function updateWeapon(dt) {
     window.__scopeBtn.style.display = weapon === sniperW && joined ? 'flex' : 'none';
     window.__scopeBtn.style.background = scoped ? 'rgba(255,150,205,0.6)' : 'rgba(255,255,255,0.3)';
   }
-  gun.visible = alive && joined && !scoped && !(typeof inMortar !== 'undefined' && inMortar) && !(typeof spaceHideGun === 'function' && spaceHideGun()) && !(typeof farmHideGun === 'function' && farmHideGun());  // [NY] skjul våpenet i menyen, når du er død, i kikkerten og i morteren
+  gun.visible = alive && joined && !noWeapons() && !scoped && !(typeof inMortar !== 'undefined' && inMortar) && !(typeof spaceHideGun === 'function' && spaceHideGun()) && !(typeof farmHideGun === 'function' && farmHideGun());  // [NY] skjul våpenet i menyen, når du er død, i kikkerten og i morteren
 
   flashTime -= dt;
   flash.visible = flashTime > 0;
@@ -1702,6 +1706,12 @@ function updateWeapon(dt) {
     if (s.life <= 0) s.mesh.visible = false;
   });
 
+  if (noWeapons()) {                              // [NY] loungen: ingen ammo-tekst og ingen skyteknapper
+    hud.textContent = '';
+    if (window.__mobBtns) ['fireBtn', 'nadeBtn', 'reloadBtn', 'swapBtn', 'scopeBtn'].forEach(k => { if (__mobBtns[k]) __mobBtns[k].style.visibility = 'hidden'; });
+    return;
+  }
+  if (window.__mobBtns) ['fireBtn', 'nadeBtn', 'reloadBtn', 'swapBtn', 'scopeBtn'].forEach(k => { if (__mobBtns[k]) __mobBtns[k].style.visibility = ''; });
   const wIcon = akW.id === 'bow' ? (weapon === sniperW ? 'ARMBRØST ' : weapon === bazW ? '⚔️ ' : weapon !== akW ? 'KULE ' : 'BUE ') :   // [NY] Ridderborgen
     weapon === sniperW ? (myTeam === 'bunny' ? '🥕 ' : '🌰 ') : weapon === bazW ? '🚀 ' : akW.id === 'dart' ? 'PIL ' : 'AK ';   // [NY] pilgevær   // [NY] gulrot / nøtt / bazooka
   const medHud = akW.id === 'bow';   // [NY] Ridderborgen: bunnløst kogger, ildpotter i stedet for granater
@@ -1802,11 +1812,11 @@ function updateOthers(dt) {
     const sy = r.alive && r.crouch ? 0.5 : 1;     // kaninørene (ca. 2 m) blir 1,0 m – under skummet
     r.body.scale.y += (sy - r.body.scale.y) * Math.min(1, dt * 12);
     r.tag.visible = r.alive && !(r.crouch && foamHeightAt(r.cur.x, r.cur.z) > r.cur.y + 0.8);
-    r.heldSniper.visible = r.weapon === 1;           // [NY] riktig våpen i hånden
-    r.heldBaz.visible = r.weapon === 2;
+    r.heldSniper.visible = r.weapon === 1 && !noWeapons();           // [NY] riktig våpen i hånden (ingen i loungen)
+    r.heldBaz.visible = r.weapon === 2 && !noWeapons();
     r.shield.visible = r.alive && r.prot === 1;      // [NY] skjold-boble
     if (r.shield.visible) r.shield.material.opacity = 0.22 + Math.sin(performance.now() / 120) * 0.08;
-    r.body.userData.gun.visible = r.weapon !== 1 && r.weapon !== 2;
+    r.body.userData.gun.visible = r.weapon !== 1 && r.weapon !== 2 && !noWeapons();
   }
 }
 
