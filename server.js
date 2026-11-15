@@ -1948,11 +1948,11 @@ function walkDragon(d, T, gx, gz, now, dt) {
 }
 const DRAGON_WAVES = 10, SHRINE_HP = 4000, DRAGON_PREP_MS = +process.env.DRAGON_PREP || 15000, DRAGON_BREAK_MS = 8000, DRAGON_SECONDS = 20 * 60;
 const DRAGON_HIT = { ak: 20, sniper: 90, dart: 30, bow: 45, crossbow: 85, sword: 40, flail: 70 };
-// [NY] Nye liv og hodeskudd (med AK): vanlig 150 liv / 2 hodeskudd, ilddrage 200 / 2, miniboss (bølge 5) 550 / 30, himmeldragen (bølge 10) 2500 / hodeskudd 200.
+// [NY] Nye liv og hodeskudd (med AK): vanlig 150 liv / 2 hodeskudd, ilddrage 200 / 2, miniboss (bølge 5) 550 / 30, himmeldragen (bølge 10) 2500 / 200 hodeskudd.
 //      Andre våpen: hodeskudd skaleres med hvor sterkt våpenet er i forhold til AK. Kroppsskudd er aldri sterkere enn 60 % av et hodeskudd.
 const DRAGON_HP_V2 = true;   // false = de gamle livene (og bossene vokser med antall spillere)
 const DRAGON_HP2 = { small: 150, fire: 200, boss: 550, skyboss: 2500 };
-const DRAGON_HEAD = { small: 75, fire: 100, boss: 550 / 30 + 0.01, skyboss: 200 };
+const DRAGON_HEAD = { small: 75, fire: 100, boss: 550 / 30 + 0.01, skyboss: 2500 / 200 + 0.001 };   // [NY] himmeldragen: 200 hodeskudd
 function dragonShotDmg(type, w, head) {
   const base = DRAGON_HIT[w] || DRAGON_HIT.ak;
   if (!DRAGON_HP_V2) return base;
