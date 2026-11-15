@@ -25,7 +25,8 @@ const GEAR = [
   { id: 'dinohat', name: 'Dinosaurhatt', icon: '🦖', level: 25, slot: 'head' },  // [NY] T-rex-hode som hette
   { id: 'froggles', name: 'Froskebriller', icon: '🐸', level: 27, slot: 'face' }, // [NY] solbriller som froskeøyne
   { id: 'duckhat', name: 'Andehatt', icon: '🦆', level: 30, slot: 'head' },      // [NY] gul badeand som sitter på hodet
-  { id: 'kit', name: 'Fotballdrakt', icon: '⚽', level: 1, slot: 'body', quest: true }   // [NY] fås fra fotballkyllingen (oppdrag), ikke nivå
+  { id: 'kit', name: 'Fotballdrakt', icon: '⚽', level: 1, slot: 'body', quest: true },  // [NY] fås fra fotballkyllingen (oppdrag), ikke nivå
+  { id: 'nobelt', name: 'Kulebelter', icon: '🎗️', level: 1, slot: 'belt', invert: true }   // [NY] PÅ som standard. Trykk = ta av kulebeltene (lagres som 'nobelt')
 ];
 // XP som trengs for nivå n: 30 * n * (n - 1)  -> nivå 2 = 60, 5 = 600, 10 = 2700, 15 = 6300
 function xpFor(n) { return 30 * n * (n - 1); }
@@ -320,7 +321,9 @@ function buildKit(g, team) {
 function applyGear(body, team, wear) {
   if (body.userData.gearGroup) body.remove(body.userData.gearGroup);
   const gg = new THREE.Group();
-  (wear || []).forEach(id => { if (id !== 'goldfur') gg.add(buildGearPart(id, team)); });
+  (wear || []).forEach(id => { if (id !== 'goldfur' && id !== 'nobelt') gg.add(buildGearPart(id, team)); });
+  const belts = !(wear || []).includes('nobelt');      // [NY] kulebeltene av/på
+  body.traverse(o => { if (o.userData && o.userData.belt) o.visible = belts; });
   body.add(gg);
   body.userData.gearGroup = gg;
   // Gullpels: farg pelsen gull (og tilbake hvis den tas av)
@@ -374,7 +377,7 @@ let gearOpen = false;                              // [NY] sammenslått som stan
 function renderGearMenu() {
   const L = myLevel(), cur = profile.xp - xpFor(L), need = xpFor(L + 1) - xpFor(L);
   const k = Math.max(0, Math.min(1, cur / need));
-  const worn = myWear().map(id => GEAR.find(g => g.id === id).icon).join('');
+  const worn = myWear().filter(id => !GEAR.find(g => g.id === id).invert).map(id => GEAR.find(g => g.id === id).icon).join('');
   let h = '<div id="gearHead" style="cursor:pointer;user-select:none;display:inline-flex;align-items:center;gap:8px;padding:4px 12px;border-radius:10px;background:rgba(0,0,0,.25)">' +
     '<b>⭐ Nivå ' + L + '</b>' + (worn ? ' <span>' + worn + '</span>' : '') +
     '<span style="display:inline-block;width:70px;height:6px;background:rgba(255,255,255,.2);border-radius:3px;overflow:hidden"><span style="display:block;height:100%;width:' + (k * 100).toFixed(0) + '%;background:#ffd23a"></span></span>' +
@@ -388,7 +391,7 @@ function renderGearMenu() {
   h += '<div style="font-size:12px;opacity:.7;margin:4px 0">' + Math.floor(profile.xp) + ' XP – neste nivå om ' + Math.ceil(xpFor(L + 1) - profile.xp) + ' XP</div>' +
     '<div style="display:flex;flex-wrap:wrap;gap:5px;justify-content:center">';
   GEAR.forEach(g => {
-    const open = gearUnlocked(g, L), on = open && profile.wear.includes(g.id);
+    const open = gearUnlocked(g, L), on = open && (g.invert ? !profile.wear.includes(g.id) : profile.wear.includes(g.id));   // [NY] kulebelter: lyser når de er PÅ
     h += '<button class="gearBtn" data-id="' + g.id + '" ' + (open ? '' : 'disabled') + ' title="' + g.name + '" style="padding:4px 7px;border-radius:8px;border:2px solid ' +
       (on ? '#ffd23a' : 'rgba(255,255,255,.25)') + ';background:' + (on ? 'rgba(255,210,58,.3)' : 'rgba(0,0,0,.25)') + ';color:#fff;font-size:13px;cursor:' + (open ? 'pointer' : 'default') + ';opacity:' + (open ? 1 : 0.45) + '">' +
       (open ? g.icon + ' ' + g.name : g.quest ? '🔒 Oppdrag' : '🔒 Nivå ' + g.level) + '</button>';
