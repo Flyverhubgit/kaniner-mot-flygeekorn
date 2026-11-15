@@ -403,14 +403,16 @@ function buildSoccer(o) {
   });
   // [NY] Rundt merke på hver side: svart ring ytterst, hvitt inni, "M-I-L" i midten
   if (SOCCER_BADGE) ['left', 'right'].forEach(face => {
-    const holder = new THREE.Group(), rr = 0.05 * o.s * (o.fp ? 0.85 : 1);
-    const m = new THREE.MeshStandardMaterial({ map: soccerBadgeTex(), roughness: 0.5, transparent: true, alphaTest: 0.5 });
+    const holder = new THREE.Group(), rr = (SOCCER_BADGE_BIG ? 0.07 : 0.05) * o.s * (o.fp ? 0.85 : 1);
+    const m = SOCCER_BADGE_BIG ? new THREE.MeshBasicMaterial({ map: soccerBadgeTex(), transparent: true, alphaTest: 0.5 })   // [NY] alltid klar og lys
+      : new THREE.MeshStandardMaterial({ map: soccerBadgeTex(), roughness: 0.5, transparent: true, alphaTest: 0.5 });
     [1, -1].forEach(sd => {                    // én flate som vender ut hver vei (den innerste skjules i våpenet)
       const pl = new THREE.Mesh(new THREE.CircleGeometry(rr, 32), m);
       pl.rotation.y = sd * Math.PI / 2; pl.position.x = sd * 0.004 * o.s; holder.add(pl);
     });
     holder.userData.face = face; holder.userData.t = goal.userData.t; holder.visible = false;   // rett under målet
-    if (o.key === 'baz') holder.userData.fy = 0.5;   // litt lavere på bazookaen (skinnen oppå skjuler det ellers)
+    if (o.key === 'baz') holder.userData.fy = 0.5;
+    holder.userData.upright = true;                  // [NY] teksten skal alltid stå rett   // litt lavere på bazookaen (skinnen oppå skjuler det ellers)
     g.add(holder);
   });
   g.traverse(c => { if (c.isMesh) { c.userData.noSkin = true; c.raycast = () => {}; c.castShadow = !o.fp; if (o.fp) c.layers.set(2); } });
@@ -419,16 +421,24 @@ function buildSoccer(o) {
 let soccerBadgeT = null;
 function soccerBadgeTex() {                        // tegnes én gang og deles
   if (soccerBadgeT) return soccerBadgeT;
-  const c = document.createElement('canvas'); c.width = c.height = 128;
+  const N = SOCCER_BADGE_BIG ? 256 : 128, k = N / 128;
+  const c = document.createElement('canvas'); c.width = c.height = N;
   const x = c.getContext('2d');
-  x.fillStyle = '#111111'; x.beginPath(); x.arc(64, 64, 63, 0, Math.PI * 2); x.fill();        // svart ytterring
-  x.fillStyle = '#ffffff'; x.beginPath(); x.arc(64, 64, 50, 0, Math.PI * 2); x.fill();        // hvitt inni
-  x.fillStyle = '#111111'; x.font = 'bold 30px Arial, sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle';
-  x.fillText('M-I-L', 64, 66);
+  x.fillStyle = '#111111'; x.beginPath(); x.arc(64 * k, 64 * k, 63 * k, 0, Math.PI * 2); x.fill();        // svart ytterring
+  x.fillStyle = '#ffffff'; x.beginPath(); x.arc(64 * k, 64 * k, (SOCCER_BADGE_BIG ? 52 : 50) * k, 0, Math.PI * 2); x.fill();   // hvitt inni
+  x.fillStyle = '#111111'; x.textAlign = 'center'; x.textBaseline = 'middle';
+  if (SOCCER_BADGE_BIG) {                          // [NY] store, tykke bokstaver som fyller den hvite flaten
+    x.font = '900 ' + (36 * k) + 'px Arial Black, Arial, sans-serif';
+    let w = x.measureText('M-I-L').width; const maxW = 92 * k;
+    if (w > maxW) x.font = '900 ' + Math.floor(36 * k * maxW / w) + 'px Arial Black, Arial, sans-serif';
+    x.fillText('M-I-L', 64 * k, 66 * k);
+  } else { x.font = 'bold 30px Arial, sans-serif'; x.fillText('M-I-L', 64, 66); }
   soccerBadgeT = new THREE.CanvasTexture(c);
+  soccerBadgeT.anisotropy = 4;
   return soccerBadgeT;
 }
-const SOCCER_BADGE = true;   // [NY] false = uten M-I-L-merket
+const SOCCER_BADGE = true;
+const SOCCER_BADGE_BIG = true;   // [NY] større og tydeligere merke (false = det lille)   // [NY] false = uten M-I-L-merket
 const soccerBalls = [];
 const SOCCER_GOAL_FACE_YOU = true;   // [NY] false = målet vender ut til siden
 const SOCCER_MORE_BALLS = false;     // [NY] av: bare ballen på munningen (true = flere små baller)
@@ -493,6 +503,11 @@ function settleHearts(container, r) {
       if (!hit) return;
       h.position.copy(h.parent.worldToLocal(hit.point.clone()));
       if (f === 'top') h.position.y -= 0.002;
+      if (h.userData.upright) {                      // [NY] snu merket så det følger våpenet, ikke dyrehode-oppsettet
+        const pq = new THREE.Quaternion(); h.parent.getWorldQuaternion(pq);
+        const cq = new THREE.Quaternion(); container.getWorldQuaternion(cq);
+        h.quaternion.copy(pq.invert().multiply(cq));
+      }
       h.visible = true;
     });
   } catch (err) {}
