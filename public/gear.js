@@ -265,6 +265,14 @@ function buildGearPart(id, team) {
   return g;
 }
 const FUR_COLORS = [0x8d8479, 0x80776d, 0x9d9489];
+const KIT_SWEATER = true;   // [NY] drakta har lange grønne ermer (false = t-skjorte)
+// [NY] Armene: kanin 0.09×0.66/0.50×0.09, ekorn venstre 0.48×0.14×0.12, høyre 0.12×0.44×0.12
+function isArmBlock(o) {
+  const p = o.geometry && o.geometry.parameters; if (!p) return false;
+  const near = (a, b) => Math.abs(a - b) < 0.005;
+  return (near(p.width, 0.09) && (near(p.height, 0.66) || near(p.height, 0.50)) && near(p.depth, 0.09)) ||
+    (near(p.width, 0.48) && near(p.height, 0.14) && near(p.depth, 0.12)) || (near(p.width, 0.12) && near(p.height, 0.44) && near(p.depth, 0.12));
+}
 // [NY] Hendene: de små klossene ytterst på armene (kanin 0.12×0.10×0.12, ekorn venstre 0.12×0.18×0.14)
 function isHandBlock(o) {
   const p = o.geometry && o.geometry.parameters; if (!p || !o.parent || o.parent.type !== 'Group' && o.parent.type !== 'Object3D') return false;
@@ -319,7 +327,13 @@ function applyGear(body, team, wear) {
   const gold = (wear || []).includes('goldfur'), kit = (wear || []).includes('kit');
   body.traverse(o => {
     if (!o.isMesh || !o.material || !o.material.color) return;
-    if (isHandBlock(o)) {                            // [NY] fotballdrakt: svarte hansker
+    let inGun = false; for (let q = o; q && q !== body; q = q.parent) if (q === body.userData.gun) { inGun = true; break; }   // [NY] ikke farg våpenet
+    if (!inGun && KIT_SWEATER && isArmBlock(o)) {             // [NY] fotballdrakt som genser: grønne ermer
+      if (o.userData.armColor === undefined) o.userData.armColor = o.material.color.getHex();
+      if (kit) { o.material.color.setHex(0x0d6e57); if (o.material.emissive) o.material.emissive.setHex(0); return; }
+      o.material.color.setHex(o.userData.armColor);
+    }
+    if (!inGun && isHandBlock(o)) {                  // [NY] fotballdrakt: svarte hansker
       if (o.userData.handColor === undefined) o.userData.handColor = o.material.color.getHex();
       if (kit) { o.material.color.setHex(0x161616); if (o.material.emissive) o.material.emissive.setHex(0); return; }
       o.material.color.setHex(o.userData.handColor);   // drakten av: vanlig pels igjen

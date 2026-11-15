@@ -30,7 +30,7 @@ const SKINS = [
   { id: 'shark', name: 'Hai', icon: '🦈', price: 1750 },       // [NY] haihode med løpet ut av gapet
   { id: 'unicorn', name: 'Enhjørning', icon: '🦄', price: 500 },  // [NY] enhjørning med regnbuemanke og gullhorn
   { id: 'butterfly', name: 'Sommerfugl', icon: '🦋', price: 200 },  // [NY] rosa og blå, med vinger som blafrer
-  { id: 'soccer', name: 'Fotball', icon: '⚽', price: 500 }  // [NY] grønn bane, fotball på munningen, mål oppå
+  { id: 'soccer', name: 'MIL Fotball', icon: '⚽', price: 500, quest: true }  // [NY] grønn bane, fotball på munningen, mål oppå. Fås fra treneren (oppdrag), kan ikke kjøpes
 ];
 const WEAPON_SLOTS = [['ak', 'AK'], ['sniper', 'Snikskytter'], ['baz', 'Bazooka']];
 function skinBits() { let b = 0; SKINS.forEach((s, i) => { if (profile.owned.includes(s.id)) b |= 1 << i; }); return b; }
@@ -805,8 +805,9 @@ function renderShop() {
     h += '<button class="shopS" data-s="" style="' + btnStyle(!cur, true) + '">⚪ Vanlig</button>';
     SKINS.forEach(s => {
       const owned = profile.owned.includes(s.id), on = cur === s.id;
-      const lockedLvl = s.level && L < s.level, cant = !owned && (lockedLvl || profile.coins < s.price);
+      const lockedLvl = s.level && L < s.level, cant = !owned && (s.quest || lockedLvl || profile.coins < s.price);
       const label = owned ? s.icon + ' ' + s.name
+        : s.quest ? '🔒 ' + s.icon + ' Oppdrag'
         : confirmBuy === s.id ? 'Kjøp for 🪙' + s.price + '?'
         : lockedLvl ? '🔒 ' + s.icon + ' Nivå ' + s.level
         : s.icon + ' ' + s.name + ' 🪙' + s.price;
@@ -814,7 +815,7 @@ function renderShop() {
       h += '<button class="shopS" data-s="' + s.id + '" ' + (cant && !SHOP_PREVIEW_ON ? 'disabled' : '') + ' style="' + btnStyle(on || look, owned || !cant || SHOP_PREVIEW_ON) + (cant && !look ? 'opacity:.5;' : '') + (confirmBuy === s.id ? 'background:rgba(60,160,60,.6);' : '') + '">' + label + '</button>';
     });
     const ps = SHOP_PREVIEW_ON && shopPrevId ? SKINS.find(x => x.id === shopPrevId) : null;
-    const pmsg = ps && !profile.owned.includes(ps.id) ? (ps.level && L < ps.level ? 'Låses opp på nivå ' + ps.level : profile.coins < ps.price ? 'Du trenger 🪙' + ps.price + ' (mangler ' + Math.ceil(ps.price - profile.coins) + ')' : 'Trykk igjen for å kjøpe') : 'Kjøp en skin én gang – bruk den på alle våpen';
+    const pmsg = ps && !profile.owned.includes(ps.id) ? (ps.quest ? '⚽ Få den hos treneren i loungen' : ps.level && L < ps.level ? 'Låses opp på nivå ' + ps.level : profile.coins < ps.price ? 'Du trenger 🪙' + ps.price + ' (mangler ' + Math.ceil(ps.price - profile.coins) + ')' : 'Trykk igjen for å kjøpe') : 'Kjøp en skin én gang – bruk den på alle våpen';
     h += '</div><div id="shopMsg" style="font-size:12px;opacity:.8;margin-top:4px">' + pmsg + '</div>';
   }
   shopBox.innerHTML = h;
@@ -832,7 +833,7 @@ function pickSkin(id) {
   if (id && !profile.owned.includes(id)) {         // ikke kjøpt: første trykk spør, andre trykk kjøper
     const s = SKINS.find(x => x.id === id);
     if (SHOP_PREVIEW_ON) shopPrevId = id;          // [NY] vis den på våpenet
-    if (!s || profile.coins < s.price || (s.level && myLevel() < s.level)) { confirmBuy = null; renderShop(); return; }
+    if (!s || s.quest || profile.coins < s.price || (s.level && myLevel() < s.level)) { confirmBuy = null; renderShop(); return; }   // [NY] oppdrags-skins kan ikke kjøpes
     if (confirmBuy !== id) { confirmBuy = id; renderShop(); return; }
     profile.coins -= s.price;
     profile.owned.push(id);

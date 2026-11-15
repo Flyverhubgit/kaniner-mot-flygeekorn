@@ -1,7 +1,7 @@
 // ===================================================================
 //  [NY] FOTBALL-TRENEREN ⚽ – kylling i MIL-drakt i loungen som gir et oppdrag
 //  Oppdrag: gjør 5000 skade uten å dø – på alle baner (drager, vanlige kamper, monstre).
-//  Premie: fotballdrakta (utstyr 'kit' i gear.js) til figuren din.
+//  Premie: fotballdrakta (utstyr 'kit' i gear.js) til figuren din + MIL fotball-skinnen på våpenet ('soccer' i shop.js).
 //  Lagres i profilen: profile.quest = { on, done, best }, profile.kit = true når drakta er hentet.
 // ===================================================================
 const QUEST_ON = true;                               // false = ingen trener og intet oppdrag
@@ -68,17 +68,17 @@ function renderQuest() {
   const q = questState();
   let h = '<div style="font:bold 18px sans-serif;margin-bottom:6px">⚽ Treneren</div>';
   if (profile.kit) {
-    h += '<div>Kul drakt! 😎 Du finner den under <b>Utstyr</b> i butikken.</div>' +
+    h += '<div>Kul drakt! 😎 Drakta finner du under <b>Utstyr</b>, og MIL-skinnen under <b>Skins</b> i butikken.</div>' +
       '<button id="qClose" style="margin-top:10px;font:bold 15px sans-serif;padding:6px 16px;border-radius:8px">OK</button>';
   } else if (q.done) {
-    h += '<div>Du klarte det! 🎉 Her er drakta di!</div>' +
-      '<button id="qClaim" style="margin-top:10px;font:bold 16px sans-serif;padding:8px 18px;border-radius:10px;background:#ffd23a;border:none">⚽ Ta imot drakta</button>';
+    h += '<div>Du klarte det! 🎉 Her er fotballdrakta og MIL-våpenskinnen!</div>' +
+      '<button id="qClaim" style="margin-top:10px;font:bold 16px sans-serif;padding:8px 18px;border-radius:10px;background:#ffd23a;border:none">⚽ Ta imot</button>';
   } else if (q.on) {
     h += '<div>Gjør <b>5000 skade</b> uten å dø! 🐉⚔️<br><span style="font-size:13px;opacity:.85">Drager og vanlige kamper teller.</span></div>' + questBar(q.best || 0) +
       '<div style="font-size:13px;opacity:.85">Beste forsøk: ' + Math.floor(q.best || 0) + ' / 5000</div>' +
       '<button id="qClose" style="margin-top:10px;font:bold 15px sans-serif;padding:6px 16px;border-radius:8px">OK</button>';
   } else {
-    h += '<div>Hei! Vil du ha en ekte fotballdrakt?<br>Gjør <b>5000 skade</b> uten å dø! 🐉⚔️<br><span style="font-size:13px;opacity:.85">Drager og vanlige kamper teller.</span></div>' +
+    h += '<div>Hei! Vil du ha en ekte fotballdrakt og MIL-våpenskinnen?<br>Gjør <b>5000 skade</b> uten å dø! 🐉⚔️<br><span style="font-size:13px;opacity:.85">Drager og vanlige kamper teller.</span></div>' +
       '<button id="qTake" style="margin-top:10px;font:bold 16px sans-serif;padding:8px 18px;border-radius:10px;background:#ffd23a;border:none">Jeg tar oppdraget!</button> ' +
       '<button id="qClose" style="margin-top:10px;font:15px sans-serif;padding:6px 12px;border-radius:8px">Senere</button>';
   }
@@ -93,11 +93,14 @@ function renderQuest() {
   });
   if (b('qClaim')) b('qClaim').addEventListener('click', () => {
     profile.kit = true;
+    if (!profile.owned) profile.owned = [];
+    if (!profile.owned.includes('soccer')) profile.owned.push('soccer');   // [NY] MIL-våpenskinnen også
     profile.wear = profile.wear.filter(w => { const o = GEAR.find(x => x.id === w); return o && o.slot !== 'body'; }).concat('kit');   // tar den på med en gang
     saveProfile();
     if (joined) socket.emit('profile', profilePayload());
     if (typeof renderGearMenu === 'function') renderGearMenu();
-    showToast('⚽ Du fikk fotballdrakta!');
+    if (typeof renderShop === 'function') renderShop();
+    showToast('⚽ Du fikk fotballdrakta og MIL-våpenskinnen!');
     playCoachWhistle();
     renderQuest();
   });
