@@ -823,6 +823,7 @@ function showWeaponModel() {
 }
 function switchWeapon(w) {
   if (!joined || weapon === w) return;
+  if (typeof noWeapons === 'function' && noWeapons()) return;   // [FIKS] loungen: mus-hjul / touchpad bytter ikke våpen
   weapon = w;
   reloading = 0;
   scoped = false;

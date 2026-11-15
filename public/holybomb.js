@@ -10,7 +10,19 @@
 const HOLY_FUSE = 3.5;
 const HOLY_TOP = CM.TOWER.top;                 // toppen av plattformen (y = 22)
 const HOLY_SPOT = new THREE.Vector3(0, HOLY_TOP + 0.9, 0);
-const CLIMB_SPEED = 4.5;                         // meter per sekund opp/ned stigen
+const CLIMB_SPEED = 4.5;
+// [NY] Gjemte ferskener på de andre banene (samme steder som på serveren). Ingen lysstråle – de skal letes etter!
+const HOLY_EVERYWHERE = true;
+const HOLY_SPOTS = {
+  temple: new THREE.Vector3(0.5, 0.9, 5), room: new THREE.Vector3(47, 0.9, -21), medieval: new THREE.Vector3(-9.5, 0.9, -0.5),
+  west: new THREE.Vector3(-20.5, 0.9, -10.5), dragon: new THREE.Vector3(1.5, 7.9, 1.5)
+};
+function holySpotNow() {
+  if (castleOn()) return HOLY_SPOT;
+  if (!HOLY_EVERYWHERE || typeof currentMap === 'undefined' || (typeof underNow === 'function' && underNow())) return null;
+  return HOLY_SPOTS[currentMap] || null;
+}
+function holyMapOn() { return !!holySpotNow(); }                         // meter per sekund opp/ned stigen
 let holyInfo = { state: 'top', holder: null };
 window.holyMine = false;
 
@@ -73,6 +85,12 @@ const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.6, 60, 12, 1, true
 beam.position.set(0, HOLY_TOP + 30, 0);
 beam.raycast = () => {};
 castleGroup.add(beam);
+
+// [NY] Den lille gjemte ferskenen (brukes på alle andre baner enn Klosseslottet)
+const hidPeach = buildHolyPeach();
+hidPeach.scale.setScalar(1.4);
+hidPeach.visible = false;
+scene.add(hidPeach);
 
 // ---------- Klatring: står du inntil stigen? W = opp, S = ned, ellers heng fast ----------
 function onLadder(x, z, feet) {
@@ -253,16 +271,19 @@ let grabCooldown = 0;
 function updateHoly(dt) {
   updateWave(dt);
   updatePush(dt);
-  const on = castleOn();
+  const spot = holySpotNow(), on = !!spot, tower = castleOn();   // [NY] tårnet, eller en gjemt fersken på denne banen
   const top = on && holyInfo.state === 'top';
-  bigPeach.visible = top;
-  beam.visible = top;
+  bigPeach.visible = top && tower;
+  beam.visible = top && tower;
+  hidPeach.visible = top && !tower;
   if (top) {
-    bigPeach.rotation.y += dt * 1.2;
-    bigPeach.position.y = HOLY_SPOT.y + Math.sin(performance.now() / 400) * 0.15;
+    const pk = tower ? bigPeach : hidPeach;
+    if (!tower) hidPeach.position.set(spot.x, spot.y, spot.z);
+    pk.rotation.y += dt * 1.2;
+    pk.position.y = spot.y + Math.sin(performance.now() / 400) * (tower ? 0.15 : 0.08);
     grabCooldown -= dt;
     if (alive && joined && grabCooldown <= 0 &&
-        Math.hypot(player.x - HOLY_SPOT.x, player.feetY + 0.9 - HOLY_SPOT.y, player.z - HOLY_SPOT.z) < 1.8) {
+        Math.hypot(player.x - spot.x, player.feetY + 0.9 - spot.y, player.z - spot.z) < 1.8) {
       socket.emit('holyGrab');
       grabCooldown = 0.5;
     }
@@ -282,10 +303,11 @@ socket.on('holy', d => {
   const wasMine = window.holyMine;
   holyInfo = d;
   window.holyMine = d.state === 'held' && d.holder === myId;
-  if (!castleOn()) return;
+  if (!holyMapOn()) return;
+  const dragonMap = typeof dragonOn === 'function' && dragonOn(), tower = castleOn();   // [NY] tekst for de andre banene
   if (window.holyMine && !wasMine) {
     myProtectUntil = performance.now() + 4000;     // 4 sek skjold
-    bannerMsg = '&#127825; DU HAR DEN HELLIGE FERSKENEN! &#127825;<br><span style="font-size:20px">4 sek skjold – kom deg ned!<br>Kast den med ' + (isTouch ? 'GRANAT-knappen' : 'G') + '. Den treffer ALLE – også laget ditt!</span>';
+    bannerMsg = '&#127825; DU HAR DEN HELLIGE FERSKENEN! &#127825;<br><span style="font-size:20px">4 sek skjold' + (tower ? ' – kom deg ned!' : '!') + '<br>Kast den med ' + (isTouch ? 'GRANAT-knappen' : 'G') + '. ' + (dragonMap ? 'Den knuser dragene!' : 'Den treffer ALLE – også laget ditt!') + '</span>';
     bannerTime = 4.5;
     playBell(0.5);
   } else if (d.state === 'held') {
@@ -296,10 +318,10 @@ socket.on('holy', d => {
     bannerMsg = '&#127825; HALLELUJA! &#127825;<br><span style="font-size:20px">' + teamSpan(d.team, esc(d.thrower)) + ' kastet ferskenen – LØP!</span>';
     bannerTime = 3;
   } else if (d.state === 'top' && d.dropped) {
-    bannerMsg = esc(d.dropped) + ' mistet ferskenen – den er tilbake på tårnet!';
+    bannerMsg = esc(d.dropped) + ' mistet ferskenen – den er tilbake ' + (tower ? 'på tårnet!' : 'på gjemmestedet!');
     bannerTime = 3;
   } else if (d.state === 'top' && d.back) {
-    bannerMsg = '&#127825; En ny hellig fersken venter på toppen av tårnet!';
+    bannerMsg = tower ? '&#127825; En ny hellig fersken venter på toppen av tårnet!' : '&#127825; En ny hellig fersken er gjemt et sted på banen …';
     bannerTime = 3;
     playBell(0.2);
   }

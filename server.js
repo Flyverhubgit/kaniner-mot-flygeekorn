@@ -185,6 +185,20 @@ function groundTop(x, z) {
 // Smeller etter 3,5 sek: sprenger et halvt slott og skader ALLE (også eget lag) – bare den som kastet er trygg.
 // Ny fersken på toppen 60 sek etter smellet. Dør du med den, går den tilbake til toppen.
 const HOLY_SPOT = { x: 0, y: 22.9, z: 0 };
+// [NY] Gjemte ferskener på de andre banene (y = føttene + 0,9). Klosseslottet beholder tårnet. Ikke i verdensrommet.
+const HOLY_EVERYWHERE = true;   // false = bare tårnet på Klosseslottet
+const HOLY_SPOTS = {
+  temple: { x: 0.5, y: 0.9, z: 5 },          // under taket midt i tempelet
+  room: { x: 47, y: 0.9, z: -21 },           // i et hjørne mellom møblene
+  medieval: { x: -9.5, y: 0.9, z: -0.5 },    // bak en mosegrodd stein i gjørme-dalen i midten
+  west: { x: -20.5, y: 0.9, z: -10.5 },      // gjemt i et hjørne nær midten
+  dragon: { x: 1.5, y: 7.9, z: 1.5 }         // 2. etasje i pagoden
+};
+const HOLY_DRAGON_DMG = 600;                  // Dragetempelet: ferskenen skader bare dragene
+function holySpot() {
+  if (mapName === 'castle') return worldName === 'main' ? HOLY_SPOT : null;
+  return HOLY_EVERYWHERE ? HOLY_SPOTS[mapName] || null : null;
+}
 const HOLY_SHIELD_MS = 4000, HOLY_BACK_MS = 60000;
 const HOLY_BLOCKS = 13, HOLY_RADIUS = 20, HOLY_MAX_DMG = 800;   // dobbelt så sinnssykt (ca. 3x så mange klosser)
 let holy = { state: 'top', holder: null, readyAt: 0 };     // state: top / held / flying / wait
@@ -1306,6 +1320,7 @@ io.on('connection', socket => {
       if (mapName === 'castle' && worldName === 'main') blastCells(pos[0], pos[1], pos[2], HOLY_BLOCKS);
       if (holy.state === 'flying') setHoly('wait');
       if (intermission) return;
+      if (mapName === 'dragon') { areaHurtDragons(pos[0], pos[1], pos[2], HOLY_RADIUS, HOLY_DRAGON_DMG, p); return; }   // [NY] samme lag: bare dragene får smell
       Object.values(players).forEach(t => {
         if (!t.alive || t.id === p.id) return;          // den som kastet er trygg (alle andre er ikke!)
         const dist = Math.hypot(t.x - pos[0], t.y + 0.9 - pos[1], t.z - pos[2]);
@@ -1342,8 +1357,9 @@ io.on('connection', socket => {
   // [NY] Går inn i den hellige ferskenen på toppen av tårnet
   socket.on('holyGrab', () => {
     const p = players[socket.id];
-    if (!p || !p.alive || intermission || mapName !== 'castle' || worldName !== 'main' || holy.state !== 'top') return;
-    if (Math.hypot(p.x - HOLY_SPOT.x, p.y + 0.9 - HOLY_SPOT.y, p.z - HOLY_SPOT.z) > 2) return;
+    const spot = holySpot();                          // [NY] tårnet på Klosseslottet, eller den gjemte ferskenen på denne banen
+    if (!p || !p.alive || intermission || !spot || holy.state !== 'top') return;
+    if (Math.hypot(p.x - spot.x, p.y + 0.9 - spot.y, p.z - spot.z) > 2) return;
     p.protectedUntil = Date.now() + HOLY_SHIELD_MS;   // 4 sek skjold så du ikke blir skutt med en gang
     setHoly('held', p.id);
     console.log(p.name + ' tok den hellige ferskenen!');
@@ -2034,7 +2050,22 @@ function areaHurtDragons(x, y, z, r, max, p) {
   });
 }
 // Ildkule: flyr mot målet, smeller når den kommer fram (eller treffer en kloss)
+// [NY] Vegger stopper dragene: første kloss på linja mellom to punkter (eller null). Hopper over litt i hver ende.
+const DRAGON_WALLS = true;   // false = som før (ild og bitt gjennom vegger)
+function dWallHit(ax, ay, az, bx, by, bz, skipA, skipB) {
+  if (!DRAGON_WALLS) return null;
+  const L = Math.hypot(bx - ax, by - ay, bz - az); if (L < 0.01) return null;
+  for (let t = skipA || 0.6; t < L - (skipB || 0.6); t += 0.4) {
+    const x = ax + (bx - ax) * t / L, y = ay + (by - ay) * t / L, z = az + (bz - az) * t / L;
+    if (dCell(x, y, z) > 0) return [x, y, z];
+  }
+  return null;
+}
 function dragonFire(d, tx, ty, tz, big, meteor) {
+  if (!meteor) {                                        // [NY] ildkula smeller i veggen hvis noe står i veien
+    const w = dWallHit(d.x, d.y - 0.5, d.z, tx, ty, tz, 1.2, 0.3);
+    if (w) { tx = w[0]; ty = w[1]; tz = w[2]; }
+  }
   const from = [d.x, d.y - 0.5, d.z], dist = Math.hypot(tx - from[0], ty - from[1], tz - from[2]);
   const speed = meteor ? 26 : big ? 20 : 24, ms = Math.max(meteor ? 1600 : 300, dist / speed * 1000);   // meteorer: minst 1,6 sek varsel
   const id = 'df' + d.id + '_' + Date.now() + '_' + Math.floor(Math.random() * 1e4);
@@ -2065,13 +2096,14 @@ function stepWalkingDragon(d, T, targets, now, dt) {
     const f = Math.atan2(best.x - d.x, best.z - d.z); d.vx = Math.sin(f) * 0.05; d.vz = Math.cos(f) * 0.05;
   }
   // Bitt
-  if (hd < T.wr + 1.6 && dy > -1 && dy < T.h + 0.5 && now >= (d.atkAt || 0)) {
+  const clear = !dWallHit(d.x, d.y + T.h * 0.6, d.z, best.x, best.y + 0.9, best.z, Math.min(T.wr, 1.5), 0.3);   // [NY] ingen vegg mellom dragen og deg
+  if (clear && hd < T.wr + 1.6 && dy > -1 && dy < T.h + 0.5 && now >= (d.atkAt || 0)) {
     d.atkAt = now + T.atkMs; d.bite = now;
     chickHurt(best, Math.round(T.dmg * dragonDmgMul()), d.type === 'boss' ? 'Kjempedragen 🐉' : d.type === 'fire' ? 'Ilddrage 🐉' : 'Drageunge 🐉', 'dragon', d.x, d.z);
   }
   // Ild: ilddragene og sjefen på avstand, små drager bare når du står høyt (på et tak) og de ikke når deg
   const canFire = T.fireMs ? hd < 28 && hd > 4 : (dy > 2.5 && hd < 10);
-  if (canFire && now >= d.fireAt) {
+  if (canFire && clear && now >= d.fireAt) {   // [NY] skyter bare når den ser deg
     d.fireAt = now + (T.fireMs || 2600);
     dragonFire({ id: d.id, x: d.x, y: d.y + T.h * 0.85, z: d.z }, best.x + (Math.random() - 0.5) * 1.5, best.y + 0.6, best.z + (Math.random() - 0.5) * 1.5, d.type === 'boss');
   }
