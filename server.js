@@ -572,6 +572,7 @@ function chickHurt(t, dmg, who, weapon, fromX, fromZ) {
 }
 function hurtChick(c, dmg, p) {
   if (!farm || !farm.chicks.has(c.id)) return;
+  questAddDmg(p, Math.min(dmg, Math.max(0, c.hp)));   // [NY] fotball-oppdraget
   c.hp -= dmg;
   if (c.hp <= 0) killChick(c, p);
 }
@@ -1053,11 +1054,11 @@ function publicPlayer(p) {
     level: p.level || 1, wear: p.wear || [], skins: p.skins || {} };   // [NY] nivå, utstyr og våpen-skins
 }
 // [NY] Nivå og utstyr kommer fra spilleren (lagret i nettleseren). Bare lovlige verdier slipper gjennom.
-const GEAR_IDS = ['shades', 'cap', 'pirate', 'goldband', 'mask', 'viking', 'tophat', 'crown', 'halo', 'goldfur', 'dinohat', 'sharkhat', 'unihat', 'froggles', 'duckhat'];
+const GEAR_IDS = ['shades', 'cap', 'pirate', 'goldband', 'mask', 'viking', 'tophat', 'crown', 'halo', 'goldfur', 'dinohat', 'sharkhat', 'unihat', 'froggles', 'duckhat', 'kit'];
 const SKIN_IDS = ['camo', 'pink', 'tiger', 'ice', 'lava', 'rainbow', 'galaxy', 'gold', 'diamond', 'dino', 'shark', 'unicorn', 'butterfly'];   // [NY] dinosaur   // [NY] våpen-skins fra butikken
 function cleanProfile(d) {
   const level = Math.max(1, Math.min(99, (d && d.level) | 0));
-  const wear = Array.isArray(d && d.wear) ? d.wear.filter(w => GEAR_IDS.includes(w)).slice(0, 3) : [];
+  const wear = Array.isArray(d && d.wear) ? d.wear.filter(w => GEAR_IDS.includes(w)).slice(0, 4) : [];
   const skins = {};
   ['ak', 'sniper', 'baz'].forEach(w => { const v = d && d.skins && d.skins[w]; if (SKIN_IDS.includes(v)) skins[w] = v; });
   return { level, wear, skins };
@@ -1080,6 +1081,7 @@ function num(v, lo, hi) {
 // Skade fra skudd eller granat. weapon = 'gun' eller 'nade'
 function applyDamage(p, t, dmg, head, weapon) {
   if (Date.now() < (t.protectedUntil || 0)) return;   // nettopp startet på nytt: beskyttet
+  if (p !== t) questAddDmg(p, Math.min(dmg, Math.max(0, t.hp)));   // [NY] fotball-oppdraget
   t.hp -= dmg;
   io.to(p.id).emit('hitConfirm', { head, kill: t.hp <= 0 });
   io.to(t.id).emit('damaged', { hp: Math.max(0, t.hp), fromX: p.x, fromZ: p.z });
@@ -1089,6 +1091,7 @@ function applyDamage(p, t, dmg, head, weapon) {
     dropHoly(t);                                       // [NY]
     leaveVehicle(t);                                   // [NY] jagerflyet er borte
     t.deaths++;
+    questDied(t);                                      // [NY] døde: oppdraget starter på nytt
     t.streak = 0;
     p.kills++;
     score[p.team]++;
@@ -1110,6 +1113,7 @@ function killByWorld(t, who, weapon) {
   dropHoly(t);                                         // [NY]
   leaveVehicle(t);
   t.deaths++;
+  questDied(t);                                        // [NY] døde: oppdraget starter på nytt
   t.streak = 0;
   io.to(t.id).emit('damaged', { hp: 0, fromX: t.x, fromZ: t.z });
   io.emit('kill', { killer: null, killerName: who, killerTeam: 'none', victim: t.id, victimName: t.name, victimTeam: t.team, head: false, weapon, score });
@@ -1171,6 +1175,7 @@ io.on('connection', socket => {
   });
 
   // [NY] Nytt nivå eller nytt utstyr midt i spillet: si fra til de andre
+  socket.on('questOn', on => { const p = players[socket.id]; if (p) { p.questOn = !!on; p.questDmg = 0; p.questDone = false; } });   // [NY] fotball-oppdraget
   socket.on('profile', d => {
     const p = players[socket.id];
     if (!p) return;
@@ -1744,7 +1749,28 @@ setInterval(() => {
 // ===================================================================
 let lastResult = null;
 // Bytt alle spillerne til en ny bane (eller tilbake til loungen)
+// ===================================================================
+//  [NY] FOTBALL-OPPDRAGET: gjør 5000 skade uten å dø (på alle baner: drager, spillere, monstre)
+//  Klienten sier fra når oppdraget er tatt (questOn). Dør du, starter tellingen på nytt.
+// ===================================================================
+const QUEST_DMG = Number(process.env.QUEST_DMG) || 5000;
+function questAddDmg(p, n) {
+  if (!p || p.isBot || !p.questOn || p.questDone || !(n > 0) || mapName === 'lobby') return;   // [NY] teller på alle baner
+  p.questDmg = (p.questDmg || 0) + n;
+  if (p.questDmg >= QUEST_DMG) { p.questDone = true; io.to(p.id).emit('questDone'); return; }
+  const now = Date.now();
+  if (now - (p.questSentAt || 0) > 250) { p.questSentAt = now; io.to(p.id).emit('questProg', { dmg: Math.floor(p.questDmg), need: QUEST_DMG }); }
+}
+function questDied(t) {
+  if (!t || !t.questOn || t.questDone) return;
+  if ((t.questDmg || 0) > 0) io.to(t.id).emit('questFail', { dmg: Math.floor(t.questDmg) });
+  t.questDmg = 0;
+  io.to(t.id).emit('questProg', { dmg: 0, need: QUEST_DMG });
+}
+function questResetAll() { Object.values(players).forEach(p => { p.questDmg = 0; p.questDone = false; }); }
+
 function startMap(name) {
+  questResetAll();                                     // [NY] ny bane: tellingen starter på 0
   score = { bunny: 0, squirrel: 0 };
   if (worldName !== 'main') { worldName = 'main'; io.emit('world', { name: 'main' }); }
   mapName = name;
@@ -1984,6 +2010,7 @@ function killDragon(d, p) {
 }
 function hurtDragon(d, dmg, p) {
   if (!dragonGame || !dragonGame.list.has(d.id)) return;
+  questAddDmg(p, Math.min(dmg, Math.max(0, d.hp)));   // [NY] fotball-oppdraget teller skaden
   d.hp -= dmg;
   if (d.hp <= 0) killDragon(d, p);
 }

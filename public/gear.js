@@ -24,7 +24,8 @@ const GEAR = [
   { id: 'sharkhat', name: 'Haihatt', icon: '🦈', level: 20, slot: 'head' },     // [NY] haihode som hette
   { id: 'dinohat', name: 'Dinosaurhatt', icon: '🦖', level: 25, slot: 'head' },  // [NY] T-rex-hode som hette
   { id: 'froggles', name: 'Froskebriller', icon: '🐸', level: 27, slot: 'face' }, // [NY] solbriller som froskeøyne
-  { id: 'duckhat', name: 'Andehatt', icon: '🦆', level: 30, slot: 'head' }       // [NY] gul badeand som sitter på hodet
+  { id: 'duckhat', name: 'Andehatt', icon: '🦆', level: 30, slot: 'head' },      // [NY] gul badeand som sitter på hodet
+  { id: 'kit', name: 'Fotballdrakt', icon: '⚽', level: 1, slot: 'body', quest: true }   // [NY] fås fra fotballkyllingen (oppdrag), ikke nivå
 ];
 // XP som trengs for nivå n: 30 * n * (n - 1)  -> nivå 2 = 60, 5 = 600, 10 = 2700, 15 = 6300
 function xpFor(n) { return 30 * n * (n - 1); }
@@ -41,7 +42,9 @@ const profile = (() => {
 })();
 function saveProfile() { try { localStorage.setItem('kmf-profile', JSON.stringify(profile)); } catch (e) {} }
 function myLevel() { return levelOf(profile.xp); }
-function myWear() { const L = myLevel(); return profile.wear.filter(id => { const g = GEAR.find(x => x.id === id); return g && g.level <= L; }); }
+// [NY] Er tingen låst opp? Oppdrags-ting låses opp av oppdraget, resten av nivå
+function gearUnlocked(g, L) { return g.quest ? !!profile.kit : g.level <= (L || myLevel()); }
+function myWear() { const L = myLevel(); return profile.wear.filter(id => { const g = GEAR.find(x => x.id === id); return g && gearUnlocked(g, L); }); }
 
 // ---------- Hemmelig kode (flytt nivået til en annen PC / mobil) ----------
 // [NY] Alt som sendes til de andre: nivå, utstyr og våpen-skins
@@ -71,7 +74,7 @@ function gainXP(n) {
   if (after > before) levelUp(after);
 }
 function levelUp(L) {
-  const unlocked = GEAR.filter(g => g.level === L);
+  const unlocked = GEAR.filter(g => g.level === L && !g.quest);
   showToast('⭐ Nivå ' + L + '!' + (unlocked.length ? ' Ny ting: ' + unlocked.map(g => g.icon + ' ' + g.name).join(', ') : ''));
   playLevelUp();
   socket.emit('profile', profilePayload());
@@ -118,6 +121,7 @@ const HEAD = {
 const GOLD = 0xf2c230;
 function buildGearPart(id, team) {
   const H = HEAD[team] || HEAD.bunny, g = new THREE.Group(), y = H.top;
+  if (id === 'kit') { buildKit(g, team); g.traverse(o => { o.raycast = () => {}; }); return g; }   // [NY] fotballdrakt
   if (id === 'shades') {
     [-1, 1].forEach(s => blk(g, 0.13, 0.08, 0.03, s * H.eyeX, H.eyeY, H.front + 0.02, 0x111111));
     blk(g, H.w + 0.04, 0.025, 0.02, 0, H.eyeY + 0.03, H.front + 0.02, 0x111111);
@@ -261,6 +265,50 @@ function buildGearPart(id, team) {
   return g;
 }
 const FUR_COLORS = [0x8d8479, 0x80776d, 0x9d9489];
+// [NY] Hendene: de små klossene ytterst på armene (kanin 0.12×0.10×0.12, ekorn venstre 0.12×0.18×0.14)
+function isHandBlock(o) {
+  const p = o.geometry && o.geometry.parameters; if (!p || !o.parent || o.parent.type !== 'Group' && o.parent.type !== 'Object3D') return false;
+  const near = (a, b) => Math.abs(a - b) < 0.005;
+  return (near(p.width, 0.12) && near(p.height, 0.10) && near(p.depth, 0.12)) || (near(p.width, 0.12) && near(p.height, 0.18) && near(p.depth, 0.14));
+}
+// [NY] FOTBALLDRAKT (som MIL-drakten): grønn trøye med mørkere skuldre og hvite striper, MIL-merke på brystet,
+//      svart shorts med hvite striper på siden, svarte strømper. Hanskene farges i applyGear.
+let milBadgeT = null;
+function milBadgeTex() {
+  if (milBadgeT) return milBadgeT;
+  const c = document.createElement('canvas'); c.width = c.height = 128; const x = c.getContext('2d');
+  x.fillStyle = '#ffffff'; x.beginPath(); x.arc(64, 64, 62, 0, Math.PI * 2); x.fill();
+  x.strokeStyle = '#0f7d62'; x.lineWidth = 9; x.beginPath(); x.arc(64, 64, 55, 0, Math.PI * 2); x.stroke();
+  x.fillStyle = '#0f7d62'; x.font = '900 40px Arial Black, Arial, sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle';
+  x.fillText('MIL', 64, 68);
+  milBadgeT = new THREE.CanvasTexture(c); return milBadgeT;
+}
+function buildKit(g, team) {
+  const GREEN = 0x16a383, DARK = 0x0d6e57, WHITE = 0xf4f4f0, BLACK = 0x161616;
+  const badge = (x, y, z, r) => { const m = new THREE.Mesh(new THREE.CircleGeometry(r, 24), new THREE.MeshBasicMaterial({ map: milBadgeTex() })); m.position.set(x, y, z); g.add(m); };
+  if (team === 'squirrel') {
+    blk(g, 0.47, 0.42, 0.34, 0, 0.83, 0, GREEN);                        // trøye (dekker den lyse magen)
+    [-1, 1].forEach(sd => {
+      blk(g, 0.1, 0.42, 0.345, sd * 0.19, 0.83, 0, DARK);               // mørke sider
+      for (let i = 0; i < 4; i++) blk(g, 0.035, 0.03, 0.35, sd * (0.08 + i * 0.045), 1.045, 0, WHITE);   // hvite striper på skuldrene
+    });
+    badge(0.11, 0.9, 0.174, 0.06);
+    blk(g, 0.47, 0.22, 0.34, 0, 0.51, 0, BLACK);                        // shorts
+    [-1, 1].forEach(sd => { for (let i = 0; i < 3; i++) blk(g, 0.01, 0.025, 0.08, sd * 0.24, 0.57 - i * 0.05, 0, WHITE); });
+    [-0.13, 0.13].forEach(x => { blk(g, 0.15, 0.31, 0.11, x, 0.29, 0, BLACK); blk(g, 0.19, 0.17, 0.19, x, 0.08, 0.02, BLACK); });   // strømper
+  } else {
+    blk(g, 0.58, 0.30, 0.44, 0, 0.68, 0, GREEN);                        // trøye (nedre del)
+    blk(g, 0.46, 0.22, 0.38, 0, 0.92, 0, GREEN);                        // trøye (bryst og skuldre)
+    [-1, 1].forEach(sd => {
+      blk(g, 0.1, 0.22, 0.385, sd * 0.19, 0.92, 0, DARK);               // mørke skuldre
+      for (let i = 0; i < 4; i++) blk(g, 0.03, 0.03, 0.39, sd * (0.06 + i * 0.04), 1.025, 0, WHITE);   // hvite striper
+    });
+    badge(0.11, 0.9, 0.193, 0.065);
+    blk(g, 0.66, 0.22, 0.48, 0, 0.44, 0, BLACK);                        // shorts
+    [-1, 1].forEach(sd => { for (let i = 0; i < 3; i++) blk(g, 0.01, 0.03, 0.1, sd * 0.333, 0.51 - i * 0.06, 0, WHITE); });
+    [-0.16, 0.16].forEach(x => { blk(g, 0.25, 0.15, 0.41, x, 0.07, 0.08, BLACK); blk(g, 0.19, 0.11, 0.09, x, 0.05, 0.31, BLACK); });   // strømper over føttene
+  }
+}
 function applyGear(body, team, wear) {
   if (body.userData.gearGroup) body.remove(body.userData.gearGroup);
   const gg = new THREE.Group();
@@ -268,9 +316,14 @@ function applyGear(body, team, wear) {
   body.add(gg);
   body.userData.gearGroup = gg;
   // Gullpels: farg pelsen gull (og tilbake hvis den tas av)
-  const gold = (wear || []).includes('goldfur');
+  const gold = (wear || []).includes('goldfur'), kit = (wear || []).includes('kit');
   body.traverse(o => {
     if (!o.isMesh || !o.material || !o.material.color) return;
+    if (isHandBlock(o)) {                            // [NY] fotballdrakt: svarte hansker
+      if (o.userData.handColor === undefined) o.userData.handColor = o.material.color.getHex();
+      if (kit) { o.material.color.setHex(0x161616); if (o.material.emissive) o.material.emissive.setHex(0); return; }
+      o.material.color.setHex(o.userData.handColor);   // drakten av: vanlig pels igjen
+    }
     if (o.userData.furColor === undefined && FUR_COLORS.includes(o.material.color.getHex())) o.userData.furColor = o.material.color.getHex();
     if (o.userData.furColor !== undefined) {
       o.material.color.setHex(gold ? 0xe8b830 : o.userData.furColor);
@@ -321,10 +374,10 @@ function renderGearMenu() {
   h += '<div style="font-size:12px;opacity:.7;margin:4px 0">' + Math.floor(profile.xp) + ' XP – neste nivå om ' + Math.ceil(xpFor(L + 1) - profile.xp) + ' XP</div>' +
     '<div style="display:flex;flex-wrap:wrap;gap:5px;justify-content:center">';
   GEAR.forEach(g => {
-    const open = g.level <= L, on = open && profile.wear.includes(g.id);
+    const open = gearUnlocked(g, L), on = open && profile.wear.includes(g.id);
     h += '<button class="gearBtn" data-id="' + g.id + '" ' + (open ? '' : 'disabled') + ' title="' + g.name + '" style="padding:4px 7px;border-radius:8px;border:2px solid ' +
       (on ? '#ffd23a' : 'rgba(255,255,255,.25)') + ';background:' + (on ? 'rgba(255,210,58,.3)' : 'rgba(0,0,0,.25)') + ';color:#fff;font-size:13px;cursor:' + (open ? 'pointer' : 'default') + ';opacity:' + (open ? 1 : 0.45) + '">' +
-      (open ? g.icon + ' ' + g.name : '🔒 Nivå ' + g.level) + '</button>';
+      (open ? g.icon + ' ' + g.name : g.quest ? '🔒 Oppdrag' : '🔒 Nivå ' + g.level) + '</button>';
   });
   h += '</div><div style="margin-top:6px;font-size:12px;opacity:.8">Din kode: <b style="user-select:all">' + makeCode() + '</b> &nbsp; ' +
     '<input id="codeIn" placeholder="Har du en kode?" style="width:150px;font-size:12px;padding:2px 4px"> <button id="codeBtn" style="font-size:12px">Bruk</button> <span id="codeMsg"></span></div>';
@@ -337,7 +390,7 @@ function renderGearMenu() {
 }
 function toggleGear(id) {
   const g = GEAR.find(x => x.id === id);
-  if (!g || g.level > myLevel()) return;
+  if (!g || !gearUnlocked(g)) return;
   if (profile.wear.includes(id)) profile.wear = profile.wear.filter(w => w !== id);
   else profile.wear = profile.wear.filter(w => { const o = GEAR.find(x => x.id === w); return o && o.slot !== g.slot; }).concat(id);   // én per plass
   saveProfile();
