@@ -161,6 +161,66 @@ function buildRex(o) {
   g.traverse(c => { if (c.isMesh) { c.userData.noSkin = true; c.raycast = () => {}; c.castShadow = !o.fp; if (o.fp) c.layers.set(2); } });
   return g;
 }
+// ---------- [NY] RAPTOR på AK: lang smal snute, lavt flatt hode, slangeøyne, fjærkam og store klør ----------
+// Samme oppsett som T-rexen: munnen i (0,0,0), snuten mot +z, løpet går gjennom gapet.
+function buildRaptor(o) {
+  const g = new THREE.Group(), sk = skinMats('dino');
+  const mouth = new THREE.MeshStandardMaterial({ color: 0x8a1a1a, roughness: 0.8 });
+  const white = new THREE.MeshStandardMaterial({ color: 0xfffbea, roughness: 0.5 });
+  const yellow = new THREE.MeshStandardMaterial({ color: 0xffd21f, emissive: 0x3a2a00 });
+  const black = new THREE.MeshStandardMaterial({ color: 0x111111 });
+  const stripe = new THREE.MeshStandardMaterial({ color: 0x23421a, roughness: 0.8 });
+  const feathA = new THREE.MeshStandardMaterial({ color: 0xff8a1f, roughness: 0.6 });
+  const feathB = new THREE.MeshStandardMaterial({ color: 0xd8321e, roughness: 0.6 });
+  const box = (w, h, d, x, y, z, m, rx, par) => { const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); b.position.set(x, y, z); if (rx) b.rotation.x = rx; (par || g).add(b); return b; };
+  const head = new THREE.Group(); head.scale.setScalar(o.s); g.add(head);
+  // Lang, smal, lav overkjeve som smalner fram mot nesen
+  box(0.09, 0.05, 0.16, 0, 0.065, 0.06, sk.light, 0, head);            // nesetupp
+  box(0.12, 0.06, 0.18, 0, 0.075, -0.1, sk.light, 0, head);            // snute
+  box(0.16, 0.09, 0.2, 0, 0.09, -0.28, sk.light, 0, head);             // skalle (lav og flat)
+  box(0.08, 0.012, 0.3, 0, 0.042, -0.05, mouth, 0, head);              // gane
+  // Mørke striper over snuten og hodet
+  [0.02, -0.1, -0.22, -0.33].forEach(z => box(0.125, 0.012, 0.025, 0, z > -0.15 ? 0.103 : 0.137, z, stripe, 0, head));
+  // Øyenbryn-kant over øynene (sint raptor-blikk)
+  [-1, 1].forEach(sd => box(0.04, 0.02, 0.09, sd * 0.07, 0.14, -0.22, sk.dark, 0, head));
+  // Smal underkjeve på gap
+  const jaw = new THREE.Group(); jaw.position.set(0, -0.03, -0.2); jaw.rotation.x = 0.28; head.add(jaw);
+  box(0.1, 0.035, 0.34, 0, -0.015, 0.14, sk.light, 0, jaw);
+  box(0.075, 0.012, 0.3, 0, 0.006, 0.14, mouth, 0, jaw);
+  // Mange små spisse tenner
+  for (let i = 0; i < 6; i++) [-1, 1].forEach(sd => {
+    const t = new THREE.Mesh(new THREE.ConeGeometry(0.009, 0.035, 4), white); t.rotation.x = Math.PI; t.position.set(sd * (0.035 + i * 0.004), 0.03, 0.12 - i * 0.05); head.add(t);
+    const b = new THREE.Mesh(new THREE.ConeGeometry(0.008, 0.03, 4), white); b.position.set(sd * 0.035, 0.02, 0.29 - i * 0.045); jaw.add(b);
+  });
+  // Gule slangeøyne med smal pupill, nesebor
+  [-1, 1].forEach(sd => {
+    box(0.025, 0.04, 0.055, sd * 0.082, 0.115, -0.22, yellow, 0, head);
+    box(0.008, 0.035, 0.01, sd * 0.095, 0.115, -0.215, black, 0, head);
+    box(0.018, 0.012, 0.02, sd * 0.03, 0.09, 0.125, black, 0, head);
+  });
+  // Fjærkam bak på hodet (oransje og rød)
+  for (let i = 0; i < 5; i++) {
+    const f = box(0.018, 0.012, 0.12 + i * 0.015, (i - 2) * 0.022, 0.13 + (2 - Math.abs(i - 2)) * 0.012, -0.42, i % 2 ? feathB : feathA, 0, head);
+    f.rotation.x = -0.35; f.rotation.y = (i - 2) * 0.18;
+  }
+  // Armer med store sigd-klør
+  [-1, 1].forEach(sd => {
+    box(0.03, 0.08, 0.03, sd * 0.06, -0.06, -0.34, sk.light, 0.7, head);
+    for (let k = 0; k < 3; k++) {
+      const c = new THREE.Mesh(new THREE.ConeGeometry(0.008, 0.05, 4), white);
+      c.position.set(sd * 0.06 + (k - 1) * 0.012, -0.1, -0.3); c.rotation.x = 2.3; head.add(c);
+    }
+  });
+  // Fjær langs ryggen bakover på våpenet
+  const n = Math.max(3, Math.round(o.ridgeLen / 0.07));
+  for (let i = 0; i < n; i++) {
+    const f = new THREE.Mesh(new THREE.BoxGeometry(0.03 * o.s, 0.012 * o.s, (0.1 - i * 0.004) * o.s), i % 2 ? feathB : feathA);
+    f.position.set(0, o.ridgeY, -0.4 * o.s - i * (o.ridgeLen / n)); f.rotation.x = -0.45; g.add(f);
+  }
+  g.traverse(c => { if (c.isMesh) { c.userData.noSkin = true; c.raycast = () => {}; c.castShadow = !o.fp; if (o.fp) c.layers.set(2); } });
+  return g;
+}
+const RAPTOR_AK = true;   // [NY] false = T-rex på AK igjen
 // Sett på / ta av T-rexen. key skiller våpen; opts sier hvor munningen er.
 const REX = {
   akFP: { pos: [0, 0.012, -0.47], rotY: Math.PI, s: 0.7, ridgeY: 0.05, ridgeLen: 0.4, fp: true },
@@ -176,7 +236,7 @@ function rexOn(container, key, on, fp, kind) {
   if (on && !r) {
     const o = Object.assign({}, REX[key], { fp: fp || REX[key].fp });
     if (kind === 'rex' && (key === 'akFP' || key === 'akHeld')) o.s *= REX_AK_SCALE;   // [NY] litt mindre T-rex-hode på AK
-    r = kind === 'shark' ? buildShark(o) : kind === 'uni' ? buildUnicorn(o) : buildRex(o); r.position.set(...o.pos); r.rotation.y = o.rotY;
+    r = kind === 'shark' ? buildShark(o) : kind === 'uni' ? buildUnicorn(o) : (RAPTOR_AK && (key === 'akFP' || key === 'akHeld')) ? buildRaptor(o) : buildRex(o); r.position.set(...o.pos); r.rotation.y = o.rotY;
     container.add(r); container.userData[kind + '_' + key] = r;
   }
   if (r) r.visible = !!on;
