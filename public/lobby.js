@@ -243,6 +243,7 @@ function openShop() {
   if (shopPanelOpen) return;
   shopPanelOpen = true;
   gearOpen = true; shopOpen = true;
+  if (typeof shopPrevId !== 'undefined') shopPrevId = null;   // [NY] start med skinnen du har på
   renderGearMenu(); renderShop();
   shopPanel.style.display = 'block';
   if (document.pointerLockElement) document.exitPointerLock();

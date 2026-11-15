@@ -327,6 +327,52 @@ const shopBox = document.createElement('div');
 shopBox.style.cssText = 'margin:2px auto 6px;max-width:560px;text-align:center;font:14px sans-serif;color:#fff;';
 gearBox.parentNode.insertBefore(shopBox, gearBox.nextSibling);
 let shopOpen = false, shopWeapon = 'ak', confirmBuy = null;
+// [NY] Forhåndsvisning: se våpenet med skinnen før du kjøper (false = av)
+const SHOP_PREVIEW_ON = true;
+let shopPrevId = null;                              // skinnen som vises nå (null = den du har på)
+const shopPrevCanvas = document.createElement('canvas');
+shopPrevCanvas.width = 360; shopPrevCanvas.height = 150;
+shopPrevCanvas.style.cssText = 'width:240px;height:100px;display:block;margin:2px auto;border-radius:10px;background:rgba(0,0,0,.25);';
+let shopPrev = null;
+function shopPrevSetup() {
+  if (shopPrev) return shopPrev;
+  const r = new THREE.WebGLRenderer({ canvas: shopPrevCanvas, antialias: true, alpha: true });
+  r.setSize(360, 150, false);
+  const sc = new THREE.Scene();
+  sc.add(new THREE.HemisphereLight(0xffffff, 0x444444, 0.9));
+  const l = new THREE.DirectionalLight(0xffffff, 0.8); l.position.set(2, 4, 3); sc.add(l);
+  const cam = new THREE.PerspectiveCamera(30, 360 / 150, 0.05, 20);
+  const spin = new THREE.Group(); sc.add(spin);
+  const guns = { ak: buildHeldGun(), sniper: buildSniper(myTeam || 'bunny'), baz: buildBazooka(myTeam || 'bunny') };
+  Object.values(guns).forEach(gn => { gn.position.set(0, 0, 0); gn.rotation.set(0, 0, 0); gn.visible = false; spin.add(gn); });
+  return (shopPrev = { r, sc, cam, spin, guns, shown: null });
+}
+function shopPrevShow() {
+  const P = shopPrevSetup();
+  const id = shopPrevId !== null ? shopPrevId : (profile.skins[shopWeapon] || '');
+  const key = shopWeapon === 'ak' ? 'akHeld' : shopWeapon;
+  Object.entries(P.guns).forEach(([w, gn]) => {
+    gn.visible = w === shopWeapon;
+    if (w !== shopWeapon) return;
+    skinize(gn, id || null);
+    creatureOn(gn, key, id, true);
+  });
+  // ramme kameraet rundt våpenet (med eventuelt dyrehode)
+  const gw = P.guns[shopWeapon], rot = P.spin.rotation.y;
+  gw.position.set(0, 0, 0); P.spin.rotation.y = 0; P.sc.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(gw), c = box.getCenter(new THREE.Vector3()), sz = box.getSize(new THREE.Vector3());
+  P.spin.rotation.y = rot;
+  P.guns[shopWeapon].position.sub(c);
+  const d = Math.max(sz.x, sz.y, sz.z) * 1.35 + 0.1;
+  P.cam.position.set(0, d * 0.25, d); P.cam.lookAt(0, 0, 0);
+}
+function shopPrevLoop() {
+  requestAnimationFrame(shopPrevLoop);
+  if (!shopPrev || !shopPrevCanvas.isConnected || !shopPrevCanvas.offsetParent) return;
+  shopPrev.spin.rotation.y = performance.now() / 1000 * 0.9;
+  shopPrev.r.render(shopPrev.sc, shopPrev.cam);
+}
+if (SHOP_PREVIEW_ON) requestAnimationFrame(shopPrevLoop);
 function renderShop() {
   const L = myLevel();
   let h = '<div id="shopHead" style="cursor:pointer;user-select:none;display:inline-flex;align-items:center;gap:8px;padding:4px 12px;border-radius:10px;background:rgba(0,0,0,.25)">' +
@@ -335,6 +381,7 @@ function renderShop() {
     h += '<div style="margin:6px 0;display:flex;gap:5px;justify-content:center">' + WEAPON_SLOTS.map(([w, n]) =>
       '<button class="shopW" data-w="' + w + '" style="padding:3px 9px;border-radius:8px;border:2px solid ' + (w === shopWeapon ? '#ffd23a' : 'rgba(255,255,255,.25)') +
       ';background:rgba(0,0,0,.3);color:#fff;font-size:13px">' + n + '</button>').join('') + '</div>';
+    if (SHOP_PREVIEW_ON) h += '<div id="shopPrevSlot"></div>';
     h += '<div style="display:flex;flex-wrap:wrap;gap:5px;justify-content:center">';
     const cur = profile.skins[shopWeapon];
     h += '<button class="shopS" data-s="" style="' + btnStyle(!cur, true) + '">⚪ Vanlig</button>';
@@ -345,13 +392,18 @@ function renderShop() {
         : confirmBuy === s.id ? 'Kjøp for 🪙' + s.price + '?'
         : lockedLvl ? '🔒 ' + s.icon + ' Nivå ' + s.level
         : s.icon + ' ' + s.name + ' 🪙' + s.price;
-      h += '<button class="shopS" data-s="' + s.id + '" ' + (cant ? 'disabled' : '') + ' style="' + btnStyle(on, owned || !cant) + (confirmBuy === s.id ? 'background:rgba(60,160,60,.6);' : '') + '">' + label + '</button>';
+      const look = SHOP_PREVIEW_ON && shopPrevId === s.id && !owned;
+      h += '<button class="shopS" data-s="' + s.id + '" ' + (cant && !SHOP_PREVIEW_ON ? 'disabled' : '') + ' style="' + btnStyle(on || look, owned || !cant || SHOP_PREVIEW_ON) + (cant && !look ? 'opacity:.5;' : '') + (confirmBuy === s.id ? 'background:rgba(60,160,60,.6);' : '') + '">' + label + '</button>';
     });
-    h += '</div><div id="shopMsg" style="font-size:12px;opacity:.8;margin-top:4px">Kjøp en skin én gang – bruk den på alle våpen</div>';
+    const ps = SHOP_PREVIEW_ON && shopPrevId ? SKINS.find(x => x.id === shopPrevId) : null;
+    const pmsg = ps && !profile.owned.includes(ps.id) ? (ps.level && L < ps.level ? 'Låses opp på nivå ' + ps.level : profile.coins < ps.price ? 'Du trenger 🪙' + ps.price + ' (mangler ' + Math.ceil(ps.price - profile.coins) + ')' : 'Trykk igjen for å kjøpe') : 'Kjøp en skin én gang – bruk den på alle våpen';
+    h += '</div><div id="shopMsg" style="font-size:12px;opacity:.8;margin-top:4px">' + pmsg + '</div>';
   }
   shopBox.innerHTML = h;
-  document.getElementById('shopHead').addEventListener('click', () => { shopOpen = !shopOpen; confirmBuy = null; renderShop(); });
-  shopBox.querySelectorAll('.shopW').forEach(b => b.addEventListener('click', () => { shopWeapon = b.dataset.w; confirmBuy = null; renderShop(); }));
+  const slot = document.getElementById('shopPrevSlot');
+  if (slot) { slot.appendChild(shopPrevCanvas); try { shopPrevShow(); } catch (err) { slot.remove(); } }
+  document.getElementById('shopHead').addEventListener('click', () => { shopOpen = !shopOpen; confirmBuy = null; shopPrevId = null; renderShop(); });
+  shopBox.querySelectorAll('.shopW').forEach(b => b.addEventListener('click', () => { shopWeapon = b.dataset.w; confirmBuy = null; shopPrevId = null; renderShop(); }));
   shopBox.querySelectorAll('.shopS').forEach(b => b.addEventListener('click', () => pickSkin(b.dataset.s)));
 }
 function btnStyle(on, open) {
@@ -361,13 +413,14 @@ function btnStyle(on, open) {
 function pickSkin(id) {
   if (id && !profile.owned.includes(id)) {         // ikke kjøpt: første trykk spør, andre trykk kjøper
     const s = SKINS.find(x => x.id === id);
-    if (!s || profile.coins < s.price || (s.level && myLevel() < s.level)) return;
+    if (SHOP_PREVIEW_ON) shopPrevId = id;          // [NY] vis den på våpenet
+    if (!s || profile.coins < s.price || (s.level && myLevel() < s.level)) { confirmBuy = null; renderShop(); return; }
     if (confirmBuy !== id) { confirmBuy = id; renderShop(); return; }
     profile.coins -= s.price;
     profile.owned.push(id);
     if (typeof playLevelUp === 'function') playLevelUp();
   }
-  confirmBuy = null;
+  confirmBuy = null; shopPrevId = null;
   if (id) profile.skins[shopWeapon] = id; else delete profile.skins[shopWeapon];
   saveProfile();
   applyMySkins();
