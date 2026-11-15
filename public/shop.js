@@ -220,7 +220,7 @@ function buildRaptor(o) {
   g.traverse(c => { if (c.isMesh) { c.userData.noSkin = true; c.raycast = () => {}; c.castShadow = !o.fp; if (o.fp) c.layers.set(2); } });
   return g;
 }
-const RAPTOR_AK = true;   // [NY] false = T-rex på AK igjen
+const RAPTOR_AK = false;  // [NY] false = T-rex på AK igjen
 // Sett på / ta av T-rexen. key skiller våpen; opts sier hvor munningen er.
 const REX = {
   akFP: { pos: [0, 0.012, -0.47], rotY: Math.PI, s: 0.7, ridgeY: 0.05, ridgeLen: 0.4, fp: true },
@@ -228,7 +228,7 @@ const REX = {
   sniper: { pos: [0, 0.01, 0.72], rotY: 0, s: 0.9, ridgeY: 0.15, ridgeLen: 0.6 },
   baz: { pos: [0, 0, 0.62], rotY: 0, s: 1.25, ridgeY: 0.11, ridgeLen: 0.8 }
 };
-const REX_AK_SCALE = 0.8;   // [NY] 1 = gammel størrelse
+const REX_AK_SCALE = 0.7;   // [NY] 1 = gammel størrelse
 function rexOn(container, key, on, fp, kind) {
   if (!container) return null;
   kind = kind || 'rex';
