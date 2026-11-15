@@ -222,6 +222,7 @@ function buildRaptor(o) {
 }
 // ---------- [NY] SØT T-REX på AK: store runde øyne med glimt, rosa kinn, kort rund snute, smil ----------
 // Munnen i (0,0,0), snuten mot +z, løpet går gjennom gapet (som den vanlige T-rexen).
+const CUTE_FLAT = true;   // [NY] lavere overdel av hodet (false = høyere)
 const CUTE_FLUSH = true;   // [NY] snute og hode i flukt (false = to klosser)
 const CUTE_TEETH3 = true;   // [NY] 3 tenner på hver side, oppe og nede (false = 4 bare oppe)
 const CUTE_EYES = true;   // [NY] behold de store søte øynene
@@ -243,8 +244,11 @@ function buildCuteRex(o) {
   const eye = (r, x, y, z, m, par, sx, sy, sz) => { const b = new THREE.Mesh(new THREE.SphereGeometry(r, 12, 10), m); b.position.set(x, y, z); b.scale.set(sx || 1, sy || 1, sz || 1); (par || g).add(b); return b; };   // øyne er alltid runde
   const head = new THREE.Group(); head.scale.setScalar(o.s); g.add(head);
   // Rundt hode og kort, rund snute
-  ball(0.13, 0, 0.1, -0.24, sk.light, head, 1, 0.75, 1);                // stort rundt hode (lavt, så siktet er fritt)
-  if (CUTE_FLUSH && CUTE_BLOCKY) box(0.234, 0.162, 0.21, 0, 0.107, -0.018, sk.light, 0, head);   // [NY] snute i flukt med hodet (én kloss)
+  const FL = CUTE_FLAT && CUTE_FLUSH && CUTE_BLOCKY, dy = FL ? -0.035 : 0;   // [NY] lavere overdel av hodet
+  if (FL) box(0.234, 0.136, 0.234, 0, 0.08, -0.24, sk.light, 0, head);  // lavere hode
+  else ball(0.13, 0, 0.1, -0.24, sk.light, head, 1, 0.75, 1);           // stort rundt hode (lavt, så siktet er fritt)
+  if (FL) box(0.234, 0.122, 0.21, 0, 0.087, -0.018, sk.light, 0, head); // lavere snute i flukt
+  else if (CUTE_FLUSH && CUTE_BLOCKY) box(0.234, 0.162, 0.21, 0, 0.107, -0.018, sk.light, 0, head);   // [NY] snute i flukt med hodet (én kloss)
   else ball(0.09, 0, 0.075, CUTE_LESS ? -0.03 : -0.06, sk.light, head, 1, 0.6, CUTE_LESS ? 1.45 : 1.1);   // snute (litt lengre når mindre søt)
   box(0.11, 0.012, 0.16, 0, 0.04, -0.06, mouth, 0, head);               // gane
   // Underkjeve med lys mage-farge, smiler
@@ -262,17 +266,17 @@ function buildCuteRex(o) {
   if (CUTE_LESS && CUTE_TEETH3) for (let i = 0; i < 3; i++) [-1, 1].forEach(sd => {   // [NY] 3 små tenner på hver side nede også
     const b = new THREE.Mesh(new THREE.ConeGeometry(0.013, 0.042, 4), white); b.position.set(sd * 0.05, 0.04, 0.15 - i * 0.05); jaw.add(b);
   });
-  if (CUTE_LESS) [-1, 1].forEach(sd => { const br = box(0.045, 0.018, 0.07, sd * 0.08, 0.19, -0.2, sk.dark, 0, head); br.rotation.z = -sd * 0.25; });   // lite pannebrask
+  if (CUTE_LESS) [-1, 1].forEach(sd => { const br = box(0.045, 0.018, 0.07, sd * 0.08, 0.19 + dy * 1.08, -0.2, sk.dark, 0, head); br.rotation.z = -sd * 0.25; });   // lite pannebrask
   // Store runde øyne med glimt
   [-1, 1].forEach(sd => {
     const big = CUTE_EYES || !CUTE_LESS;                                // [NY] de søte øynene (runde, store, to glimt)
     const eb = big ? eye : ball, e = big ? 1 : 0.75;
-    eb(0.05 * e, sd * (big && CUTE_BLOCKY ? 0.12 : 0.085), 0.14, -0.2, white, head, 0.6, 1, 1);
-    eb(0.034 * e, sd * (big ? (CUTE_BLOCKY ? 0.142 : 0.11) : 0.1), 0.135, -0.19, black, head, 0.5, 1, 1);
-    eb(0.012 * e, sd * (big ? (CUTE_BLOCKY ? 0.157 : 0.125) : 0.11), big ? 0.155 : 0.15, big ? -0.175 : -0.18, white, head);   // glimt
-    if (big) eb(0.006, sd * (CUTE_BLOCKY ? 0.157 : 0.125), 0.12, -0.2, white, head);   // lite glimt
+    eb(0.05 * e, sd * (big && CUTE_BLOCKY ? 0.12 : 0.085), 0.14 + dy, -0.2, white, head, 0.6, 1, 1);
+    eb(0.034 * e, sd * (big ? (CUTE_BLOCKY ? 0.142 : 0.11) : 0.1), 0.135 + dy, -0.19, black, head, 0.5, 1, 1);
+    eb(0.012 * e, sd * (big ? (CUTE_BLOCKY ? 0.157 : 0.125) : 0.11), (big ? 0.155 : 0.15) + dy, big ? -0.175 : -0.18, white, head);   // glimt
+    if (big) eb(0.006, sd * (CUTE_BLOCKY ? 0.157 : 0.125), 0.12 + dy, -0.2, white, head);   // lite glimt
     if (CUTE_CHEEKS) ball(0.03, sd * 0.1, 0.07, -0.12, pink, head, 0.4, 0.6, 1);   // rosa kinn (av)
-    if (CUTE_FLUSH && CUTE_BLOCKY) box(0.025, 0.018, 0.01, sd * 0.04, 0.15, 0.089, black, 0, head);   // nesebor foran på snuten
+    if (CUTE_FLUSH && CUTE_BLOCKY) box(0.025, 0.018, 0.01, sd * 0.04, 0.15 + dy, 0.089, black, 0, head);   // nesebor foran på snuten
     else ball(0.008, sd * 0.03, 0.105, 0.02, black, head);              // nesebor
   });
   // Bitte små armer (fortsatt for korte!)
