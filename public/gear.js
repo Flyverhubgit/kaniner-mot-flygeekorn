@@ -26,6 +26,7 @@ const GEAR = [
   { id: 'froggles', name: 'Froskebriller', icon: '🐸', level: 27, slot: 'face' }, // [NY] solbriller som froskeøyne
   { id: 'duckhat', name: 'Andehatt', icon: '🦆', level: 30, slot: 'head' },      // [NY] gul badeand som sitter på hodet
   { id: 'kit', name: 'Fotballdrakt', icon: '⚽', level: 1, slot: 'body', quest: true },  // [NY] fås fra fotballkyllingen (oppdrag), ikke nivå
+  { id: 'norway', name: 'Norge VM 2026', icon: '🦁', level: 1, slot: 'body' },  // [NY] Norges VM-drakt 2026: rød med blått kors, hvit shorts, blå strømper
   { id: 'nobelt', name: 'Kulebelter', icon: '🎗️', level: 1, slot: 'belt', invert: true }   // [NY] PÅ som standard. Trykk = ta av kulebeltene (lagres som 'nobelt')
 ];
 // XP som trengs for nivå n: 30 * n * (n - 1)  -> nivå 2 = 60, 5 = 600, 10 = 2700, 15 = 6300
@@ -122,6 +123,7 @@ const HEAD = {
 const GOLD = 0xf2c230;
 function buildGearPart(id, team) {
   const H = HEAD[team] || HEAD.bunny, g = new THREE.Group(), y = H.top;
+  if (id === 'norway') { buildNorway(g, team); g.traverse(o => { o.raycast = () => {}; }); return g; }   // [NY] Norge-drakt
   if (id === 'kit') { buildKit(g, team); g.traverse(o => { o.raycast = () => {}; }); return g; }   // [NY] fotballdrakt
   if (id === 'shades') {
     [-1, 1].forEach(s => blk(g, 0.13, 0.08, 0.03, s * H.eyeX, H.eyeY, H.front + 0.02, 0x111111));
@@ -318,6 +320,45 @@ function buildKit(g, team) {
     [-0.16, 0.16].forEach(x => { blk(g, 0.25, 0.15, 0.41, x, 0.07, 0.08, BLACK); blk(g, 0.19, 0.11, 0.09, x, 0.05, 0.31, BLACK); });   // strømper over føttene
   }
 }
+// [NY] NORGES VM-DRAKT 2026: rød trøye med blått kors med hvit kant (foran og bak), rødt merke-skilt,
+//      hvit shorts, blå strømper. Ermene farges røde i applyGear (genser, som MIL-drakten).
+let norBadgeT = null;
+function norBadgeTex() {
+  if (norBadgeT) return norBadgeT;
+  const c = document.createElement('canvas'); c.width = c.height = 128; const x = c.getContext('2d');
+  x.fillStyle = '#ffffff'; x.beginPath(); x.arc(64, 64, 62, 0, Math.PI * 2); x.fill();
+  x.strokeStyle = '#c81e2c'; x.lineWidth = 9; x.beginPath(); x.arc(64, 64, 55, 0, Math.PI * 2); x.stroke();
+  x.fillStyle = '#0d2a5c'; x.font = '900 40px Arial Black, Arial, sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle';
+  x.fillText('NOR', 64, 68);
+  norBadgeT = new THREE.CanvasTexture(c); return norBadgeT;
+}
+const NOR_RED = 0xc81e2c, NOR_NAVY = 0x0d2a5c, NOR_WHITE = 0xf4f4f0, NOR_BLUE = 0x1f4fa8;
+function buildNorway(g, team) {
+  const badge = (x, y, z, r) => { const m = new THREE.Mesh(new THREE.CircleGeometry(r, 24), new THREE.MeshBasicMaterial({ map: norBadgeTex() })); m.position.set(x, y, z); g.add(m); };
+  // Korset: hvit bred stripe bak, blå smal stripe foran. zf = forsiden av trøya, sd = +1 foran / -1 bak
+  const cross = (parts, hy, hw, zf, sd) => {
+    blk(g, hw, 0.09, 0.012, 0, hy, sd * (zf + 0.006), NOR_WHITE);          // vannrett (hvit kant)
+    blk(g, hw + 0.002, 0.05, 0.012, 0, hy, sd * (zf + 0.012), NOR_NAVY);   // vannrett (blå)
+    parts.forEach(([y, h, z]) => {                                          // loddrett, litt til siden (som i flagget)
+      blk(g, 0.09, h, 0.012, -0.08, y, sd * (z + 0.006), NOR_WHITE);
+      blk(g, 0.05, h, 0.012, -0.08, y, sd * (z + 0.012), NOR_NAVY);
+    });
+  };
+  if (team === 'squirrel') {
+    blk(g, 0.47, 0.42, 0.34, 0, 0.83, 0, NOR_RED);                         // trøye
+    [1, -1].forEach(sd => cross([[0.83, 0.42, 0.17]], 0.86, 0.47, 0.17, sd));
+    badge(0.12, 0.95, 0.19, 0.05);
+    blk(g, 0.47, 0.22, 0.34, 0, 0.51, 0, NOR_WHITE);                       // hvit shorts
+    [-0.13, 0.13].forEach(x => { blk(g, 0.15, 0.31, 0.11, x, 0.29, 0, NOR_BLUE); blk(g, 0.19, 0.17, 0.19, x, 0.08, 0.02, NOR_BLUE); });   // blå strømper
+  } else {
+    blk(g, 0.58, 0.30, 0.44, 0, 0.68, 0, NOR_RED);                         // trøye (nedre del)
+    blk(g, 0.46, 0.22, 0.38, 0, 0.92, 0, NOR_RED);                         // trøye (bryst og skuldre)
+    [1, -1].forEach(sd => cross([[0.68, 0.30, 0.22], [0.92, 0.22, 0.19]], 0.76, 0.58, 0.22, sd));
+    badge(0.12, 0.93, 0.21, 0.055);
+    blk(g, 0.66, 0.22, 0.48, 0, 0.44, 0, NOR_WHITE);                       // hvit shorts
+    [-0.16, 0.16].forEach(x => { blk(g, 0.25, 0.15, 0.41, x, 0.07, 0.08, NOR_BLUE); blk(g, 0.19, 0.11, 0.09, x, 0.05, 0.31, NOR_BLUE); });   // blå strømper over føttene
+  }
+}
 function applyGear(body, team, wear) {
   if (body.userData.gearGroup) body.remove(body.userData.gearGroup);
   const gg = new THREE.Group();
@@ -327,13 +368,14 @@ function applyGear(body, team, wear) {
   body.add(gg);
   body.userData.gearGroup = gg;
   // Gullpels: farg pelsen gull (og tilbake hvis den tas av)
-  const gold = (wear || []).includes('goldfur'), kit = (wear || []).includes('kit');
+  const gold = (wear || []).includes('goldfur'), kit = (wear || []).includes('kit'), nor = (wear || []).includes('norway');
   body.traverse(o => {
     if (!o.isMesh || !o.material || !o.material.color) return;
     let inGun = false; for (let q = o; q && q !== body; q = q.parent) if (q === body.userData.gun) { inGun = true; break; }   // [NY] ikke farg våpenet
     if (!inGun && KIT_SWEATER && isArmBlock(o)) {             // [NY] fotballdrakt som genser: grønne ermer
       if (o.userData.armColor === undefined) o.userData.armColor = o.material.color.getHex();
       if (kit) { o.material.color.setHex(0x0d6e57); if (o.material.emissive) o.material.emissive.setHex(0); return; }
+      if (nor) { o.material.color.setHex(NOR_RED); if (o.material.emissive) o.material.emissive.setHex(0); return; }   // [NY] røde ermer
       o.material.color.setHex(o.userData.armColor);
     }
     if (!inGun && isHandBlock(o)) {                  // [NY] fotballdrakt: svarte hansker
