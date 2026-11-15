@@ -2295,3 +2295,14 @@ function animate(now) {
   renderFrame();
 }
 requestAnimationFrame(animate);
+
+// [FIKS] Ctrl + W lukker fanen i nettleseren (W = gå, Ctrl = slide). Spør først mens du spiller,
+// så fanen ikke lukkes ved et uhell. (Nettleseren viser sin egen «Vil du forlate siden?»-boks.)
+const LEAVE_GUARD = true;   // false = ingen spørsmål
+window.addEventListener('beforeunload', e => {
+  if (!LEAVE_GUARD || !joined) return;
+  e.preventDefault();
+  e.returnValue = '';
+  return '';
+});
+
