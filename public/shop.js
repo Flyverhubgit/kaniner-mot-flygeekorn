@@ -26,7 +26,7 @@ const SKINS = [
   { id: 'dino', name: 'Dinosaur', icon: '🦖', price: 2000 },   // [NY] grønne skjell med oransje rygg-pigger
   { id: 'shark', name: 'Hai', icon: '🦈', price: 1750 },       // [NY] haihode med løpet ut av gapet
   { id: 'unicorn', name: 'Enhjørning', icon: '🦄', price: 500 },  // [NY] enhjørning med regnbuemanke og gullhorn
-  { id: 'butterfly', name: 'Sommerfugl', icon: '🦋', price: 2 }  // [NY] rosa og blå, med vinger som blafrer
+  { id: 'butterfly', name: 'Sommerfugl', icon: '🦋', price: 200 }  // [NY] rosa og blå, med vinger som blafrer
 ];
 const WEAPON_SLOTS = [['ak', 'AK'], ['sniper', 'Snikskytter'], ['baz', 'Bazooka']];
 function skinBits() { let b = 0; SKINS.forEach((s, i) => { if (profile.owned.includes(s.id)) b |= 1 << i; }); return b; }
