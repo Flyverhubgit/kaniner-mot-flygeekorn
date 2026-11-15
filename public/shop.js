@@ -25,7 +25,8 @@ const SKINS = [
   { id: 'diamond', name: 'Diamant', icon: '💎', price: 2000, level: 12 },
   { id: 'dino', name: 'Dinosaur', icon: '🦖', price: 2000 },   // [NY] grønne skjell med oransje rygg-pigger
   { id: 'shark', name: 'Hai', icon: '🦈', price: 1750 },       // [NY] haihode med løpet ut av gapet
-  { id: 'unicorn', name: 'Enhjørning', icon: '🦄', price: 500 }  // [NY] enhjørning med regnbuemanke og gullhorn
+  { id: 'unicorn', name: 'Enhjørning', icon: '🦄', price: 500 },  // [NY] enhjørning med regnbuemanke og gullhorn
+  { id: 'butterfly', name: 'Sommerfugl', icon: '🦋', price: 1000 }  // [NY] rosa og blå, med vinger som blafrer
 ];
 const WEAPON_SLOTS = [['ak', 'AK'], ['sniper', 'Snikskytter'], ['baz', 'Bazooka']];
 function skinBits() { let b = 0; SKINS.forEach((s, i) => { if (profile.owned.includes(s.id)) b |= 1 << i; }); return b; }
@@ -71,6 +72,16 @@ const SKIN_TEX = {
     x.fillStyle = '#4c6372'; for (let i = 0; i < 18; i++) x.fillRect(rnd() * 64, rnd() * 34, 3 + rnd() * 6, 1);
     x.fillStyle = '#c9d2d6'; for (let i = 0; i < 4; i++) x.fillRect(rnd() * 56, 6 + rnd() * 24, 7, 1);         // skrammer
   }),
+  butterfly: patternTex(x => {                    // [NY] sommerfugl: lyseblå med rosa vingemønster og hvite prikker
+    x.fillStyle = '#7ec8ff'; x.fillRect(0, 0, 64, 64);
+    x.fillStyle = '#4a9eea'; for (let yy = 0; yy < 64; yy += 16) x.fillRect(0, yy, 64, 3);
+    [[4, 6], [36, 6], [20, 38], [52, 38]].forEach(([px, py]) => {   // rosa vinger
+      x.fillStyle = '#ff7ab8'; x.fillRect(px, py, 12, 10); x.fillRect(px + 2, py + 10, 8, 6);
+      x.fillStyle = '#ffc2e0'; x.fillRect(px + 3, py + 2, 5, 5);
+      x.fillStyle = '#ffffff'; x.fillRect(px + 9, py + 3, 2, 2);
+    });
+    x.fillStyle = '#ffffff'; for (let i = 0; i < 14; i++) x.fillRect(rnd() * 64, rnd() * 64, 1, 1);
+  }),
   dino: patternTex(x => {                         // [NY] dinosaurskjell: grønne skjell, mørke flekker, oransje pigg-stripe
     x.fillStyle = '#3f8a2e'; x.fillRect(0, 0, 64, 64);
     for (let yy = 0; yy < 64; yy += 6) for (let xx = (yy / 6) % 2 ? 3 : 0; xx < 64; xx += 6) { x.fillStyle = rnd() < 0.5 ? '#4fa63a' : '#357a26'; x.fillRect(xx, yy, 5, 5); }
@@ -90,7 +101,8 @@ const SKIN_MAT = {
   diamond: { color: 0xd8fbff, emissive: 0x3a8aa0, metalness: 0.6, roughness: 0.05, glow: true },
   dino: { map: SKIN_TEX.dino, roughness: 0.75 },
   shark: { map: SKIN_TEX.shark, roughness: 0.45 },
-  unicorn: { map: SKIN_TEX.unicorn, roughness: 0.5, emissive: 0x2a1a30 }
+  unicorn: { map: SKIN_TEX.unicorn, roughness: 0.5, emissive: 0x2a1a30 },
+  butterfly: { map: SKIN_TEX.butterfly, roughness: 0.5, emissive: 0x1a1030 }
 };
 // To materialer per skin: lys (de fleste delene) og mørk (delene som var mørke fra før – grep, løp)
 const skinMatCache = {};
@@ -308,7 +320,7 @@ function rexOn(container, key, on, fp, kind) {
   if (on && !r) {
     const o = Object.assign({}, REX[key], { fp: fp || REX[key].fp });
     if (kind === 'rex' && (key === 'akFP' || key === 'akHeld')) o.s *= REX_AK_SCALE;   // [NY] litt mindre T-rex-hode på AK
-    r = kind === 'shark' ? buildShark(o) : kind === 'uni' ? buildUnicorn(o) : (RAPTOR_AK && (key === 'akFP' || key === 'akHeld')) ? buildRaptor(o) : (CUTE_REX_AK && (key === 'akFP' || key === 'akHeld')) ? buildCuteRex(o) : buildRex(o); r.position.set(...o.pos); r.rotation.y = o.rotY;
+    r = kind === 'fly' ? buildButterfly(o) : kind === 'shark' ? buildShark(o) : kind === 'uni' ? buildUnicorn(o) : (RAPTOR_AK && (key === 'akFP' || key === 'akHeld')) ? buildRaptor(o) : (CUTE_REX_AK && (key === 'akFP' || key === 'akHeld')) ? buildCuteRex(o) : buildRex(o); r.position.set(...o.pos); r.rotation.y = o.rotY;
     container.add(r); container.userData[kind + '_' + key] = r;
   }
   if (r) r.visible = !!on;
@@ -319,6 +331,41 @@ function creatureOn(container, key, skin, show, fp) {
   rexOn(container, key, show && skin === 'dino', fp, 'rex');
   rexOn(container, key, show && skin === 'shark', fp, 'shark');
   rexOn(container, key, show && skin === 'unicorn', fp, 'uni');
+  rexOn(container, key, show && skin === 'butterfly', fp, 'fly');   // [NY] sommerfuglvinger
+}
+// ---------- [NY] SOMMERFUGL: to par vinger (rosa og blå) oppå våpenet som blafrer, og små følehorn foran ----------
+const flyWings = [];                               // alle vingene, så de kan blafre i updateSkins
+function buildButterfly(o) {
+  const g = new THREE.Group();
+  const pink = new THREE.MeshStandardMaterial({ color: 0xff7ab8, roughness: 0.5, side: THREE.DoubleSide });
+  const blue = new THREE.MeshStandardMaterial({ color: 0x4aa8ff, roughness: 0.5, side: THREE.DoubleSide });
+  const light = new THREE.MeshStandardMaterial({ color: 0xffc2e0, roughness: 0.5, side: THREE.DoubleSide });
+  const sky = new THREE.MeshStandardMaterial({ color: 0xa8dcff, roughness: 0.5, side: THREE.DoubleSide });
+  const white = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.4 });
+  const dark = new THREE.MeshStandardMaterial({ color: 0x2a1a3a, roughness: 0.6 });
+  const box = (w, h, d, x, y, z, m, par) => { const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); b.position.set(x, y, z); par.add(b); return b; };
+  const S = o.s * (o.fp ? 0.75 : 1);
+  const mid = new THREE.Group(); mid.position.set(0, o.ridgeY + 0.01, -0.3 * o.s - o.ridgeLen * 0.35); g.add(mid);
+  box(0.025 * S, 0.025 * S, 0.22 * S, 0, 0, 0, dark, mid);                 // kropp
+  [-1, 1].forEach(sd => {
+    const w = new THREE.Group(); w.position.set(sd * 0.012 * S, 0, 0); mid.add(w);
+    // forvinge (rosa med lys flekk) og bakvinge (blå med lys flekk)
+    box(0.16 * S, 0.006 * S, 0.12 * S, sd * 0.085 * S, 0, 0.05 * S, pink, w);
+    box(0.06 * S, 0.008 * S, 0.05 * S, sd * 0.11 * S, 0, 0.06 * S, light, w);
+    box(0.012 * S, 0.009 * S, 0.012 * S, sd * 0.14 * S, 0, 0.09 * S, white, w);
+    box(0.12 * S, 0.006 * S, 0.1 * S, sd * 0.065 * S, 0, -0.065 * S, blue, w);
+    box(0.045 * S, 0.008 * S, 0.04 * S, sd * 0.08 * S, 0, -0.07 * S, sky, w);
+    w.userData.side = sd; w.userData.base = 0.35; w.userData.phase = Math.random() * 6;
+    flyWings.push(w);
+  });
+  // små følehorn ved munningen
+  [-1, 1].forEach(sd => {
+    const a = box(0.008 * o.s, 0.008 * o.s, 0.09 * o.s, sd * 0.02 * o.s, o.ridgeY * 0.6 + 0.03 * o.s, -0.02 * o.s, dark, g);
+    a.rotation.x = -0.6; a.rotation.y = sd * 0.3;
+    box(0.02 * o.s, 0.02 * o.s, 0.02 * o.s, sd * 0.034 * o.s, o.ridgeY * 0.6 + 0.055 * o.s, 0.015 * o.s, pink, g);
+  });
+  g.traverse(c => { if (c.isMesh) { c.userData.noSkin = true; c.raycast = () => {}; c.castShadow = !o.fp; if (o.fp) c.layers.set(2); } });
+  return g;
 }
 // ---------- [NY] ENHJØRNING: hvitt hestehode, gullhorn, store øyne, regnbuemanke og -hale ----------
 function buildUnicorn(o) {
@@ -422,6 +469,7 @@ function skinOther(r, skins) {
 // Lava, galakse og diamant gløder og pulserer litt
 function updateSkins(dt) {
   const t = performance.now() / 1000;
+  flyWings.forEach(w => { w.rotation.z = w.userData.side * (w.userData.base + Math.sin(t * 7 + w.userData.phase) * 0.35); });   // [NY] vingene blafrer
   Object.keys(skinMatCache).forEach(id => {
     const m = skinMatCache[id];
     if (!m.light.userData.glow) return;
