@@ -29,7 +29,7 @@ const GEAR = [
   { id: 'norway', name: 'Norge VM 2026', icon: '🦁', level: 1, slot: 'body' },  // [NY] Norges VM-drakt 2026: rød med blått kors, hvit shorts, blå strømper
   { id: 'nor10', name: 'Ødegaard 10', icon: '👕', level: 1, slot: 'shirtno', needs: 'norway', back: ['ØDEGAARD', '10'] },  // [NY] navn og nummer på ryggen
   { id: 'nor9', name: 'Haaland 9', icon: '👕', level: 1, slot: 'shirtno', needs: 'norway', back: ['HAALAND', '9'] },
-  { id: 'nor22', name: 'Nusa 22', icon: '👕', level: 1, slot: 'shirtno', needs: 'norway', back: ['NUSA', '22'] },
+  { id: 'nor20', name: 'Nusa 20', icon: '👕', level: 1, slot: 'shirtno', needs: 'norway', back: ['NUSA', '20'] },
   { id: 'nobelt', name: 'Kulebelter', icon: '🎗️', level: 1, slot: 'belt', invert: true }   // [NY] PÅ som standard. Trykk = ta av kulebeltene (lagres som 'nobelt')
 ];
 // XP som trengs for nivå n: 30 * n * (n - 1)  -> nivå 2 = 60, 5 = 600, 10 = 2700, 15 = 6300
