@@ -817,9 +817,9 @@ function showWeaponModel() {
   if (sniperView) sniperView.visible = sn;
   if (bazView) bazView.visible = bz;
   flash.position.set(bz ? 0.05 : 0, bz ? 0.15 : 0.012, sn ? -0.8 : bz ? -0.2 : -0.56);   // [NY] bazooka-munningen er på skulderen
-  if (typeof applyMySkins === 'function') applyMySkins();   // [NY] våpen-skins fra butikken
   if (typeof medWeaponView === 'function') medWeaponView();   // [NY] Ridderborgen: bue, armbrøst og sverd
   if (typeof hammerWeaponView === 'function') hammerWeaponView();   // [NY] hammeren
+  if (typeof applyMySkins === 'function') applyMySkins();   // [FIKS] skins til slutt, når vi vet hvilket våpen som vises (ellers ble pynten hengende på hammeren)
 }
 function switchWeapon(w) {
   if (!joined || weapon === w) return;

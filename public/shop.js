@@ -344,9 +344,10 @@ function rexOn(container, key, on, fp, kind) {
     if (kind === 'rex' && (key === 'akFP' || key === 'akHeld')) o.s *= REX_AK_SCALE;   // [NY] litt mindre T-rex-hode på AK
     r = kind === 'soccer' ? buildSoccer(o) : kind === 'heart' ? buildHearts(o) : kind === 'fly' ? buildButterfly(o) : kind === 'shark' ? buildShark(o) : kind === 'uni' ? buildUnicorn(o) : (RAPTOR_AK && (key === 'akFP' || key === 'akHeld')) ? buildRaptor(o) : (CUTE_REX_AK && (key === 'akFP' || key === 'akHeld')) ? buildCuteRex(o) : buildRex(o); r.position.set(...o.pos); r.rotation.y = o.rotY;
     container.add(r); container.userData[kind + '_' + key] = r;
-    if (kind === 'heart' || kind === 'soccer') settleHearts(container, r);   // [NY] sett ting rett på våpenet
   }
   if (r) r.visible = !!on;
+  // [FIKS] Plasser pynten på overflaten først når våpenet faktisk vises (og bare mot det synlige våpenet)
+  if (r && on && (kind === 'heart' || kind === 'soccer') && !r.userData.settled) settleHearts(container, r);
   return r;
 }
 // [NY] Både T-rex og hai: riktig dyr på, det andre av
@@ -478,8 +479,11 @@ function buildHearts(o) {
 function settleHearts(container, r) {
   try {
     container.updateWorldMatrix(true, true);
-    const meshes = []; container.traverse(m => { if (m.isMesh && !m.userData.noSkin && m.userData.baseMat) meshes.push(m); });
+    // [FIKS] bare synlige deler av DETTE våpenet (i første person henger alle våpnene i samme gruppe, de andre er skjult)
+    const shown = m => { for (let q = m; q && q !== container; q = q.parent) if (!q.visible) return false; return true; };
+    const meshes = []; container.traverse(m => { if (m.isMesh && !m.userData.noSkin && m.userData.baseMat && shown(m)) meshes.push(m); });
     if (!meshes.length) return;
+    r.userData.settled = true;
     const inv = new THREE.Matrix4().copy(container.matrixWorld).invert();
     const box = new THREE.Box3(), tmp = new THREE.Box3();
     meshes.forEach(m => { if (!m.geometry.boundingBox) m.geometry.computeBoundingBox(); tmp.copy(m.geometry.boundingBox).applyMatrix4(new THREE.Matrix4().multiplyMatrices(inv, m.matrixWorld)); box.union(tmp); });
