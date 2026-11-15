@@ -220,6 +220,48 @@ function buildRaptor(o) {
   g.traverse(c => { if (c.isMesh) { c.userData.noSkin = true; c.raycast = () => {}; c.castShadow = !o.fp; if (o.fp) c.layers.set(2); } });
   return g;
 }
+// ---------- [NY] SØT T-REX på AK: store runde øyne med glimt, rosa kinn, kort rund snute, smil ----------
+// Munnen i (0,0,0), snuten mot +z, løpet går gjennom gapet (som den vanlige T-rexen).
+const CUTE_CHEEKS = false;   // [NY] true = rosa kinn på den søte T-rexen
+function buildCuteRex(o) {
+  const g = new THREE.Group(), sk = skinMats('dino');
+  const mouth = new THREE.MeshStandardMaterial({ color: 0xc23a4a, roughness: 0.8 });
+  const white = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.4 });
+  const black = new THREE.MeshStandardMaterial({ color: 0x15151a, roughness: 0.3 });
+  const pink = new THREE.MeshStandardMaterial({ color: 0xff8fb0, roughness: 0.7 });
+  const belly = new THREE.MeshStandardMaterial({ color: 0xc8e86a, roughness: 0.7 });
+  const orange = new THREE.MeshStandardMaterial({ color: 0xffa040, roughness: 0.6 });
+  const box = (w, h, d, x, y, z, m, rx, par) => { const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); b.position.set(x, y, z); if (rx) b.rotation.x = rx; (par || g).add(b); return b; };
+  const ball = (r, x, y, z, m, par, sx, sy, sz) => { const b = new THREE.Mesh(new THREE.SphereGeometry(r, 12, 10), m); b.position.set(x, y, z); b.scale.set(sx || 1, sy || 1, sz || 1); (par || g).add(b); return b; };
+  const head = new THREE.Group(); head.scale.setScalar(o.s); g.add(head);
+  // Rundt hode og kort, rund snute
+  ball(0.13, 0, 0.1, -0.24, sk.light, head, 1, 0.75, 1);                // stort rundt hode (lavt, så siktet er fritt)
+  ball(0.09, 0, 0.075, -0.06, sk.light, head, 1, 0.6, 1.1);             // kort snute
+  box(0.11, 0.012, 0.16, 0, 0.04, -0.06, mouth, 0, head);               // gane
+  // Underkjeve med lys mage-farge, smiler
+  const jaw = new THREE.Group(); jaw.position.set(0, -0.03, -0.15); jaw.rotation.x = 0.22; head.add(jaw);
+  ball(0.08, 0, -0.01, 0.08, belly, jaw, 1, 0.45, 1.25);
+  box(0.09, 0.01, 0.14, 0, 0.012, 0.08, mouth, 0, jaw);
+  // Bare to små runde tenner oppe (søte, ikke skumle)
+  [-1, 1].forEach(sd => { const t = new THREE.Mesh(new THREE.ConeGeometry(0.012, 0.028, 6), white); t.rotation.x = Math.PI; t.position.set(sd * 0.035, 0.03, 0.02); head.add(t); });
+  // Store runde øyne med glimt
+  [-1, 1].forEach(sd => {
+    ball(0.05, sd * 0.085, 0.14, -0.2, white, head, 0.6, 1, 1);
+    ball(0.034, sd * 0.11, 0.135, -0.19, black, head, 0.5, 1, 1);
+    ball(0.012, sd * 0.125, 0.155, -0.175, white, head);                // glimt
+    ball(0.006, sd * 0.125, 0.12, -0.2, white, head);                   // lite glimt
+    if (CUTE_CHEEKS) ball(0.03, sd * 0.1, 0.07, -0.12, pink, head, 0.4, 0.6, 1);   // rosa kinn (av)
+    ball(0.008, sd * 0.03, 0.105, 0.02, black, head);                   // nesebor
+  });
+  // Bitte små armer (fortsatt for korte!)
+  [-1, 1].forEach(sd => box(0.035, 0.08, 0.035, sd * 0.07, -0.07, -0.33, sk.light, 0.6, head));
+  // Runde oransje kuler langs ryggen i stedet for spisse pigger
+  const n = Math.max(3, Math.round(o.ridgeLen / 0.09));
+  for (let i = 0; i < n; i++) ball((i % 2 ? 0.018 : 0.024) * o.s, 0, o.ridgeY, -0.36 * o.s - i * (o.ridgeLen / n), orange);
+  g.traverse(c => { if (c.isMesh) { c.userData.noSkin = true; c.raycast = () => {}; c.castShadow = !o.fp; if (o.fp) c.layers.set(2); } });
+  return g;
+}
+const CUTE_REX_AK = true;   // [NY] false = den gamle T-rexen på AK
 const RAPTOR_AK = false;  // [NY] false = T-rex på AK igjen
 // Sett på / ta av T-rexen. key skiller våpen; opts sier hvor munningen er.
 const REX = {
@@ -236,7 +278,7 @@ function rexOn(container, key, on, fp, kind) {
   if (on && !r) {
     const o = Object.assign({}, REX[key], { fp: fp || REX[key].fp });
     if (kind === 'rex' && (key === 'akFP' || key === 'akHeld')) o.s *= REX_AK_SCALE;   // [NY] litt mindre T-rex-hode på AK
-    r = kind === 'shark' ? buildShark(o) : kind === 'uni' ? buildUnicorn(o) : (RAPTOR_AK && (key === 'akFP' || key === 'akHeld')) ? buildRaptor(o) : buildRex(o); r.position.set(...o.pos); r.rotation.y = o.rotY;
+    r = kind === 'shark' ? buildShark(o) : kind === 'uni' ? buildUnicorn(o) : (RAPTOR_AK && (key === 'akFP' || key === 'akHeld')) ? buildRaptor(o) : (CUTE_REX_AK && (key === 'akFP' || key === 'akHeld')) ? buildCuteRex(o) : buildRex(o); r.position.set(...o.pos); r.rotation.y = o.rotY;
     container.add(r); container.userData[kind + '_' + key] = r;
   }
   if (r) r.visible = !!on;
