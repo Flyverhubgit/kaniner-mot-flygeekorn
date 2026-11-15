@@ -155,10 +155,12 @@ socket.on('questDone', () => {
   showToast('⚽ OPPDRAG KLART! Gå til treneren i loungen');
   playCoachWhistle();
 });
-// Liten linje under drage-linja mens oppdraget pågår
+// [NY] Liten boks i hjørnet (oppe til høyre, under ammo) mens oppdraget pågår. Forsvinner når oppdraget er klart.
 const questHud = document.createElement('div');
-questHud.style.cssText = 'position:fixed;top:58px;left:50%;transform:translateX(-50%);color:#fff;font:bold 13px sans-serif;text-shadow:0 1px 3px #000;background:rgba(13,110,87,0.45);padding:1px 9px;border-radius:9px;z-index:5;display:none;pointer-events:none;white-space:nowrap;';
+questHud.style.cssText = 'position:fixed;top:' + (isTouch ? 44 : 48) + 'px;right:16px;width:118px;color:#fff;font:bold 12px sans-serif;text-shadow:0 1px 2px #000;background:rgba(13,110,87,0.5);padding:3px 7px 5px;border-radius:9px;z-index:4;display:none;pointer-events:none;text-align:right;';
+questHud.innerHTML = '<div id="questHudTxt">⚽ 0 / ' + QUEST_NEED + '</div><div style="height:5px;background:rgba(255,255,255,.25);border-radius:3px;overflow:hidden;margin-top:3px"><div id="questHudBar" style="height:100%;width:0%;background:#ffd23a"></div></div>';
 document.body.appendChild(questHud);
+const questHudTxt = questHud.querySelector('#questHudTxt'), questHudBar = questHud.querySelector('#questHudBar');
 
 // ---------- Hver bilde-ramme ----------
 (function questLoop() {
@@ -171,6 +173,10 @@ document.body.appendChild(questHud);
   const t = performance.now() / 1000;
   coach.position.y = Math.abs(Math.sin(t * 2.2)) * 0.06;            // hopper litt (varmer opp)
   coach.rotation.z = Math.sin(t * 1.7) * 0.04;
-  questHud.style.display = !lob && q.on && !q.done && joined ? 'block' : 'none';   // [NY] vises på alle baner
-  if (questHud.style.display === 'block') questHud.textContent = '⚽ ' + Math.floor(questNow) + ' / ' + QUEST_NEED;
+  const showHud = !lob && q.on && !q.done && !profile.kit && joined;   // [NY] vises på alle baner, borte når oppdraget er klart
+  questHud.style.display = showHud ? 'block' : 'none';
+  if (showHud) {
+    const txt = '⚽ ' + Math.floor(questNow) + ' / ' + QUEST_NEED;
+    if (questHudTxt.textContent !== txt) { questHudTxt.textContent = txt; questHudBar.style.width = Math.min(100, questNow / QUEST_NEED * 100).toFixed(1) + '%'; }
+  }
 })();
