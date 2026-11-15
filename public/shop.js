@@ -28,7 +28,8 @@ const SKINS = [
   { id: 'dino', name: 'Dinosaur', icon: '🦖', price: 2000 },   // [NY] grønne skjell med oransje rygg-pigger
   { id: 'shark', name: 'Hai', icon: '🦈', price: 1750 },       // [NY] haihode med løpet ut av gapet
   { id: 'unicorn', name: 'Enhjørning', icon: '🦄', price: 500 },  // [NY] enhjørning med regnbuemanke og gullhorn
-  { id: 'butterfly', name: 'Sommerfugl', icon: '🦋', price: 200 }  // [NY] rosa og blå, med vinger som blafrer
+  { id: 'butterfly', name: 'Sommerfugl', icon: '🦋', price: 200 },  // [NY] rosa og blå, med vinger som blafrer
+  { id: 'soccer', name: 'Fotball', icon: '⚽', price: 500 }  // [NY] grønn bane, fotball på munningen, mål oppå
 ];
 const WEAPON_SLOTS = [['ak', 'AK'], ['sniper', 'Snikskytter'], ['baz', 'Bazooka']];
 function skinBits() { let b = 0; SKINS.forEach((s, i) => { if (profile.owned.includes(s.id)) b |= 1 << i; }); return b; }
@@ -113,7 +114,8 @@ const SKIN_MAT = {
   dino: { map: SKIN_TEX.dino, roughness: 0.75 },
   shark: { map: SKIN_TEX.shark, roughness: 0.45 },
   unicorn: { map: SKIN_TEX.unicorn, roughness: 0.5, emissive: 0x2a1a30 },
-  butterfly: { map: SKIN_TEX.butterfly, roughness: 0.5, emissive: 0x1a1030 }
+  butterfly: { map: SKIN_TEX.butterfly, roughness: 0.5, emissive: 0x1a1030 },
+  soccer: { color: 0x2fa33a, roughness: 0.55 }      // [NY] gressgrønn
 };
 // To materialer per skin: lys (de fleste delene) og mørk (delene som var mørke fra før – grep, løp)
 const skinMatCache = {};
@@ -331,9 +333,9 @@ function rexOn(container, key, on, fp, kind) {
   if (on && !r) {
     const o = Object.assign({}, REX[key], { fp: fp || REX[key].fp });
     if (kind === 'rex' && (key === 'akFP' || key === 'akHeld')) o.s *= REX_AK_SCALE;   // [NY] litt mindre T-rex-hode på AK
-    r = kind === 'heart' ? buildHearts(o) : kind === 'fly' ? buildButterfly(o) : kind === 'shark' ? buildShark(o) : kind === 'uni' ? buildUnicorn(o) : (RAPTOR_AK && (key === 'akFP' || key === 'akHeld')) ? buildRaptor(o) : (CUTE_REX_AK && (key === 'akFP' || key === 'akHeld')) ? buildCuteRex(o) : buildRex(o); r.position.set(...o.pos); r.rotation.y = o.rotY;
+    r = kind === 'soccer' ? buildSoccer(o) : kind === 'heart' ? buildHearts(o) : kind === 'fly' ? buildButterfly(o) : kind === 'shark' ? buildShark(o) : kind === 'uni' ? buildUnicorn(o) : (RAPTOR_AK && (key === 'akFP' || key === 'akHeld')) ? buildRaptor(o) : (CUTE_REX_AK && (key === 'akFP' || key === 'akHeld')) ? buildCuteRex(o) : buildRex(o); r.position.set(...o.pos); r.rotation.y = o.rotY;
     container.add(r); container.userData[kind + '_' + key] = r;
-    if (kind === 'heart') settleHearts(container, r);   // [NY] sett hjertene rett på våpenet
+    if (kind === 'heart' || kind === 'soccer') settleHearts(container, r);   // [NY] sett ting rett på våpenet
   }
   if (r) r.visible = !!on;
   return r;
@@ -345,7 +347,44 @@ function creatureOn(container, key, skin, show, fp) {
   rexOn(container, key, show && skin === 'unicorn', fp, 'uni');
   rexOn(container, key, show && skin === 'butterfly', fp, 'fly');   // [NY] sommerfuglvinger
   rexOn(container, key, show && skin === 'pink' && HEART_SKIN && HEART_3D, fp, 'heart');   // [NY] hjerter oppå våpenet
+  rexOn(container, key, show && skin === 'soccer', fp, 'soccer');   // [NY] fotball og mål
 }
+// ---------- [NY] FOTBALL: hvit/svart ball på munningen (løpet stikker ut), lite mål med nett oppå ----------
+function buildSoccer(o) {
+  const g = new THREE.Group();
+  const white = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.45, flatShading: true });
+  const black = new THREE.MeshStandardMaterial({ color: 0x151515, roughness: 0.5 });
+  const net = new THREE.MeshStandardMaterial({ color: 0xdddddd, roughness: 0.7 });
+  // Ballen: kantete hvit kule med 12 svarte femkanter
+  const R = 0.07 * o.s;
+  const ball = new THREE.Group(); ball.position.set(0, 0, -R - 0.012 * o.s); g.add(ball);
+  ball.add(new THREE.Mesh(new THREE.IcosahedronGeometry(R, 1), white));
+  const ico = new THREE.IcosahedronGeometry(1, 0), pos = ico.attributes.position, seen = [];
+  for (let i = 0; i < pos.count; i++) {
+    const v = new THREE.Vector3().fromBufferAttribute(pos, i).normalize();
+    if (seen.some(u => u.distanceTo(v) < 0.01)) continue; seen.push(v);
+    const p = new THREE.Mesh(new THREE.CylinderGeometry(R * 0.33, R * 0.33, R * 0.12, 5), black);
+    p.position.copy(v).multiplyScalar(R * 0.93);
+    p.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), v);
+    ball.add(p);
+  }
+  ball.userData.spinBall = true; soccerBalls.push(ball);
+  // Lite mål oppå våpenet (settes på overflaten av settleHearts)
+  const goal = new THREE.Group(), k = o.s * (o.fp ? 0.8 : 1);
+  const W = 0.12 * k, H = 0.07 * k, D = 0.05 * k, t = 0.008 * k;
+  const bx = (w, h, d, x, y, z, m) => { const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); b.position.set(x, y, z); goal.add(b); };
+  bx(t, H, t, -W / 2, H / 2, 0, white); bx(t, H, t, W / 2, H / 2, 0, white); bx(W + t, t, t, 0, H, 0, white);   // stolper og tverrligger
+  for (let i = 1; i < 5; i++) bx(t * 0.4, H, t * 0.4, -W / 2 + i * W / 5, H / 2, -D, net);       // nett bak
+  for (let i = 1; i < 4; i++) bx(W, t * 0.4, t * 0.4, 0, i * H / 4, -D, net);
+  [-1, 1].forEach(sd => { for (let i = 1; i < 3; i++) bx(t * 0.4, t * 0.4, D, sd * W / 2, i * H / 3, -D / 2, net); });   // nett på sidene
+  bx(W, t * 0.4, D, 0, H, -D / 2, net);                                                         // tak
+  goal.rotation.y = Math.PI / 2;                                    // målet vender ut til siden
+  goal.userData.face = 'top'; goal.userData.t = 0.62; goal.visible = false;
+  g.add(goal);
+  g.traverse(c => { if (c.isMesh) { c.userData.noSkin = true; c.raycast = () => {}; c.castShadow = !o.fp; if (o.fp) c.layers.set(2); } });
+  return g;
+}
+const soccerBalls = [];
 // ---------- [NY] HJERTER: 4 små kloss-hjerter som står oppå våpenet – rødt, blått, hvitt og regnbue ----------
 const HEART_3D = true;                             // false = bare mønsteret
 const HEART_ROWS = ['.XX.XX.', 'XXXXXXX', 'XXXXXXX', '.XXXXX.', '..XXX..', '...X...'];
@@ -393,6 +432,7 @@ function settleHearts(container, r) {
     const toW = v => v.applyMatrix4(container.matrixWorld);
     const dirW = v => v.transformDirection(container.matrixWorld);
     r.children.forEach(h => {
+      if (!h.userData.face) return;                  // [NY] bare ting som skal settes på overflaten
       const f = h.userData.face, z = muzzleZ + (backZ - muzzleZ) * (0.08 + 0.8 * h.userData.t);
       let o, d;
       if (f === 'top') { o = new THREE.Vector3(0, box.max.y + 0.5, z); d = new THREE.Vector3(0, -1, 0); }
