@@ -332,7 +332,7 @@ const SHOP_PREVIEW_ON = true;
 let shopPrevId = null;                              // skinnen som vises nå (null = den du har på)
 const shopPrevCanvas = document.createElement('canvas');
 shopPrevCanvas.width = 360; shopPrevCanvas.height = 150;
-shopPrevCanvas.style.cssText = 'width:240px;height:100px;display:block;margin:2px auto;border-radius:10px;background:rgba(0,0,0,.25);';
+shopPrevCanvas.style.cssText = 'width:300px;height:125px;display:block;margin:2px auto;border-radius:10px;background:rgba(0,0,0,.25);';
 let shopPrev = null;
 function shopPrevSetup() {
   if (shopPrev) return shopPrev;
@@ -358,18 +358,45 @@ function shopPrevShow() {
     creatureOn(gn, key, id, true);
   });
   // ramme kameraet rundt våpenet (med eventuelt dyrehode)
-  const gw = P.guns[shopWeapon], rot = P.spin.rotation.y;
-  gw.position.set(0, 0, 0); P.spin.rotation.y = 0; P.sc.updateMatrixWorld(true);
+  const gw = P.guns[shopWeapon], rot = P.spin.rotation.clone();
+  gw.position.set(0, 0, 0); P.spin.rotation.set(0, 0, 0); P.sc.updateMatrixWorld(true);
   const box = new THREE.Box3().setFromObject(gw), c = box.getCenter(new THREE.Vector3()), sz = box.getSize(new THREE.Vector3());
-  P.spin.rotation.y = rot;
+  P.spin.rotation.copy(rot);
   P.guns[shopWeapon].position.sub(c);
   const d = Math.max(sz.x, sz.y, sz.z) * 1.35 + 0.1;
   P.cam.position.set(0, d * 0.25, d); P.cam.lookAt(0, 0, 0);
 }
+// [NY] Dra med finger/mus for å snu våpenet alle veier. Etter 2 sek uten dra snurrer det av seg selv igjen.
+const SHOP_DRAG_ON = true;
+let shopYaw = 0, shopPitch = 0, shopDrag = null, shopDragEnd = -1e9, shopLastT = performance.now();
+shopPrevCanvas.style.touchAction = 'none';
+shopPrevCanvas.style.cursor = 'grab';
+shopPrevCanvas.addEventListener('pointerdown', e => {
+  if (!SHOP_DRAG_ON) return;
+  shopDrag = { id: e.pointerId, x: e.clientX, y: e.clientY };
+  shopPrevCanvas.style.cursor = 'grabbing';
+  try { shopPrevCanvas.setPointerCapture(e.pointerId); } catch (err) {}
+  e.preventDefault();
+});
+shopPrevCanvas.addEventListener('pointermove', e => {
+  if (!shopDrag || e.pointerId !== shopDrag.id) return;
+  shopYaw += (e.clientX - shopDrag.x) * 0.012;
+  shopPitch = Math.max(-1.5, Math.min(1.5, shopPitch + (e.clientY - shopDrag.y) * 0.012));
+  shopDrag.x = e.clientX; shopDrag.y = e.clientY;
+  e.preventDefault();
+});
+function shopDragStop(e) { if (shopDrag && e.pointerId === shopDrag.id) { shopDrag = null; shopDragEnd = performance.now(); shopPrevCanvas.style.cursor = 'grab'; } }
+shopPrevCanvas.addEventListener('pointerup', shopDragStop);
+shopPrevCanvas.addEventListener('pointercancel', shopDragStop);
 function shopPrevLoop() {
   requestAnimationFrame(shopPrevLoop);
+  const now = performance.now(), dt = Math.min(0.1, (now - shopLastT) / 1000); shopLastT = now;
   if (!shopPrev || !shopPrevCanvas.isConnected || !shopPrevCanvas.offsetParent) return;
-  shopPrev.spin.rotation.y = performance.now() / 1000 * 0.9;
+  if (!shopDrag && now - shopDragEnd > 2000) {      // snurr selv, og vipp sakte tilbake til rett
+    shopYaw += dt * 0.9;
+    shopPitch *= Math.max(0, 1 - dt * 2);
+  }
+  shopPrev.spin.rotation.set(shopPitch, shopYaw, 0, 'XYZ');
   shopPrev.r.render(shopPrev.sc, shopPrev.cam);
 }
 if (SHOP_PREVIEW_ON) requestAnimationFrame(shopPrevLoop);
