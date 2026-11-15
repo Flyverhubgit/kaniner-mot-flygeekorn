@@ -1966,7 +1966,8 @@ function dragonNP() { return Math.max(1, Object.values(players).filter(p => !p.i
 const DRAGON_HARD = true;   // [NY] vanskeligere, men fortsatt mulig. false = de gamle, lettere tallene
 function dragonCountMul() { return DRAGON_HARD ? 0.5 + 0.4 * dragonNP() : 0.35 + 0.35 * dragonNP(); }   // hard 1: 0,9  2: 1,3  3: 1,7  4: 2,1
 function dragonBossMul() { return DRAGON_HARD ? 0.3 + 0.5 * dragonNP() : 0.2 + 0.4 * dragonNP(); }     // hard 1: 0,8  2: 1,3  3: 1,8  4: 2,3
-function dragonDmgMul() { return (DRAGON_HARD ? [0.85, 1, 1.1, 1.2] : [0.7, 0.85, 1, 1])[Math.min(3, dragonNP() - 1)]; }
+const DRAGON_DMG_SCALE = 0.5;   // [NY] dragene gjør halv skade (bitt, ildkuler, meteorer), så det går an å vinne. 1 = som før
+function dragonDmgMul() { return (DRAGON_HARD ? [0.85, 1, 1.1, 1.2] : [0.7, 0.85, 1, 1])[Math.min(3, dragonNP() - 1)] * DRAGON_DMG_SCALE; }
 function resetDragons() {
   const np = Math.max(1, Object.values(players).filter(p => !p.isBot).length);
   dragonGame = { wave: Math.max(0, (+process.env.DRAGON_START_WAVE || 1) - 1), state: 'prep',   // (DRAGON_START_WAVE er for testing)
