@@ -27,6 +27,9 @@ const GEAR = [
   { id: 'duckhat', name: 'Andehatt', icon: '🦆', level: 30, slot: 'head' },      // [NY] gul badeand som sitter på hodet
   { id: 'kit', name: 'Fotballdrakt', icon: '⚽', level: 1, slot: 'body', quest: true },  // [NY] fås fra fotballkyllingen (oppdrag), ikke nivå
   { id: 'norway', name: 'Norge VM 2026', icon: '🦁', level: 1, slot: 'body' },  // [NY] Norges VM-drakt 2026: rød med blått kors, hvit shorts, blå strømper
+  { id: 'nor10', name: 'Ødegaard 10', icon: '👕', level: 1, slot: 'shirtno', needs: 'norway', back: ['ØDEGAARD', '10'] },  // [NY] navn og nummer på ryggen
+  { id: 'nor9', name: 'Haaland 9', icon: '👕', level: 1, slot: 'shirtno', needs: 'norway', back: ['HAALAND', '9'] },
+  { id: 'nor22', name: 'Nusa 22', icon: '👕', level: 1, slot: 'shirtno', needs: 'norway', back: ['NUSA', '22'] },
   { id: 'nobelt', name: 'Kulebelter', icon: '🎗️', level: 1, slot: 'belt', invert: true }   // [NY] PÅ som standard. Trykk = ta av kulebeltene (lagres som 'nobelt')
 ];
 // XP som trengs for nivå n: 30 * n * (n - 1)  -> nivå 2 = 60, 5 = 600, 10 = 2700, 15 = 6300
@@ -332,9 +335,28 @@ function norBadgeTex() {
   x.fillText('NOR', 64, 68);
   norBadgeT = new THREE.CanvasTexture(c); return norBadgeT;
 }
+let norBack = null;   // [NY] ['HAALAND', '9'] e.l. for drakten som bygges nå (null = uten navn, med kors bak)
+// [NY] mode 'name' = bare navnet (bredt bilde), 'num' = bare nummeret, 'both' = navn over nummer
+function norBackTex(name, num, mode) {
+  const c = document.createElement('canvas'); c.width = 256; c.height = mode === 'name' ? 64 : 256; const x = c.getContext('2d');
+  x.fillStyle = '#ffffff'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.lineWidth = 8; x.strokeStyle = '#0d2a5c';
+  if (mode === 'name') { x.font = '900 40px Arial Black, Arial, sans-serif'; x.fillText(name, 128, 34, 244); }
+  else if (mode === 'num') { x.font = '900 190px Arial Black, Arial, sans-serif'; x.strokeText(num, 128, 140); x.fillText(num, 128, 140); }
+  else {
+    x.font = '900 34px Arial Black, Arial, sans-serif'; x.fillText(name, 128, 36, 240);
+    x.font = '900 150px Arial Black, Arial, sans-serif'; x.strokeText(num, 128, 160); x.fillText(num, 128, 160);
+  }
+  return new THREE.CanvasTexture(c);
+}
 const NOR_RED = 0xc81e2c, NOR_NAVY = 0x0d2a5c, NOR_WHITE = 0xf4f4f0, NOR_BLUE = 0x1f4fa8;
 function buildNorway(g, team) {
   const badge = (x, y, z, r) => { const m = new THREE.Mesh(new THREE.CircleGeometry(r, 24), new THREE.MeshBasicMaterial({ map: norBadgeTex() })); m.position.set(x, y, z); g.add(m); };
+  // [NY] Rygg-trykk: en gjennomsiktig flate med navn og/eller nummer (bunny: navn og nummer på hver sin kloss)
+  const backPrint = (w, y, z, h, mode) => {
+    const t = norBackTex(norBack[0], norBack[1], mode || 'both'); h = h || w;
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: t, transparent: true }));
+    m.position.set(0, y, z); m.rotation.y = Math.PI; g.add(m);
+  };
   // Korset: hvit bred stripe bak, blå smal stripe foran. zf = forsiden av trøya, sd = +1 foran / -1 bak
   const cross = (parts, hy, hw, zf, sd) => {
     blk(g, hw, 0.09, 0.012, 0, hy, sd * (zf + 0.006), NOR_WHITE);          // vannrett (hvit kant)
@@ -346,14 +368,16 @@ function buildNorway(g, team) {
   };
   if (team === 'squirrel') {
     blk(g, 0.47, 0.42, 0.34, 0, 0.83, 0, NOR_RED);                         // trøye
-    [1, -1].forEach(sd => cross([[0.83, 0.42, 0.17]], 0.86, 0.47, 0.17, sd));
+    [1, -1].forEach(sd => { if (sd < 0 && norBack) return; cross([[0.83, 0.42, 0.17]], 0.86, 0.47, 0.17, sd); });
+    if (norBack) backPrint(0.4, 0.84, -0.176);                             // navn og nummer på ryggen
     badge(0.12, 0.95, 0.19, 0.05);
     blk(g, 0.47, 0.22, 0.34, 0, 0.51, 0, NOR_WHITE);                       // hvit shorts
     [-0.13, 0.13].forEach(x => { blk(g, 0.15, 0.31, 0.11, x, 0.29, 0, NOR_BLUE); blk(g, 0.19, 0.17, 0.19, x, 0.08, 0.02, NOR_BLUE); });   // blå strømper
   } else {
     blk(g, 0.58, 0.30, 0.44, 0, 0.68, 0, NOR_RED);                         // trøye (nedre del)
     blk(g, 0.46, 0.22, 0.38, 0, 0.92, 0, NOR_RED);                         // trøye (bryst og skuldre)
-    [1, -1].forEach(sd => cross([[0.68, 0.30, 0.22], [0.92, 0.22, 0.19]], 0.76, 0.58, 0.22, sd));
+    [1, -1].forEach(sd => { if (sd < 0 && norBack) return; cross([[0.68, 0.30, 0.22], [0.92, 0.22, 0.19]], 0.76, 0.58, 0.22, sd); });
+    if (norBack) { backPrint(0.42, 0.96, -0.192, 0.105, 'name'); backPrint(0.3, 0.69, -0.222, 0.3, 'num'); }   // navn øverst, nummer under
     badge(0.12, 0.93, 0.21, 0.055);
     blk(g, 0.66, 0.22, 0.48, 0, 0.44, 0, NOR_WHITE);                       // hvit shorts
     [-0.16, 0.16].forEach(x => { blk(g, 0.25, 0.15, 0.41, x, 0.07, 0.08, NOR_BLUE); blk(g, 0.19, 0.11, 0.09, x, 0.05, 0.31, NOR_BLUE); });   // blå strømper over føttene
@@ -362,7 +386,11 @@ function buildNorway(g, team) {
 function applyGear(body, team, wear) {
   if (body.userData.gearGroup) body.remove(body.userData.gearGroup);
   const gg = new THREE.Group();
-  (wear || []).forEach(id => { if (id !== 'goldfur' && id !== 'nobelt') gg.add(buildGearPart(id, team)); });
+  (wear || []).forEach(id => {
+    if (id === 'goldfur' || id === 'nobelt' || /^nor\d+$/.test(id)) return;   // [NY] nummer-valget bygges sammen med Norge-drakten
+    if (id === 'norway') { const n = GEAR.find(x => x.back && (wear || []).includes(x.id)); norBack = n ? n.back : null; }
+    gg.add(buildGearPart(id, team));
+  });
   const belts = !(wear || []).includes('nobelt');      // [NY] kulebeltene av/på
   body.traverse(o => { if (o.userData && o.userData.belt) o.visible = belts; });
   body.add(gg);
@@ -419,7 +447,7 @@ let gearOpen = false;                              // [NY] sammenslått som stan
 function renderGearMenu() {
   const L = myLevel(), cur = profile.xp - xpFor(L), need = xpFor(L + 1) - xpFor(L);
   const k = Math.max(0, Math.min(1, cur / need));
-  const worn = myWear().filter(id => !GEAR.find(g => g.id === id).invert).map(id => GEAR.find(g => g.id === id).icon).join('');
+  const worn = myWear().filter(id => { const g = GEAR.find(x => x.id === id); return !g.invert && !g.needs; }).map(id => GEAR.find(g => g.id === id).icon).join('');
   let h = '<div id="gearHead" style="cursor:pointer;user-select:none;display:inline-flex;align-items:center;gap:8px;padding:4px 12px;border-radius:10px;background:rgba(0,0,0,.25)">' +
     '<b>⭐ Nivå ' + L + '</b>' + (worn ? ' <span>' + worn + '</span>' : '') +
     '<span style="display:inline-block;width:70px;height:6px;background:rgba(255,255,255,.2);border-radius:3px;overflow:hidden"><span style="display:block;height:100%;width:' + (k * 100).toFixed(0) + '%;background:#ffd23a"></span></span>' +
@@ -433,6 +461,7 @@ function renderGearMenu() {
   h += '<div style="font-size:12px;opacity:.7;margin:4px 0">' + Math.floor(profile.xp) + ' XP – neste nivå om ' + Math.ceil(xpFor(L + 1) - profile.xp) + ' XP</div>' +
     '<div style="display:flex;flex-wrap:wrap;gap:5px;justify-content:center">';
   GEAR.forEach(g => {
+    if (g.needs && !profile.wear.includes(g.needs)) return;   // [NY] navn/nummer vises bare når Norge-drakten er på
     const open = gearUnlocked(g, L), on = open && (g.invert ? !profile.wear.includes(g.id) : profile.wear.includes(g.id));   // [NY] kulebelter: lyser når de er PÅ
     h += '<button class="gearBtn" data-id="' + g.id + '" ' + (open ? '' : 'disabled') + ' title="' + g.name + '" style="padding:4px 7px;border-radius:8px;border:2px solid ' +
       (on ? '#ffd23a' : 'rgba(255,255,255,.25)') + ';background:' + (on ? 'rgba(255,210,58,.3)' : 'rgba(0,0,0,.25)') + ';color:#fff;font-size:13px;cursor:' + (open ? 'pointer' : 'default') + ';opacity:' + (open ? 1 : 0.45) + '">' +

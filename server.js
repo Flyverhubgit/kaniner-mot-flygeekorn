@@ -1068,11 +1068,11 @@ function publicPlayer(p) {
     level: p.level || 1, wear: p.wear || [], skins: p.skins || {} };   // [NY] nivå, utstyr og våpen-skins
 }
 // [NY] Nivå og utstyr kommer fra spilleren (lagret i nettleseren). Bare lovlige verdier slipper gjennom.
-const GEAR_IDS = ['shades', 'cap', 'pirate', 'goldband', 'mask', 'viking', 'tophat', 'crown', 'halo', 'goldfur', 'dinohat', 'sharkhat', 'unihat', 'froggles', 'duckhat', 'kit', 'nobelt', 'norway'];
+const GEAR_IDS = ['shades', 'cap', 'pirate', 'goldband', 'mask', 'viking', 'tophat', 'crown', 'halo', 'goldfur', 'dinohat', 'sharkhat', 'unihat', 'froggles', 'duckhat', 'kit', 'nobelt', 'norway', 'nor10', 'nor9', 'nor22'];
 const SKIN_IDS = ['camo', 'pink', 'tiger', 'ice', 'lava', 'rainbow', 'galaxy', 'gold', 'diamond', 'dino', 'shark', 'unicorn', 'butterfly', 'soccer'];   // [NY] dinosaur   // [NY] våpen-skins fra butikken
 function cleanProfile(d) {
   const level = Math.max(1, Math.min(99, (d && d.level) | 0));
-  const wear = Array.isArray(d && d.wear) ? d.wear.filter(w => GEAR_IDS.includes(w)).slice(0, 5) : [];
+  const wear = Array.isArray(d && d.wear) ? d.wear.filter(w => GEAR_IDS.includes(w)).slice(0, 6) : [];
   const skins = {};
   ['ak', 'sniper', 'baz'].forEach(w => { const v = d && d.skins && d.skins[w]; if (SKIN_IDS.includes(v)) skins[w] = v; });
   return { level, wear, skins };
