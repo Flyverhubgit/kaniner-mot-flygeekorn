@@ -334,7 +334,10 @@ function creatureOn(container, key, skin, show, fp) {
   rexOn(container, key, show && skin === 'butterfly', fp, 'fly');   // [NY] sommerfuglvinger
 }
 // ---------- [NY] SOMMERFUGL: to par vinger (rosa og blå) oppå våpenet som blafrer, og små følehorn foran ----------
-const flyWings = [];                               // alle vingene, så de kan blafre i updateSkins
+const flyWings = [];
+const BF_CAT = true;                               // [NY] sovende katt på sommerfugl-våpenet (false = av)
+const BF_CAT_BACK = true;                          // [NY] katten ligger bak vingene (false = foran)
+const catBodies = [];                              // kattekropper som puster                               // alle vingene, så de kan blafre i updateSkins
 function buildButterfly(o) {
   const g = new THREE.Group();
   const pink = new THREE.MeshStandardMaterial({ color: 0xff7ab8, roughness: 0.5, side: THREE.DoubleSide });
@@ -358,6 +361,32 @@ function buildButterfly(o) {
     w.userData.side = sd; w.userData.base = 0.35; w.userData.phase = Math.random() * 6;
     flyWings.push(w);
   });
+  // [NY] Liten katt som sover oppå våpenet (krøllet sammen, lukkede øyne, puster sakte)
+  if (BF_CAT) {
+    const grey = new THREE.MeshStandardMaterial({ color: 0xd9d4e0, roughness: 0.8 });
+    const greyD = new THREE.MeshStandardMaterial({ color: 0xa79fb3, roughness: 0.8 });
+    const pinkS = new THREE.MeshStandardMaterial({ color: 0xff9ec8, roughness: 0.7 });
+    const C = o.s * (o.fp ? 0.8 : 1);
+    const cat = new THREE.Group();
+    cat.position.set(0, o.ridgeY + 0.035 * C, mid.position.z + (BF_CAT_BACK ? -(0.2 * S + 0.06 * C) : 0.2 * S + 0.05 * C));   // bak vingene (eller foran)
+    g.add(cat);
+    const body = new THREE.Group(); cat.add(body);
+    box(0.09 * C, 0.05 * C, 0.13 * C, 0, 0, 0, grey, body);                    // kropp (krøllet)
+    box(0.07 * C, 0.012 * C, 0.025 * C, 0, 0.026 * C, 0.02 * C, greyD, body);  // striper
+    box(0.07 * C, 0.012 * C, 0.025 * C, 0, 0.026 * C, -0.03 * C, greyD, body);
+    const hd = new THREE.Group(); hd.position.set(0.03 * C, 0.005 * C, 0.07 * C); hd.rotation.y = 0.5; cat.add(hd);
+    box(0.065 * C, 0.05 * C, 0.055 * C, 0, 0, 0, grey, hd);                   // hode (ligger på labbene)
+    [-1, 1].forEach(sd => {
+      box(0.018 * C, 0.022 * C, 0.012 * C, sd * 0.02 * C, 0.034 * C, 0, grey, hd);      // ører
+      box(0.009 * C, 0.012 * C, 0.004 * C, sd * 0.02 * C, 0.034 * C, 0.007 * C, pinkS, hd);
+      box(0.016 * C, 0.004 * C, 0.004 * C, sd * 0.016 * C, 0.004 * C, 0.029 * C, dark, hd);   // lukkede øyne
+    });
+    box(0.01 * C, 0.008 * C, 0.004 * C, 0, -0.006 * C, 0.029 * C, pinkS, hd);  // nese
+    box(0.05 * C, 0.018 * C, 0.025 * C, -0.005 * C, -0.018 * C, 0.085 * C, grey, cat);   // labber under hodet
+    const tail = box(0.02 * C, 0.02 * C, 0.12 * C, -0.05 * C, -0.01 * C, 0.01 * C, greyD, cat);   // halen rundt kroppen
+    tail.rotation.y = 0.35;
+    body.userData.breath = Math.random() * 6; catBodies.push(body);
+  }
   // små følehorn ved munningen
   [-1, 1].forEach(sd => {
     const a = box(0.008 * o.s, 0.008 * o.s, 0.09 * o.s, sd * 0.02 * o.s, o.ridgeY * 0.6 + 0.03 * o.s, -0.02 * o.s, dark, g);
@@ -469,6 +498,7 @@ function skinOther(r, skins) {
 // Lava, galakse og diamant gløder og pulserer litt
 function updateSkins(dt) {
   const t = performance.now() / 1000;
+  catBodies.forEach(b => { b.scale.y = 1 + Math.sin(t * 1.6 + b.userData.breath) * 0.08; });   // [NY] katten puster i søvne
   flyWings.forEach(w => { w.rotation.z = w.userData.side * (w.userData.base + Math.sin(t * 7 + w.userData.phase) * 0.35); });   // [NY] vingene blafrer
   Object.keys(skinMatCache).forEach(id => {
     const m = skinMatCache[id];
