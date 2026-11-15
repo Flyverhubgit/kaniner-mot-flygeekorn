@@ -163,6 +163,7 @@ function bandolier(g, cy, zFront, zBack, len, angle) {
   const BELT = 0x4b5320, BRASS = 0xc9a227, TIP = 0xa0522d;
   [[zFront, 1], [zBack, -1]].forEach(([z, s]) => {
     const b = joint(g, 0, cy, z, 0, 0, angle);
+    b.userData.belt = true;                              // [NY] kan skrus av i Utstyr (Kulebelter)
     blk(b, len, 0.08, 0.02, 0, 0, 0, BELT);
     if (s < 0) return;                                   // patroner bare foran
     for (let x = -len / 2 + 0.05; x <= len / 2 - 0.04; x += 0.065) {
