@@ -410,7 +410,7 @@ if (!isTouch) {
     const locked = document.pointerLockElement === renderer.domElement;
     if (!locked) releaseAll();             // [FIKS] se over
     if (!joined) return;                   // [NY] menyen styrer visningen før du er med
-    overlay.style.display = locked || (typeof shopPanelOpen !== 'undefined' && shopPanelOpen) ? 'none' : 'flex';   // [NY] ikke over butikken
+    overlay.style.display = locked || (typeof shopPanelOpen !== 'undefined' && shopPanelOpen) || (typeof questOpen !== 'undefined' && questOpen) ? 'none' : 'flex';   // [NY] ikke over butikken eller treneren
   });
 } else {
   overlay.innerHTML = '<div><b>Trykk for å starte</b><br>Venstre tommel = gå<br>Høyre tommel = se deg rundt<br>Knappene nede til høyre = skyt, lad om, granat, hopp, slide og dukk<br>Skyt: dobbelttrykk og hold på høyre side (dra for å sikte),<br>eller hold SKYT-knappen<br>BYTT = snikskytter &nbsp; SIKTE = kikkert<br>&#129991; Tips: toppen av pyramiden = SKUMFEST!</div>';
@@ -474,7 +474,8 @@ if (isTouch) {
   const origin = { x: 0, y: 0 }, lastLook = { x: 0, y: 0 }, lastFire = { x: 0, y: 0 };
 
   // [NY] Fingeren er i butikken: la den scrolle og trykke vanlig
-  const inShop = e => typeof shopPanelOpen !== 'undefined' && shopPanelOpen && shopPanel.contains(e.target);
+  const inShop = e => (typeof shopPanelOpen !== 'undefined' && shopPanelOpen && shopPanel.contains(e.target)) ||
+    (typeof questOpen !== 'undefined' && questOpen && questPanel.contains(e.target));   // [FIKS] treneren sine knapper må kunne trykkes
   document.addEventListener('touchstart', e => {
     if (!joined) return;                   // [NY] la menyen virke normalt
     if (inShop(e)) return;

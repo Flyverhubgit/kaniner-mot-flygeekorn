@@ -108,6 +108,7 @@ function renderQuest() {
 function openQuest() {
   if (questOpen) return;
   questOpen = true; renderQuest(); questPanel.style.display = 'block';
+  if (typeof overlay !== 'undefined') overlay.style.display = 'none';   // [FIKS] «trykk for å starte»-skjermen må ikke ligge over knappene
   if (document.pointerLockElement) document.exitPointerLock();
 }
 function closeQuest() {
@@ -121,7 +122,7 @@ addEventListener('keydown', e => {
   if (e.code === 'Escape' && questOpen) closeQuest();
 });
 const coachPrompt = document.createElement('div');
-coachPrompt.style.cssText = 'position:fixed;left:50%;bottom:110px;transform:translateX(-50%);padding:8px 14px;border-radius:12px;background:rgba(13,110,87,0.9);color:#fff;font:bold 15px sans-serif;z-index:6;display:none;user-select:none;';
+coachPrompt.style.cssText = 'position:fixed;left:50%;' + (isTouch ? 'top:46px' : 'bottom:110px') + ';transform:translateX(-50%);padding:8px 14px;border-radius:12px;background:rgba(13,110,87,0.9);color:#fff;font:bold 15px sans-serif;z-index:12;display:none;user-select:none;';   // [FIKS] på mobil øverst, så den ikke ligger oppå GRANAT-knappen
 document.body.appendChild(coachPrompt);
 coachPrompt.addEventListener('click', openQuest);
 coachPrompt.addEventListener('touchstart', e => { e.preventDefault(); openQuest(); }, { passive: false });
