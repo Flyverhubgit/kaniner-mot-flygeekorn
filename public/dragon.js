@@ -425,7 +425,8 @@ function updateDragons(dt) {
   // Linja øverst
   if (dragonInfo) {
     const w = dragonInfo, sh = w.shrine >= 0 ? Math.max(0, Math.round(w.shrine / w.max * 100)) : -1;
-    const state = w.state === 'prep' ? 'Dragene kommer snart...' : w.state === 'break' ? 'Pause' : (w.left || 0) + ' drager';
+    const state = w.state === 'prep' ? 'Dragene kommer snart...' : w.state === 'break' ? 'Pause' : (w.left || 0) + ' drager' +
+      (w.next >= 0 && w.state === 'fight' ? ' &nbsp;·&nbsp; neste om ' + w.next + ' s' : '');   // [NY] bølgene kommer på tid
     dragonHud.innerHTML = '&#128009; Bølge ' + Math.max(1, w.n) + '/' + w.of +
       (sh >= 0 ? ' &nbsp;·&nbsp; &#9961;&#65039; <span style="color:' + (sh > 50 ? '#9f9' : sh > 25 ? '#fd6' : '#f66') + '">' + sh + '%</span>' : '') +
       (w.team > 1 ? ' &nbsp;·&nbsp; &#128101; ' + w.alive + '/' + w.team + ' i live' : '') + ' &nbsp;·&nbsp; ' + state;

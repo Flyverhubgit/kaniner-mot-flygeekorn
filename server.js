@@ -1962,6 +1962,7 @@ function walkDragon(d, T, gx, gz, now, dt) {
   d.vy = 0;
   d.x = Math.max(-58, Math.min(58, d.x)); d.z = Math.max(-58, Math.min(58, d.z));
 }
+const DRAGON_TIMED = true;   // [NY] bølgene kommer på tid (som kyllingfarmen). false = neste bølge først når alle er drept
 const DRAGON_WAVES = 10, SHRINE_HP = 4000, DRAGON_PREP_MS = +process.env.DRAGON_PREP || 15000, DRAGON_BREAK_MS = 8000, DRAGON_SECONDS = 20 * 60;
 const DRAGON_HIT = { ak: 20, sniper: 90, dart: 30, bow: 45, crossbow: 85, sword: 40, flail: 70 };
 // [NY] Nye liv og hodeskudd (med AK): vanlig 150 liv / 2 hodeskudd, ilddrage 200 / 2, miniboss (bølge 5) 550 / 30, himmeldragen (bølge 10) 2500 / 200 hodeskudd.
@@ -1995,7 +1996,8 @@ function dragonWaveMsg(extra) {
   const g = dragonGame;
   const humans = Object.values(players).filter(p => !p.isBot);
   io.emit('dwave', Object.assign({ n: g.wave, of: DRAGON_WAVES, state: g.state, shrine: SHRINE_ON ? Math.round(g.shrine) : -1, max: Math.round(g.shrineMax),
-    left: g.list.size + g.queue.length, alive: humans.filter(p => p.alive).length, team: humans.length, record: dragonRecord }, extra || {}));
+    left: g.list.size + g.queue.length, alive: humans.filter(p => p.alive).length, team: humans.length, record: dragonRecord,
+    next: DRAGON_TIMED && g.state === 'fight' && g.wave < DRAGON_WAVES && g.waveEndAt ? Math.max(0, Math.ceil((g.waveEndAt - Date.now()) / 1000)) : -1 }, extra || {}));   // [NY] sek til neste bølge
 }
 function dragonWaveList(n) {
   const k = dragonCountMul(), list = [];
@@ -2116,11 +2118,20 @@ setInterval(() => {
   // --- Bølgene ---
   if ((g.state === 'prep' || g.state === 'break') && now >= g.nextAt) {
     g.wave++; g.state = 'fight'; g.queue = dragonWaveList(g.wave); g.spawnAt = now;
+    g.waveEndAt = now + WAVE_SECONDS(g.wave) * 1000;               // [NY] bølgene kommer PÅ TID (som kyllingfarmen)
     if (g.wave > 1) g.shrine = Math.min(g.shrineMax, g.shrine + g.shrineMax * 0.15);   // litt reparasjon hver bølge
     Object.values(players).forEach(p => { if (!p.alive) respawn(p); });
     dragonWaveMsg({ start: true });
   }
   if (g.state === 'fight') {
+    // [NY] Tiden er ute? Neste bølge kommer – uansett hvor mange drager som er igjen. De døde kommer tilbake.
+    if (DRAGON_TIMED && g.wave < DRAGON_WAVES && g.waveEndAt && now >= g.waveEndAt) {
+      g.wave++; g.queue = g.queue.concat(dragonWaveList(g.wave)); g.spawnAt = Math.min(g.spawnAt, now);
+      g.waveEndAt = now + WAVE_SECONDS(g.wave) * 1000;
+      Object.values(players).forEach(p => { if (!p.alive) respawn(p); });
+      dragonWaveMsg({ start: true });
+    }
+    if (DRAGON_TIMED && now - (g.lastInfo || 0) >= 1000) { g.lastInfo = now; dragonWaveMsg(); }   // nedtellingen på skjermen
     if (g.queue.length && now >= g.spawnAt && g.list.size < 40) { spawnDragon(g.queue.shift()); g.spawnAt = now + 700; }
     // [NY] Hele laget dødt samtidig? Da vant dragene.
     const humans = Object.values(players).filter(p => !p.isBot);
