@@ -202,6 +202,7 @@ socket.on('dragons', list => {
   });
   dragons.forEach((d, id) => { if (!seen.has(id)) { dragonGroup.remove(d.model); dragons.delete(id); } });
 });
+const BOSS_REWARD_ON = true;   // [NY] false = ingen ekstra boss-premie
 socket.on('dragonDie', d => {
   const dr = dragons.get(d.id);
   if (dr) {
@@ -213,6 +214,10 @@ socket.on('dragonDie', d => {
   if (d.by === myId) {                  // XP og mynter for dragen du tok
     if (typeof gainXP === 'function') gainXP(d.t === 3 ? 80 : d.t === 2 ? 40 : d.t === 1 ? 6 : 3);
     if (typeof gainCoins === 'function') gainCoins(d.t === 3 ? 50 : d.t === 2 ? 30 : d.t === 1 ? 3 : 1);
+  }
+  if (d.t === 3 && BOSS_REWARD_ON) {    // [NY] himmeldragen beseiret: hele laget får 500 mynter og 1 nivå
+    if (typeof gainCoins === 'function') gainCoins(500);
+    if (typeof gainXP === 'function' && typeof xpFor === 'function' && typeof myLevel === 'function') { const L = myLevel(); gainXP(xpFor(L + 1) - xpFor(L)); }
   }
 });
 
