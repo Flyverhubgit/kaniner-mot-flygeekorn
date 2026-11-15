@@ -338,12 +338,13 @@ let lookFire = false;      // [NY] dobbelttrykk-og-hold på høyre side = skyt
 let sens = 1;              // [NY] sikte-følsomhet fra menyen
 try { sens = parseFloat(localStorage.getItem('kmf-sens')) || 1; } catch (err) {}
 const overlay = document.getElementById('overlay');
+const CTRL_CROUCH = true;   // [NY] Ctrl = dukk, C = slide. false = Ctrl slider som før
 
 window.addEventListener('keydown', e => {
   if (document.activeElement && document.activeElement.tagName === 'INPUT') return; // [NY] ikke styr mens du skriver navn
   keys[e.code] = true;
   if (e.code === 'Space') jumpQueued = true;
-  if (e.code === 'KeyC' || e.code === 'ControlLeft') slideQueued = true;
+  if (e.code === 'KeyC' || (e.code === 'ControlLeft' && !CTRL_CROUCH)) slideQueued = true;   // [NY] C = slide (Ctrl dukker nå)
   if (e.code === 'KeyR') startReload();
   if (e.code === 'KeyG') nadeQueued = true;            // [NY] kast granat
   if (e.code === 'Digit1') switchWeapon(akW);          // [NY] bytt våpen
@@ -401,7 +402,7 @@ function lockMouse(onFail) {
 }
 
 if (!isTouch) {
-  overlay.innerHTML ='<div><b>Klikk for å spille</b><br>WASD = gå &nbsp; Mus = sikte<br>Mellomrom = hopp &nbsp; Shift = løp<br>C = slide (mens du går) &nbsp; Esc = pause<br>Venstre museknapp = skyt &nbsp; R = lad om<br>G = kast granat &nbsp; Hold Q = dukk<br>1 / 2 / 3 / musehjul = bytt våpen (3 = bazooka) &nbsp; Høyre museknapp = kikkert<br>&#129991; Tips: klatre til toppen av pyramiden (den rosa boblen) = SKUMFEST!<br>Kanin: superhopp &nbsp; Flygeekorn: hold mellomrom i lufta = svev<br>Hold Tab = poengtavle<br>Virker ikke musen? Hold inne venstre knapp og dra, og skyt med F.</div>';
+  overlay.innerHTML ='<div><b>Klikk for å spille</b><br>WASD = gå &nbsp; Mus = sikte<br>Mellomrom = hopp &nbsp; Shift = løp<br>C = slide (mens du går) &nbsp; Esc = pause<br>Venstre museknapp = skyt &nbsp; R = lad om<br>G = kast granat &nbsp; Hold Ctrl eller Q = dukk<br>1 / 2 / 3 / musehjul = bytt våpen (3 = bazooka) &nbsp; Høyre museknapp = kikkert<br>&#129991; Tips: klatre til toppen av pyramiden (den rosa boblen) = SKUMFEST!<br>Kanin: superhopp &nbsp; Flygeekorn: hold mellomrom i lufta = svev<br>Hold Tab = poengtavle<br>Virker ikke musen? Hold inne venstre knapp og dra, og skyt med F.</div>';
   overlay.addEventListener('click', () => {
     lockMouse(() => { overlay.style.display = 'none'; });
   });
@@ -579,7 +580,7 @@ function updatePlayer(dt) {
   }
 
   // [NY] Dukk: hold Q (PC) eller DUKK-knappen (mobil). Halv fart, lavt kamera.
-  crouching = !!(keys['KeyQ'] || touchCrouch);
+  crouching = !!(keys['KeyQ'] || (CTRL_CROUCH && (keys['ControlLeft'] || keys['ControlRight'])) || touchCrouch);   // [NY] Ctrl = dukk (hold)
   const speed = gliding ? GLIDE_SPEED : (crouching ? WALK * 0.5 : ((keys['ShiftLeft'] || keys['ShiftRight']) ? SPRINT : WALK));
   const sin = Math.sin(player.yaw), cos = Math.cos(player.yaw);
   const wireK = typeof wireSlow === 'function' ? wireSlow(player.x, player.z) : 1;   // [NY] piggtråd = halv fart
