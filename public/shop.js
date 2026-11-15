@@ -13,6 +13,7 @@ if (!profile.skins || typeof profile.skins !== 'object') profile.skins = {};
 
 // ---------- Skinnene ----------
 // level = må også ha dette nivået for å kjøpe (de dyreste)
+const SOCCER_STRIPES = true;   // [NY] striper og linjer på fotball-skinnen (false = ensfarget grønn)
 const HEART_SKIN = true;
 const HEART_WRAP = false;   // [NY] true = hjerter malt på (innpakning). false = blank rosa med ekte 3D-hjerter   // [NY] false = den gamle rene rosa skinnen
 const SKINS = [
@@ -28,7 +29,8 @@ const SKINS = [
   { id: 'dino', name: 'Dinosaur', icon: '🦖', price: 2000 },   // [NY] grønne skjell med oransje rygg-pigger
   { id: 'shark', name: 'Hai', icon: '🦈', price: 1750 },       // [NY] haihode med løpet ut av gapet
   { id: 'unicorn', name: 'Enhjørning', icon: '🦄', price: 500 },  // [NY] enhjørning med regnbuemanke og gullhorn
-  { id: 'butterfly', name: 'Sommerfugl', icon: '🦋', price: 200 }  // [NY] rosa og blå, med vinger som blafrer
+  { id: 'butterfly', name: 'Sommerfugl', icon: '🦋', price: 200 },  // [NY] rosa og blå, med vinger som blafrer
+  { id: 'soccer', name: 'Fotball', icon: '⚽', price: 500 }  // [NY] grønn bane, fotball på munningen, mål oppå
 ];
 const WEAPON_SLOTS = [['ak', 'AK'], ['sniper', 'Snikskytter'], ['baz', 'Bazooka']];
 function skinBits() { let b = 0; SKINS.forEach((s, i) => { if (profile.owned.includes(s.id)) b |= 1 << i; }); return b; }
@@ -83,6 +85,14 @@ const SKIN_TEX = {
     x.fillStyle = '#ffffff'; x.fillRect(7, 7, 3, 3); x.fillRect(41, 39, 3, 3);   // lite glimt
     x.fillStyle = '#ffd6ea'; for (let i = 0; i < 10; i++) x.fillRect(rnd() * 64, rnd() * 64, 1, 1);
   }),
+  soccer: patternTex(x => {                      // [NY] fotballbane: klippede striper (lys/mørk grønn) og hvite kritt-linjer
+    for (let i = 0; i < 4; i++) { x.fillStyle = i % 2 ? '#2a9a35' : '#3fbf4a'; x.fillRect(i * 16, 0, 16, 64); }
+    x.fillStyle = '#ffffff';
+    x.fillRect(31, 0, 2, 64);                                   // midtlinje
+    x.fillRect(0, 0, 64, 2); x.fillRect(0, 62, 64, 2);          // sidelinjer
+    x.beginPath(); x.arc(32, 32, 11, 0, Math.PI * 2); x.lineWidth = 2; x.strokeStyle = '#ffffff'; x.stroke();   // midtsirkel
+    x.fillRect(31, 31, 2, 2);
+  }),
   butterfly: patternTex(x => {                    // [NY] sommerfugl: lyseblå med rosa vingemønster og hvite prikker
     x.fillStyle = '#7ec8ff'; x.fillRect(0, 0, 64, 64);
     x.fillStyle = '#4a9eea'; for (let yy = 0; yy < 64; yy += 16) x.fillRect(0, yy, 64, 3);
@@ -113,7 +123,8 @@ const SKIN_MAT = {
   dino: { map: SKIN_TEX.dino, roughness: 0.75 },
   shark: { map: SKIN_TEX.shark, roughness: 0.45 },
   unicorn: { map: SKIN_TEX.unicorn, roughness: 0.5, emissive: 0x2a1a30 },
-  butterfly: { map: SKIN_TEX.butterfly, roughness: 0.5, emissive: 0x1a1030 }
+  butterfly: { map: SKIN_TEX.butterfly, roughness: 0.5, emissive: 0x1a1030 },
+  soccer: SOCCER_STRIPES ? { map: SKIN_TEX.soccer, roughness: 0.55 } : { color: 0x2fa33a, roughness: 0.55 }      // [NY] gressbane med striper
 };
 // To materialer per skin: lys (de fleste delene) og mørk (delene som var mørke fra før – grep, løp)
 const skinMatCache = {};
@@ -329,11 +340,11 @@ function rexOn(container, key, on, fp, kind) {
   kind = kind || 'rex';
   let r = container.userData[kind + '_' + key];
   if (on && !r) {
-    const o = Object.assign({}, REX[key], { fp: fp || REX[key].fp });
+    const o = Object.assign({}, REX[key], { fp: fp || REX[key].fp, key });
     if (kind === 'rex' && (key === 'akFP' || key === 'akHeld')) o.s *= REX_AK_SCALE;   // [NY] litt mindre T-rex-hode på AK
-    r = kind === 'heart' ? buildHearts(o) : kind === 'fly' ? buildButterfly(o) : kind === 'shark' ? buildShark(o) : kind === 'uni' ? buildUnicorn(o) : (RAPTOR_AK && (key === 'akFP' || key === 'akHeld')) ? buildRaptor(o) : (CUTE_REX_AK && (key === 'akFP' || key === 'akHeld')) ? buildCuteRex(o) : buildRex(o); r.position.set(...o.pos); r.rotation.y = o.rotY;
+    r = kind === 'soccer' ? buildSoccer(o) : kind === 'heart' ? buildHearts(o) : kind === 'fly' ? buildButterfly(o) : kind === 'shark' ? buildShark(o) : kind === 'uni' ? buildUnicorn(o) : (RAPTOR_AK && (key === 'akFP' || key === 'akHeld')) ? buildRaptor(o) : (CUTE_REX_AK && (key === 'akFP' || key === 'akHeld')) ? buildCuteRex(o) : buildRex(o); r.position.set(...o.pos); r.rotation.y = o.rotY;
     container.add(r); container.userData[kind + '_' + key] = r;
-    if (kind === 'heart') settleHearts(container, r);   // [NY] sett hjertene rett på våpenet
+    if (kind === 'heart' || kind === 'soccer') settleHearts(container, r);   // [NY] sett ting rett på våpenet
   }
   if (r) r.visible = !!on;
   return r;
@@ -345,7 +356,92 @@ function creatureOn(container, key, skin, show, fp) {
   rexOn(container, key, show && skin === 'unicorn', fp, 'uni');
   rexOn(container, key, show && skin === 'butterfly', fp, 'fly');   // [NY] sommerfuglvinger
   rexOn(container, key, show && skin === 'pink' && HEART_SKIN && HEART_3D, fp, 'heart');   // [NY] hjerter oppå våpenet
+  rexOn(container, key, show && skin === 'soccer', fp, 'soccer');   // [NY] fotball og mål
 }
+// ---------- [NY] FOTBALL: hvit/svart ball på munningen (løpet stikker ut), lite mål med nett oppå ----------
+function buildSoccer(o) {
+  const g = new THREE.Group();
+  const white = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.45, flatShading: true });
+  const black = new THREE.MeshStandardMaterial({ color: 0x151515, roughness: 0.5 });
+  const net = new THREE.MeshStandardMaterial({ color: 0xdddddd, roughness: 0.7 });
+  // Ballen: kantete hvit kule med 12 svarte femkanter
+  const R = 0.07 * o.s;
+  const ball = new THREE.Group(); ball.position.set(0, 0, -R - 0.012 * o.s); g.add(ball);
+  ball.add(new THREE.Mesh(new THREE.IcosahedronGeometry(R, 1), white));
+  const ico = new THREE.IcosahedronGeometry(1, 0), pos = ico.attributes.position, seen = [];
+  for (let i = 0; i < pos.count; i++) {
+    const v = new THREE.Vector3().fromBufferAttribute(pos, i).normalize();
+    if (seen.some(u => u.distanceTo(v) < 0.01)) continue; seen.push(v);
+    const p = new THREE.Mesh(new THREE.CylinderGeometry(R * 0.33, R * 0.33, R * 0.12, 5), black);
+    p.position.copy(v).multiplyScalar(R * 0.93);
+    p.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), v);
+    ball.add(p);
+  }
+  ball.userData.spinBall = true; soccerBalls.push(ball);
+  // Lite mål oppå våpenet (settes på overflaten av settleHearts)
+  const goal = new THREE.Group(), k = o.s * (o.fp ? 0.8 : 1);
+  const W = 0.12 * k, H = 0.07 * k, D = 0.05 * k, t = 0.008 * k;
+  const bx = (w, h, d, x, y, z, m) => { const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); b.position.set(x, y, z); goal.add(b); };
+  bx(t, H, t, -W / 2, H / 2, 0, white); bx(t, H, t, W / 2, H / 2, 0, white); bx(W + t, t, t, 0, H, 0, white);   // stolper og tverrligger
+  for (let i = 1; i < 5; i++) bx(t * 0.4, H, t * 0.4, -W / 2 + i * W / 5, H / 2, -D, net);       // nett bak
+  for (let i = 1; i < 4; i++) bx(W, t * 0.4, t * 0.4, 0, i * H / 4, -D, net);
+  [-1, 1].forEach(sd => { for (let i = 1; i < 3; i++) bx(t * 0.4, t * 0.4, D, sd * W / 2, i * H / 3, -D / 2, net); });   // nett på sidene
+  bx(W, t * 0.4, D, 0, H, -D / 2, net);                                                         // tak
+  goal.rotation.y = SOCCER_GOAL_FACE_YOU ? Math.PI : Math.PI / 2;   // [NY] åpningen vender mot deg
+  goal.userData.face = 'top'; goal.userData.t = 0.62; goal.visible = false;
+  g.add(goal);
+  // [NY] Flere små fotballer på våpenet (oppå og på sidene)
+  if (SOCCER_MORE_BALLS) [['top', 0.3, 0.55], ['top', 0.85, 0.5], ['left', SOCCER_BADGE ? 0.62 : 0.45, 0.45], ['right', 0.7, 0.45]].forEach(([face, tt, sc]) => {
+    const b = new THREE.Group(), r = R * sc;
+    b.add(new THREE.Mesh(new THREE.IcosahedronGeometry(r, 1), white));
+    seen.forEach(v => { const p = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.33, r * 0.33, r * 0.12, 5), black); p.position.copy(v).multiplyScalar(r * 0.93); p.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), v); b.add(p); });
+    const inner = b; const holder = new THREE.Group(); holder.add(inner);
+    inner.position.y = face === 'top' ? r * 0.9 : 0;                 // ligger oppå / stikker ut av siden
+    // sidene: ballen sitter midt på flaten, så halve ballen stikker ut
+    holder.userData.face = face; holder.userData.t = tt; holder.visible = false;
+    g.add(holder);
+  });
+  // [NY] Rundt merke på hver side: svart ring ytterst, hvitt inni, "M-I-L" i midten
+  if (SOCCER_BADGE) ['left', 'right'].forEach(face => {
+    const holder = new THREE.Group(), rr = (SOCCER_BADGE_BIG ? 0.07 : 0.05) * o.s * (o.fp ? 0.85 : 1);
+    const m = SOCCER_BADGE_BIG ? new THREE.MeshBasicMaterial({ map: soccerBadgeTex(), transparent: true, alphaTest: 0.5 })   // [NY] alltid klar og lys
+      : new THREE.MeshStandardMaterial({ map: soccerBadgeTex(), roughness: 0.5, transparent: true, alphaTest: 0.5 });
+    [1, -1].forEach(sd => {                    // én flate som vender ut hver vei (den innerste skjules i våpenet)
+      const pl = new THREE.Mesh(new THREE.CircleGeometry(rr, 32), m);
+      pl.rotation.y = sd * Math.PI / 2; pl.position.x = sd * 0.004 * o.s; holder.add(pl);
+    });
+    holder.userData.face = face; holder.userData.t = goal.userData.t; holder.visible = false;   // rett under målet
+    if (o.key === 'baz') holder.userData.fy = 0.5;
+    holder.userData.upright = true;                  // [NY] teksten skal alltid stå rett   // litt lavere på bazookaen (skinnen oppå skjuler det ellers)
+    g.add(holder);
+  });
+  g.traverse(c => { if (c.isMesh) { c.userData.noSkin = true; c.raycast = () => {}; c.castShadow = !o.fp; if (o.fp) c.layers.set(2); } });
+  return g;
+}
+let soccerBadgeT = null;
+function soccerBadgeTex() {                        // tegnes én gang og deles
+  if (soccerBadgeT) return soccerBadgeT;
+  const N = SOCCER_BADGE_BIG ? 256 : 128, k = N / 128;
+  const c = document.createElement('canvas'); c.width = c.height = N;
+  const x = c.getContext('2d');
+  x.fillStyle = '#111111'; x.beginPath(); x.arc(64 * k, 64 * k, 63 * k, 0, Math.PI * 2); x.fill();        // svart ytterring
+  x.fillStyle = '#ffffff'; x.beginPath(); x.arc(64 * k, 64 * k, (SOCCER_BADGE_BIG ? 52 : 50) * k, 0, Math.PI * 2); x.fill();   // hvitt inni
+  x.fillStyle = '#111111'; x.textAlign = 'center'; x.textBaseline = 'middle';
+  if (SOCCER_BADGE_BIG) {                          // [NY] store, tykke bokstaver som fyller den hvite flaten
+    x.font = '900 ' + (36 * k) + 'px Arial Black, Arial, sans-serif';
+    let w = x.measureText('M-I-L').width; const maxW = 92 * k;
+    if (w > maxW) x.font = '900 ' + Math.floor(36 * k * maxW / w) + 'px Arial Black, Arial, sans-serif';
+    x.fillText('M-I-L', 64 * k, 66 * k);
+  } else { x.font = 'bold 30px Arial, sans-serif'; x.fillText('M-I-L', 64, 66); }
+  soccerBadgeT = new THREE.CanvasTexture(c);
+  soccerBadgeT.anisotropy = 4;
+  return soccerBadgeT;
+}
+const SOCCER_BADGE = true;
+const SOCCER_BADGE_BIG = true;   // [NY] større og tydeligere merke (false = det lille)   // [NY] false = uten M-I-L-merket
+const soccerBalls = [];
+const SOCCER_GOAL_FACE_YOU = true;   // [NY] false = målet vender ut til siden
+const SOCCER_MORE_BALLS = false;     // [NY] av: bare ballen på munningen (true = flere små baller)
 // ---------- [NY] HJERTER: 4 små kloss-hjerter som står oppå våpenet – rødt, blått, hvitt og regnbue ----------
 const HEART_3D = true;                             // false = bare mønsteret
 const HEART_ROWS = ['.XX.XX.', 'XXXXXXX', 'XXXXXXX', '.XXXXX.', '..XXX..', '...X...'];
@@ -393,15 +489,25 @@ function settleHearts(container, r) {
     const toW = v => v.applyMatrix4(container.matrixWorld);
     const dirW = v => v.transformDirection(container.matrixWorld);
     r.children.forEach(h => {
+      if (!h.userData.face) return;                  // [NY] bare ting som skal settes på overflaten
       const f = h.userData.face, z = muzzleZ + (backZ - muzzleZ) * (0.08 + 0.8 * h.userData.t);
       let o, d;
       if (f === 'top') { o = new THREE.Vector3(0, box.max.y + 0.5, z); d = new THREE.Vector3(0, -1, 0); }
-      else { const sd = f === 'left' ? -1 : 1; o = new THREE.Vector3(sd * (box.max.x + 0.5), box.min.y + size.y * 0.72, z); d = new THREE.Vector3(-sd, 0, 0); }
-      rc.set(toW(o), dirW(d));
-      const hit = rc.intersectObjects(meshes, false)[0];
+      else { const sd = f === 'left' ? -1 : 1; o = new THREE.Vector3(sd * (box.max.x + 0.5), box.min.y + size.y * (h.userData.fy || 0.72), z); d = new THREE.Vector3(-sd, 0, 0); }
+      rc.set(toW(o.clone()), dirW(d.clone()));
+      let hit = rc.intersectObjects(meshes, false)[0];
+      // [NY] bommet på siden? prøv andre høyder, ovenfra og ned
+      for (let fy = 0.85; !hit && f !== 'top' && fy > 0.1; fy -= 0.05) {
+        o.y = box.min.y + size.y * fy; rc.set(toW(o.clone()), dirW(d.clone())); hit = rc.intersectObjects(meshes, false)[0];
+      }
       if (!hit) return;
       h.position.copy(h.parent.worldToLocal(hit.point.clone()));
       if (f === 'top') h.position.y -= 0.002;
+      if (h.userData.upright) {                      // [NY] snu merket så det følger våpenet, ikke dyrehode-oppsettet
+        const pq = new THREE.Quaternion(); h.parent.getWorldQuaternion(pq);
+        const cq = new THREE.Quaternion(); container.getWorldQuaternion(cq);
+        h.quaternion.copy(pq.invert().multiply(cq));
+      }
       h.visible = true;
     });
   } catch (err) {}
