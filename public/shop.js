@@ -13,6 +13,7 @@ if (!profile.skins || typeof profile.skins !== 'object') profile.skins = {};
 
 // ---------- Skinnene ----------
 // level = må også ha dette nivået for å kjøpe (de dyreste)
+const SOCCER_STRIPES = true;   // [NY] striper og linjer på fotball-skinnen (false = ensfarget grønn)
 const HEART_SKIN = true;
 const HEART_WRAP = false;   // [NY] true = hjerter malt på (innpakning). false = blank rosa med ekte 3D-hjerter   // [NY] false = den gamle rene rosa skinnen
 const SKINS = [
@@ -84,6 +85,14 @@ const SKIN_TEX = {
     x.fillStyle = '#ffffff'; x.fillRect(7, 7, 3, 3); x.fillRect(41, 39, 3, 3);   // lite glimt
     x.fillStyle = '#ffd6ea'; for (let i = 0; i < 10; i++) x.fillRect(rnd() * 64, rnd() * 64, 1, 1);
   }),
+  soccer: patternTex(x => {                      // [NY] fotballbane: klippede striper (lys/mørk grønn) og hvite kritt-linjer
+    for (let i = 0; i < 4; i++) { x.fillStyle = i % 2 ? '#2a9a35' : '#3fbf4a'; x.fillRect(i * 16, 0, 16, 64); }
+    x.fillStyle = '#ffffff';
+    x.fillRect(31, 0, 2, 64);                                   // midtlinje
+    x.fillRect(0, 0, 64, 2); x.fillRect(0, 62, 64, 2);          // sidelinjer
+    x.beginPath(); x.arc(32, 32, 11, 0, Math.PI * 2); x.lineWidth = 2; x.strokeStyle = '#ffffff'; x.stroke();   // midtsirkel
+    x.fillRect(31, 31, 2, 2);
+  }),
   butterfly: patternTex(x => {                    // [NY] sommerfugl: lyseblå med rosa vingemønster og hvite prikker
     x.fillStyle = '#7ec8ff'; x.fillRect(0, 0, 64, 64);
     x.fillStyle = '#4a9eea'; for (let yy = 0; yy < 64; yy += 16) x.fillRect(0, yy, 64, 3);
@@ -115,7 +124,7 @@ const SKIN_MAT = {
   shark: { map: SKIN_TEX.shark, roughness: 0.45 },
   unicorn: { map: SKIN_TEX.unicorn, roughness: 0.5, emissive: 0x2a1a30 },
   butterfly: { map: SKIN_TEX.butterfly, roughness: 0.5, emissive: 0x1a1030 },
-  soccer: { color: 0x2fa33a, roughness: 0.55 }      // [NY] gressgrønn
+  soccer: SOCCER_STRIPES ? { map: SKIN_TEX.soccer, roughness: 0.55 } : { color: 0x2fa33a, roughness: 0.55 }      // [NY] gressbane med striper
 };
 // To materialer per skin: lys (de fleste delene) og mørk (delene som var mørke fra før – grep, løp)
 const skinMatCache = {};
@@ -378,13 +387,26 @@ function buildSoccer(o) {
   for (let i = 1; i < 4; i++) bx(W, t * 0.4, t * 0.4, 0, i * H / 4, -D, net);
   [-1, 1].forEach(sd => { for (let i = 1; i < 3; i++) bx(t * 0.4, t * 0.4, D, sd * W / 2, i * H / 3, -D / 2, net); });   // nett på sidene
   bx(W, t * 0.4, D, 0, H, -D / 2, net);                                                         // tak
-  goal.rotation.y = Math.PI / 2;                                    // målet vender ut til siden
+  goal.rotation.y = SOCCER_GOAL_FACE_YOU ? Math.PI : Math.PI / 2;   // [NY] åpningen vender mot deg
   goal.userData.face = 'top'; goal.userData.t = 0.62; goal.visible = false;
   g.add(goal);
+  // [NY] Flere små fotballer på våpenet (oppå og på sidene)
+  if (SOCCER_MORE_BALLS) [['top', 0.3, 0.55], ['top', 0.85, 0.5], ['left', 0.45, 0.45], ['right', 0.7, 0.45]].forEach(([face, tt, sc]) => {
+    const b = new THREE.Group(), r = R * sc;
+    b.add(new THREE.Mesh(new THREE.IcosahedronGeometry(r, 1), white));
+    seen.forEach(v => { const p = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.33, r * 0.33, r * 0.12, 5), black); p.position.copy(v).multiplyScalar(r * 0.93); p.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), v); b.add(p); });
+    const inner = b; const holder = new THREE.Group(); holder.add(inner);
+    inner.position.y = face === 'top' ? r * 0.9 : 0;                 // ligger oppå / stikker ut av siden
+    // sidene: ballen sitter midt på flaten, så halve ballen stikker ut
+    holder.userData.face = face; holder.userData.t = tt; holder.visible = false;
+    g.add(holder);
+  });
   g.traverse(c => { if (c.isMesh) { c.userData.noSkin = true; c.raycast = () => {}; c.castShadow = !o.fp; if (o.fp) c.layers.set(2); } });
   return g;
 }
 const soccerBalls = [];
+const SOCCER_GOAL_FACE_YOU = true;   // [NY] false = målet vender ut til siden
+const SOCCER_MORE_BALLS = true;      // [NY] false = bare ballen på munningen
 // ---------- [NY] HJERTER: 4 små kloss-hjerter som står oppå våpenet – rødt, blått, hvitt og regnbue ----------
 const HEART_3D = true;                             // false = bare mønsteret
 const HEART_ROWS = ['.XX.XX.', 'XXXXXXX', 'XXXXXXX', '.XXXXX.', '..XXX..', '...X...'];
