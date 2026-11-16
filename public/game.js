@@ -489,7 +489,7 @@ if (isTouch) {
       // [FIKS] Dra fingeren på SKYT-knappen for å sikte mens du skyter
       if (t.target === fireBtn) { fireId = t.identifier; touchFire = true; lastFire.x = t.clientX; lastFire.y = t.clientY; continue; }
       if (t.target === swapBtn) { switchWeapon(nextWeapon()); continue; }
-      if (t.target === scopeBtn) { if (weapon === sniperW && alive) scoped = !scoped; continue; }
+      if (t.target === scopeBtn) { if (canScope() && alive) scoped = !scoped; continue; }
       if (t.target === crouchBtn) {
         touchCrouch = !touchCrouch;
         crouchBtn.style.background = touchCrouch ? 'rgba(255,150,205,0.6)' : 'rgba(255,255,255,0.3)';
@@ -681,6 +681,9 @@ const WEAPON_ORDER = [akW, sniperW, bazW];
 function nextWeapon() { return WEAPON_ORDER[(WEAPON_ORDER.indexOf(weapon) + 1) % WEAPON_ORDER.length]; }
 let weapon = akW;          // våpenet du holder nå
 let scoped = false;        // ser gjennom kikkertsiktet
+// [NY] Kikkert: snikskytteren, og C7-en i ørkenen (3x zoom). C7_SCOPE = false: bare snikskytteren.
+const C7_SCOPE = true, C7_ZOOM_FOV = 28;   // 75° / 3x zoom ≈ 28°
+function canScope() { return weapon === sniperW || (C7_SCOPE && typeof desertWeaponsOn !== 'undefined' && desertWeaponsOn && weapon === akW && !(typeof dvBusy === 'function' && dvBusy())); }
 let fireHeld = false, touchFire = false, fireCooldown = 0, reloading = 0, recoil = 0, flashTime = 0;
 
 // Modellen ligger "fast" på kameraet, så den følger med når du ser deg rundt
@@ -1655,7 +1658,7 @@ document.addEventListener('mouseup', e => { if (e.button === 0) fireHeld = false
 
 // [NY] Høyre museknapp = kikkertsikte (bare snikskytter). Musehjul = bytt våpen.
 document.addEventListener('mousedown', e => {
-  if (e.button === 2 && document.pointerLockElement === renderer.domElement && weapon === sniperW && alive) scoped = true;
+  if (e.button === 2 && document.pointerLockElement === renderer.domElement && canScope() && alive) scoped = true;
 });
 document.addEventListener('mouseup', e => { if (e.button === 2) scoped = false; });
 document.addEventListener('contextmenu', e => { if (joined) e.preventDefault(); });
@@ -1688,8 +1691,8 @@ function updateWeapon(dt) {
   gun.rotation.x = recoil * 0.06 - dip * 0.4;
   gun.rotation.z = dip * 0.5;
   // [NY] Kikkertsikte: zoom inn, skjul våpenet, vis sikte-ringen
-  if (scoped && (weapon !== sniperW || !alive || reloading > 0)) scoped = false;
-  const fovTarget = scoped ? 22 : 75;
+  if (scoped && (!canScope() || !alive || reloading > 0)) scoped = false;
+  const fovTarget = scoped ? (weapon === sniperW ? 22 : C7_ZOOM_FOV) : 75;   // [NY] C7: 3x zoom
   if (Math.abs(camera.fov - fovTarget) > 0.05) {
     camera.fov += (fovTarget - camera.fov) * Math.min(1, dt * 18);
     camera.updateProjectionMatrix();
@@ -1698,7 +1701,7 @@ function updateWeapon(dt) {
   crosshairEl.style.display = scoped ? 'none' : 'block';
   crosshairEl.style.background = lookFire || touchFire ? '#ff3b30' : '#fff';   // [NY] rødt sikte = du skyter
   if (window.__scopeBtn) {
-    window.__scopeBtn.style.display = weapon === sniperW && joined ? 'flex' : 'none';
+    window.__scopeBtn.style.display = canScope() && joined ? 'flex' : 'none';
     window.__scopeBtn.style.background = scoped ? 'rgba(255,150,205,0.6)' : 'rgba(255,255,255,0.3)';
   }
   gun.visible = alive && joined && !noWeapons() && !scoped && !(typeof inMortar !== 'undefined' && inMortar) && !(typeof spaceHideGun === 'function' && spaceHideGun()) && !(typeof farmHideGun === 'function' && farmHideGun()) && !(typeof dvHideGun === 'function' && dvHideGun());  // [NY] skjul våpenet i menyen, når du er død, i kikkerten og i morteren

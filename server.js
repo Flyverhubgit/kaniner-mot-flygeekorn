@@ -1664,15 +1664,15 @@ io.on('connection', socket => {
     delete p.pending[d.id];
     const pos = d.p.map(q => num(q, -250, 250));
     if (pos.includes(null)) return;
-    io.emit('boom', { id: d.id, p: pos, big: 2.6 });
-    blastOwner = p; blastCells(pos[0], pos[1], pos[2], 3.2); blastOwner = null;
+    io.emit('boom', { id: d.id, p: pos, big: DV_SHELL.big });
+    blastOwner = p; blastCells(pos[0], pos[1], pos[2], DV_SHELL.blocks); blastOwner = null;
     if (intermission) return;
     Object.values(players).forEach(t => {
       if (!t.alive || t.team === p.team || t.vehicle === 'dv') return;
       const dist = Math.hypot(t.x - pos[0], t.y + 0.9 - pos[1], t.z - pos[2]);
-      if (dist < 6) applyDamage(p, t, Math.round(150 * (1 - dist / 6)), false, 'dvshell');
+      if (dist < DV_SHELL.r) applyDamage(p, t, Math.round(DV_SHELL.dmg * (1 - dist / DV_SHELL.r)), false, 'dvshell');
     });
-    dvArea(pos, 4, 240, p);
+    dvArea(pos, DV_SHELL.vr, DV_SHELL.vdmg, p);
   });
   socket.on('dvHit', d => {                           // kule traff et kjøretøy
     const p = players[socket.id], v = d && dvList[d.id | 0], now = Date.now();
@@ -2349,6 +2349,8 @@ const DV_PARK = [                                   // kaninenes plasser (flygee
   { kind: 'jeep', x: -4, z: 191 }, { kind: 'jeep', x: 4, z: 191 }, { kind: 'jeep', x: 0, z: 184 }
 ];
 const DV_RESPAWN_MS = 40000;
+// [NY] Stridsvogn-granaten (sterkere 2026-11-16): dreper innen ca. 5 m, skader ut til 11 m, store hull i husene
+const DV_SHELL = { dmg: 220, r: 11, blocks: 4.8, big: 3.6, vr: 6, vdmg: 320 };   // (før: 150 / 6 m / 3.2 / 2.6 / 4 m / 240)
 let dvList = [];
 function dvReset() {
   dvList = [];
