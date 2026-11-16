@@ -10,7 +10,7 @@ const DESERT_ROCKETS = 3;                  // RPG + bazooka: 3 raketter per liv 
 const minimiW = { id: 'minimi', mag: 100, magSize: 100, reserve: Infinity, fireDelay: 0.075, reloadTime: 4.5, climb: 0.006 };
 const mg42W = { id: 'mg42', mag: 50, magSize: 50, reserve: Infinity, fireDelay: 0.05, reloadTime: 4, climb: 0.008 };
 const pistolW = { id: 'pistol', mag: 12, magSize: 12, reserve: Infinity, fireDelay: 0.17, reloadTime: 1.4, climb: 0.01 };
-const DW_NAMES = { tankmg: 'TANK-MG', jeepmg: 'JEEP-MG', c7: 'C7', minimi: 'MINIMI', mg42: 'MG42', pistol: 'PISTOL', sniper50: '.50', rpg: 'RPG', bazooka: 'BAZOOKA' };
+const DW_NAMES = { jetgun: 'KANON', heligun: 'KANON', tankmg: 'TANK-MG', jeepmg: 'JEEP-MG', c7: 'C7', minimi: 'MINIMI', mg42: 'MG42', pistol: 'PISTOL', sniper50: '.50', rpg: 'RPG', bazooka: 'BAZOOKA' };
 
 // ---------- Modeller (peker mot -z, samme størrelse som AK-en) ----------
 const DW_BLACK = new THREE.MeshStandardMaterial({ color: 0x1a1b1d, roughness: 0.6 });
@@ -123,13 +123,15 @@ function dwCur() {                         // hvilket ørken-våpen holder du?
   if (weapon === bazW) return rocketKind;
   if (typeof jeepW !== 'undefined' && weapon === jeepW) return 'jeepmg';
   if (typeof tankMgW !== 'undefined' && weapon === tankMgW) return 'tankmg';
+  if (typeof jetW !== 'undefined' && weapon === jetW) return 'jetgun';
+  if (typeof heliW !== 'undefined' && weapon === heliW) return 'heligun';
   return null;
 }
 function desertWeaponView() {              // kalles på slutten av showWeaponModel()
   Object.values(DW_VIEW).forEach(v => { v.visible = false; });
   if (!desertWeaponsOn) return;
   const cur = dwCur();
-  if (!cur || cur === 'jeepmg' || cur === 'tankmg') return;
+  if (!cur || cur === 'jeepmg' || cur === 'tankmg' || cur === 'jetgun' || cur === 'heligun') return;
   akParts.forEach(c => { c.visible = false; });
   dartView.visible = false;
   Object.keys(gun.userData).forEach(k => { if (/FP$/.test(k) && gun.userData[k] && gun.userData[k].isObject3D) gun.userData[k].visible = false; });   // skins (T-rex osv.) bort
@@ -175,6 +177,7 @@ function playDesertShot(id, vol) {
   else if (id === 'mg42') playShot(0.38 * vol, 1500);
   else if (id === 'pistol') playShot(0.28 * vol, 3200);
   else if (id === 'jeepmg' || id === 'tankmg') playShot(0.42 * vol, 1300);
+  else if (id === 'jetgun' || id === 'heligun') playShot(0.45 * vol, 1100);
   else if (id === 'sniper50') { playShot(0.65 * vol, 480); if (typeof playBoom === 'function') playBoom(0.18 * vol); }
   else return false;
   return true;

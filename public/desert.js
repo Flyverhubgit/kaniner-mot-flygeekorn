@@ -52,6 +52,31 @@ const desertTex = (w, h, draw) => { const c = document.createElement('canvas'); 
   }
 })();
 
+// ---------- [NY] Rullebaner (F-16) og helikopterplasser ----------
+(function airfields() {
+  const R = DESERT.RUNWAY, H = DESERT.HELIPAD;
+  const runTex = desertTex(64, 256, x => {
+    x.fillStyle = '#3a3a3c'; x.fillRect(0, 0, 64, 256);
+    x.fillStyle = '#e8e8e0'; for (let y = 8; y < 256; y += 32) x.fillRect(30, y, 4, 16);   // midtstriper
+    x.fillRect(2, 0, 3, 256); x.fillRect(59, 0, 3, 256);                                      // kantlinjer
+  });
+  runTex.wrapS = runTex.wrapT = THREE.RepeatWrapping; runTex.repeat.set(1, 5);
+  const padTex = desertTex(128, 128, x => {
+    x.fillStyle = '#4a4a4a'; x.beginPath(); x.arc(64, 64, 62, 0, 7); x.fill();
+    x.strokeStyle = '#f0d040'; x.lineWidth = 6; x.beginPath(); x.arc(64, 64, 52, 0, 7); x.stroke();
+    x.fillStyle = '#ffffff'; x.fillRect(38, 30, 12, 68); x.fillRect(78, 30, 12, 68); x.fillRect(38, 58, 52, 12);   // "H"
+  });
+  [1, -1].forEach(s => {
+    const len = R.x1 - R.x0, cx = s * (R.x0 + R.x1) / 2, cz = s * (R.z0 + R.z1) / 2;
+    const run = new THREE.Mesh(new THREE.PlaneGeometry(R.z1 - R.z0, len), new THREE.MeshStandardMaterial({ map: runTex, roughness: 0.95 }));
+    run.rotation.x = -Math.PI / 2; run.rotation.z = Math.PI / 2; run.position.set(cx, 0.02, cz); run.receiveShadow = true; run.raycast = () => {};
+    desertGroup.add(run);
+    const pad = new THREE.Mesh(new THREE.CircleGeometry(H.r, 32), new THREE.MeshStandardMaterial({ map: padTex, roughness: 0.9 }));
+    pad.rotation.x = -Math.PI / 2; pad.position.set(s * H.x, 0.025, s * H.z); pad.receiveShadow = true; pad.raycast = () => {};
+    desertGroup.add(pad);
+  });
+})();
+
 // ---------- Skilt på basene ----------
 function desertSign(text, color, x, y, z, ry) {
   const c = document.createElement('canvas'); c.width = 256; c.height = 64;

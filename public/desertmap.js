@@ -37,6 +37,8 @@
 
   // Ting både klient og server trenger (kaninene; flygeekornene er speilet)
   const SPAWNS = { bunny: { x0: -18, x1: 18, z0: 212, z1: 226 } };   // inne i basen i nordenden
+  const RUNWAY = { x0: 48, x1: 205, z0: 219, z1: 233 };              // [NY] rullebane for F-16 (kaninene; speilet for flygeekornene)
+  const HELIPAD = { x: -48, z: 215, r: 7 };                           // [NY] helikopterplass
   const RADIO = { x: 40, y: 12, z: 215 };                             // [NY] radioen på toppen av radiotårnet (kaninene; speilet for flygeekornene)
   const OASES = [{ x: -152, z: 10, r: 15 }, { x: 151, z: -11, r: 15 }];   // vann (tegnes av klienten), én på hver side
   const BOUND = 236;                                                  // usynlig kant rundt kartet
@@ -193,11 +195,13 @@
       [[-70, 90], [60, 100], [-140, 120], [140, 110], [30, 160], [-40, 170], [200, 120], [-210, 130]].forEach(([x, z]) => nest(x, z, 'N'));
       [[-150, 160], [160, 190], [80, 60], [-90, 60]].forEach(([x, z], i) => container(x, z, i % 2 ? T.BOX_O : T.BOX_B, i % 2 === 0));
       // --- Fjell (fast dekning, kan ikke sprenges) ---
-      [[-200, 40, 14, 9], [205, 50, 16, 10], [-130, 200, 12, 8], [140, 215, 13, 9], [-60, 140, 7, 5], [70, 130, 8, 6], [-225, 225, 15, 10], [225, 225, 15, 10], [180, 20, 9, 6], [-40, 75, 5, 4]].forEach(([x, z, r, h]) => rock(x, z, r, h));
+      [[-200, 40, 14, 9], [205, 50, 16, 10], [-130, 200, 12, 8], [150, 180, 11, 8], [-60, 140, 7, 5], [70, 130, 8, 6], [-225, 225, 15, 10], [225, 225, 15, 10], [180, 20, 9, 6], [-40, 75, 5, 4]].forEach(([x, z, r, h]) => rock(x, z, r, h));
       // --- Sanddyner overalt (myk dekning) ---
       for (let k = 0; k < 70; k++) {
         const x = ri(-225, 225), z = ri(58, 195);
         if (Math.abs(x) < 52 && z > 185) continue;             // ikke i basen (eller ved radiotårnet)
+        if (x > 40 && x < 215 && z > 210) continue;             // [NY] ikke på rullebanen (F-16)
+        if (x > -62 && x < -36 && z > 200 && z < 232) continue;   // [NY] ikke på helikopterplassen
         if (Math.abs(x) < 62 && z < 60) continue;              // ikke i landsbyen
         if ((x - OASES[0].x) ** 2 + (z - OASES[0].z) ** 2 < 900) continue;
         dune(x, z, ri(5, 11), ri(4, 9), ri(1, 3));
@@ -213,7 +217,7 @@
     return g;
   }
 
-  const api = { NX, NY, NZ, X0, Z0, T, INFO, idx, build, SPAWNS, OASES, BOUND, RADIO };
+  const api = { NX, NY, NZ, X0, Z0, T, INFO, idx, build, SPAWNS, OASES, BOUND, RADIO, RUNWAY, HELIPAD };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.DesertMap = api;
 })(this);

@@ -1054,6 +1054,7 @@ function removeNade(id) {
 function throwNade() {
   if (currentMap === 'lobby') return;                // [NY] ingen granater i loungen
   if (typeof spaceThrow === 'function' && spaceThrow()) return;   // [NY] torpedo fra jagerflyet
+  if (typeof dvAlt === 'function' && dvAlt()) return;             // [NY] missil / rakett fra F-16 og helikopteret
   if (typeof holyThrow === 'function' && holyThrow()) return;   // [NY] har du den hellige ferskenen, kastes den
   const endless = underNow() || (typeof hordeOn === 'function' && hordeOn()) || (typeof dragonOn === 'function' && dragonOn());   // [NY] uendelig i underverdenen, på kyllingfarmen og i dragetempelet
   if (!joined || !alive || (!endless && grenades <= 0) || nadeCooldown > 0) return;
@@ -1740,7 +1741,7 @@ function updateWeapon(dt) {
   if (window.__mobBtns) ['fireBtn', 'nadeBtn', 'reloadBtn', 'swapBtn', 'scopeBtn'].forEach(k => { if (__mobBtns[k]) __mobBtns[k].style.visibility = ''; });
   const wIcon = typeof desertWeaponsOn !== 'undefined' && desertWeaponsOn ? desertHudName() : akW.id === 'bow' ? (weapon === sniperW ? 'ARMBRØST ' : weapon === bazW ? '⚔️ ' : weapon !== akW ? 'KULE ' : 'BUE ') :   // [NY] Ridderborgen
     weapon === sniperW ? (myTeam === 'bunny' ? '🥕 ' : '🌰 ') : weapon === bazW ? '🚀 ' : akW.id === 'dart' ? 'PIL ' : 'AK ';   // [NY] pilgevær   // [NY] gulrot / nøtt / bazooka
-  if (typeof dvBusy === 'function' && dvBusy() && typeof jeepW !== 'undefined' && weapon !== jeepW && weapon !== tankMgW) { hud.textContent = ''; return; }   // [NY] i stridsvognen: teksten nede viser kanonen
+  if (typeof dvBusy === 'function' && dvBusy() && typeof jeepW !== 'undefined' && weapon !== jeepW && weapon !== tankMgW && weapon !== jetW && weapon !== heliW) { hud.textContent = ''; return; }   // [NY] i stridsvognen: teksten nede viser kanonen
   const medHud = akW.id === 'bow';   // [NY] Ridderborgen: bunnløst kogger, ildpotter i stedet for granater
   if (typeof hammerW !== 'undefined' && weapon === hammerW) {   // [NY] hammeren: bare antall klosser
     hud.textContent = '🔨 ' + myStash + (medHud ? '   🔥 ' : '   💣 ') + (underNow() || (typeof hordeOn === 'function' && hordeOn()) ? '∞' : grenades);

@@ -11,8 +11,12 @@ dvGroup.visible = false;
 scene.add(dvGroup);                                    // egen gruppe: skuddene dine treffer ikke din egen bil
 const DV_SPEC = {
   tank: { max: 9, back: 4, acc: 1.4, turn: 0.85, hw: 1.6, hl: 2.9, camBack: 11, camUp: 5.6 },
-  jeep: { max: 18, back: 7, acc: 2.2, turn: 1.7, hw: 1.0, hl: 2.0, camBack: 7.5, camUp: 3.4 }
+  jeep: { max: 18, back: 7, acc: 2.2, turn: 1.7, hw: 1.0, hl: 2.0, camBack: 7.5, camUp: 3.4 },
+  jet: { hw: 4.5, hl: 7, h: 3.2 },                     // [NY] F-16 (flyging i desertair.js)
+  heli: { hw: 1.8, hl: 6, h: 3.4 }                     // [NY] angrepshelikopter
 };
+const DV_KINDS = ['', 'tank', 'jeep', 'jet', 'heli'];
+function dvIsAir(k) { return k === 'jet' || k === 'heli'; }
 const tankMgW = { id: 'tankmg', mag: 200, magSize: 200, reserve: Infinity, fireDelay: 0.08, reloadTime: 3, climb: 0.002 };   // [NY] nr. 2 i stridsvognen
 let myDvSeat = null, dvGunSend = 0;                    // 'drive' eller 'gun'
 const jeepW = { id: 'jeepmg', mag: 200, magSize: 200, reserve: Infinity, fireDelay: 0.08, reloadTime: 3, climb: 0.002 };
@@ -82,7 +86,7 @@ function buildJeep(team) {
 
 // ---------- Fra serveren ----------
 socket.on('dveh', list => {
-  dvInfo = list.map(a => ({ id: a[0], kind: a[1] === 1 ? 'tank' : 'jeep', team: a[2] === 1 ? 'bunny' : 'squirrel', x: a[3], y: a[4], z: a[5], yaw: a[6], ty: a[7], tp: a[8], hp: a[9], driver: a[10], alive: !!a[11], gunner: a[12] || '', gy: a[13] || 0, gp: a[14] || 0 }));
+  dvInfo = list.map(a => ({ id: a[0], kind: DV_KINDS[a[1]] || 'jeep', ammo: a[15] || 0, team: a[2] === 1 ? 'bunny' : 'squirrel', x: a[3], y: a[4], z: a[5], yaw: a[6], ty: a[7], tp: a[8], hp: a[9], driver: a[10], alive: !!a[11], gunner: a[12] || '', gy: a[13] || 0, gp: a[14] || 0 }));
   dvDriverIds.clear(); dvInfo.forEach(v => { if (v.driver) dvDriverIds.add(v.driver); if (v.gunner) dvDriverIds.add(v.gunner); });
   const mine = dvInfo.find(v => (v.driver && v.driver === myId) || (v.gunner && v.gunner === myId));
   const seat = mine ? (mine.driver === myId ? 'drive' : 'gun') : null;
@@ -99,8 +103,11 @@ function dvEnterLocal(v, seat) {
   dvPrevWeapon = weapon; scoped = false;
   if (v.kind === 'jeep') { weapon = jeepW; jeepW.mag = jeepW.magSize; }
   if (myDvSeat === 'gun') { weapon = tankMgW; tankMgW.mag = tankMgW.magSize; player.yaw = v.ty; }
+  if (v.kind === 'jet') { weapon = jetW; jetW.mag = jetW.magSize; }      // [NY] fly: maskinkanon
+  if (v.kind === 'heli') { weapon = heliW; heliW.mag = heliW.magSize; }
+  if (dvIsAir(v.kind)) { dvl.tp = 0; dvl.ty = 0; dvl.vx = dvl.vy = dvl.vz = 0; }
   if (typeof showWeaponModel === 'function') showWeaponModel();
-  bannerMsg = myDvSeat === 'gun' ? '&#128737;&#65039; SKYTTER – klikk = maskingevær på taket' : v.kind === 'tank' ? '&#128737;&#65039; STRIDSVOGN – klikk = kanon, høyre knapp = zoom' : '&#128665; JEEP – klikk = maskingevær'; bannerTime = 2;
+  bannerMsg = v.kind === 'jet' ? '&#9992;&#65039; F-16 – W = gass, nesa opp for å lette. Klikk = kanon, G = missil' : v.kind === 'heli' ? '&#128641; HELIKOPTER – Mellomrom/C = opp/ned. Klikk = kanon, G = rakett' : myDvSeat === 'gun' ? '&#128737;&#65039; SKYTTER – klikk = maskingevær på taket' : v.kind === 'tank' ? '&#128737;&#65039; STRIDSVOGN – klikk = kanon, høyre knapp = zoom' : '&#128665; JEEP – klikk = maskingevær'; bannerTime = 2;
   if (myDvSeat === 'drive') dvEngineStart(v.kind);
 }
 function dvExitLocal() {
@@ -151,6 +158,7 @@ function dvDrive(dt) {
   if (myDv === null || !desertOn()) return false;
   const v = dvMine();
   if (!v || !v.alive || !alive) { if (myDv !== null) dvExitLocal(); return false; }
+  if (dvIsAir(v.kind) && typeof dvFly === 'function') return dvFly(dt, v);   // [NY] fly og helikopter
   const spec = DV_SPEC[v.kind], tank = v.kind === 'tank';
   if (myDvSeat === 'gun') {                           // [NY] nr. 2: sitter i luka og skyter maskingeværet
     const m = dvMeshes[v.id], c = m ? m.userData.cur : v;
@@ -212,10 +220,15 @@ function dvDrive(dt) {
 const dvShells = [];
 const dvShellMat = new THREE.MeshStandardMaterial({ color: 0x3a3a3a, emissive: 0x402000 });
 let dvShellSeq = 0;
-function dvAddShell(id, p, v, mine) {
-  const m = new THREE.Mesh(new THREE.SphereGeometry(0.18, 8, 6), dvShellMat); m.position.copy(p); m.raycast = () => {};
+const dvMissileMat = new THREE.MeshStandardMaterial({ color: 0xe8e8e0, emissive: 0x202020 });
+function dvAddShell(id, p, v, mine, kind) {
+  kind = kind || 'dvshell';
+  let m;
+  if (kind === 'dvshell') m = new THREE.Mesh(new THREE.SphereGeometry(0.18, 8, 6), dvShellMat);
+  else { m = new THREE.Mesh(new THREE.CylinderGeometry(kind === 'dvmissile' ? 0.14 : 0.09, kind === 'dvmissile' ? 0.14 : 0.09, kind === 'dvmissile' ? 2.2 : 1.2, 8), dvMissileMat); m.lookAt(p.clone().add(v)); m.rotateX(Math.PI / 2); }
+  m.position.copy(p); m.raycast = () => {};
   dvGroup.add(m);
-  dvShells.push({ id, p: p.clone(), v: v.clone(), m, mine, t: 0 });
+  dvShells.push({ id, p: p.clone(), v: v.clone(), m, mine, t: 0, kind, g: kind === 'dvshell' ? 5 : kind === 'dvrocket' ? 1 : 0 });
 }
 function dvTip(v) {                                     // munningen på stridsvognen (verden)
   const mesh = dvMeshes[v.id];
@@ -226,7 +239,7 @@ function dvTip(v) {                                     // munningen på stridsv
 function dvShoot() {                                    // kalles først i shoot(). true = ferdig
   if (myDv === null || !desertOn()) return false;
   const v = dvMine();
-  if (!v || v.kind !== 'tank' || myDvSeat === 'gun') return false;   // jeepen / skytteren: vanlig skudd med maskingeværet
+  if (!v || v.kind !== 'tank' || myDvSeat === 'gun') return false;   // jeepen / skytteren / flyene: vanlig skudd med maskingeværet
   fireCooldown = 0.3;
   if (performance.now() < dvShellReady) return true;
   dvShellReady = performance.now() + 3000;
@@ -248,7 +261,7 @@ function dvShoot() {                                    // kalles først i shoot
 socket.on('dvShell', d => {
   if (!desertOn()) return;
   const p = new THREE.Vector3(...d.p);
-  dvAddShell(d.id, p, new THREE.Vector3(...d.v), false);
+  dvAddShell(d.id, p, new THREE.Vector3(...d.v), false, d.k);
   if (typeof playCannon === 'function') playCannon(Math.max(0.05, 0.5 - p.distanceTo(camera.position) * 0.003));
 });
 socket.on('boom', d => { const i = dvShells.findIndex(s => s.id === d.id); if (i >= 0) { dvGroup.remove(dvShells[i].m); dvShells.splice(i, 1); } });
@@ -266,11 +279,12 @@ function updateDvShells(dt) {
     let hit = false;
     const steps = Math.max(1, Math.ceil(s.v.length() * dt / 0.5));
     for (let k = 0; k < steps && !hit; k++) {
-      s.v.y -= 5 * dt / steps;
+      s.v.y -= s.g * dt / steps;
       s.p.addScaledVector(s.v, dt / steps);
       if (dvShellHits(s.p)) hit = true;
     }
     s.m.position.copy(s.p);
+    if (s.kind !== 'dvshell' && typeof puffSmoke === 'function' && Math.random() < 0.7) puffSmoke(s.p);   // røykstripe bak missiler og raketter
     if ((hit || s.t > 4) && s.mine) {
       socket.emit('dvBoom', { id: s.id, p: [+s.p.x.toFixed(2), +Math.max(0.3, s.p.y).toFixed(2), +s.p.z.toFixed(2)] });
       dvGroup.remove(s.m); dvShells.splice(i, 1);
@@ -281,7 +295,7 @@ function updateDvShells(dt) {
 function dvInsideBox(v, p, pad) {
   const spec = DV_SPEC[v.kind], dx = p.x - v.x, dz = p.z - v.z, c = Math.cos(v.yaw), s = Math.sin(v.yaw);
   const lx = dx * c - dz * s, lz = dx * s + dz * c;
-  return Math.abs(lx) < spec.hw + pad && Math.abs(lz) < spec.hl + pad && p.y > v.y && p.y < v.y + (v.kind === 'tank' ? 2.4 : 2.0) + pad;
+  return Math.abs(lx) < spec.hw + pad && Math.abs(lz) < spec.hl + pad && p.y > v.y && p.y < v.y + (spec.h || (v.kind === 'tank' ? 2.4 : 2.0)) + pad;
 }
 // Treffer kula et fiendtlig kjøretøy? (kalles fra shoot())
 function dvRayTest(o, d, maxT) {
@@ -292,7 +306,7 @@ function dvRayTest(o, d, maxT) {
     const spec = DV_SPEC[v.kind], c = Math.cos(v.yaw), s = Math.sin(v.yaw);
     const ox = o.x - v.x, oz = o.z - v.z;               // strålen inn i kjøretøyets egne akser
     const lo = new THREE.Vector3(ox * c - oz * s, o.y - v.y, ox * s + oz * c), ld = new THREE.Vector3(d.x * c - d.z * s, d.y, d.x * s + d.z * c);
-    const t = rayBox(lo, ld, -spec.hw, 0, -spec.hl, spec.hw, v.kind === 'tank' ? 2.4 : 2.0, spec.hl);
+    const t = rayBox(lo, ld, -spec.hw, 0, -spec.hl, spec.hw, spec.h || (v.kind === 'tank' ? 2.4 : 2.0), spec.hl);
     if (t !== null && t < maxT && (!best || t < best.t)) best = { t, id: v.id };
   });
   return best;
@@ -309,14 +323,18 @@ function dvNear() {
   let best = null, bd = 5.5;
   dvInfo.forEach(v => {
     if (!v.alive || v.team !== myTeam || (v.driver && (v.kind !== 'tank' || v.gunner))) return;   // [NY] stridsvogn med sjåfør: plass til skytter
-    const d = Math.hypot(player.x - v.x, player.z - v.z);
+    if (dvIsAir(v.kind) && v.y > 1) return;                                         // flyet er i lufta
+    const d = Math.hypot(player.x - v.x, player.z - v.z) - (v.kind === 'jet' ? 3 : v.kind === 'heli' ? 2 : 0);
     if (d < bd) { bd = d; best = v; }
   });
   return best;
 }
 function dvAction() {
   if (!desertOn()) return false;
-  if (myDv !== null) { socket.emit('dvOut'); return true; }
+  if (myDv !== null) {
+    if (typeof airLanded === 'function' && !airLanded()) { bannerMsg = 'Land først!'; bannerTime = 1.2; return true; }   // [NY] ingen fallskjerm
+    socket.emit('dvOut'); return true;
+  }
   const v = dvNear();
   if (v) { socket.emit('dvIn', { id: v.id }); return true; }
   return false;
@@ -337,14 +355,22 @@ document.body.appendChild(dvHud);
 let dvEngine = null;
 function dvEngineStart(kind) {
   if (!audioCtx || dvEngine) return;
-  const tank = kind === 'tank', o = audioCtx.createOscillator(), o2 = audioCtx.createOscillator(), lp = audioCtx.createBiquadFilter(), g = audioCtx.createGain();
-  o.type = 'sawtooth'; o2.type = 'square'; o.frequency.value = tank ? 38 : 70; o2.frequency.value = tank ? 57 : 105;
-  lp.type = 'lowpass'; lp.frequency.value = tank ? 260 : 520;
-  g.gain.value = 0.0001; g.gain.setTargetAtTime(tank ? 0.07 : 0.05, audioCtx.currentTime, 0.3);
-  o.connect(lp); o2.connect(lp); lp.connect(g); g.connect(audioCtx.destination); o.start(); o2.start();
+  // [NY] lyd per kjøretøy: grunntone, filter, styrke, hvor mye den stiger med farten
+  const E = { tank: [38, 260, 0.07, 0.6], jeep: [70, 520, 0.05, 1.4], jet: [120, 1500, 0.06, 1.2], heli: [44, 420, 0.07, 0.4] }[kind] || [70, 520, 0.05, 1.4];
+  const o = audioCtx.createOscillator(), o2 = audioCtx.createOscillator(), lp = audioCtx.createBiquadFilter(), g = audioCtx.createGain();
+  o.type = 'sawtooth'; o2.type = 'square'; o.frequency.value = E[0]; o2.frequency.value = E[0] * 1.5;
+  lp.type = 'lowpass'; lp.frequency.value = E[1];
+  g.gain.value = 0.0001; g.gain.setTargetAtTime(E[2], audioCtx.currentTime, 0.3);
+  let chop = null;
+  if (kind === 'heli') {                                  // rotor-"dunk dunk"
+    const out = audioCtx.createGain(); out.gain.value = 0.5; chop = audioCtx.createOscillator(); chop.type = 'square'; chop.frequency.value = 13;
+    const cg = audioCtx.createGain(); cg.gain.value = 0.5; chop.connect(cg); cg.connect(out.gain); chop.start();
+    o.connect(lp); o2.connect(lp); lp.connect(out); out.connect(g);
+  } else { o.connect(lp); o2.connect(lp); lp.connect(g); }
+  g.connect(audioCtx.destination); o.start(); o2.start();
   dvEngine = {
-    set(k) { const t = audioCtx.currentTime; o.frequency.setTargetAtTime((tank ? 38 : 70) * (1 + k * (tank ? 0.6 : 1.4)), t, 0.2); o2.frequency.setTargetAtTime((tank ? 57 : 105) * (1 + k * (tank ? 0.6 : 1.4)), t, 0.2); lp.frequency.setTargetAtTime((tank ? 260 : 520) + k * 600, t, 0.2); },
-    stop() { const t = audioCtx.currentTime; g.gain.setTargetAtTime(0.0001, t, 0.15); try { o.stop(t + 0.6); o2.stop(t + 0.6); } catch (e) {} }
+    set(k) { const t = audioCtx.currentTime; o.frequency.setTargetAtTime(E[0] * (1 + k * E[3]), t, 0.2); o2.frequency.setTargetAtTime(E[0] * 1.5 * (1 + k * E[3]), t, 0.2); lp.frequency.setTargetAtTime(E[1] + k * 600, t, 0.2); if (chop) chop.frequency.setTargetAtTime(13 + k * 4, t, 0.3); },
+    stop() { const t = audioCtx.currentTime; g.gain.setTargetAtTime(0.0001, t, 0.15); try { o.stop(t + 0.6); o2.stop(t + 0.6); if (chop) chop.stop(t + 0.6); } catch (e) {} }
   };
 }
 function dvEngineStop() { if (dvEngine) { dvEngine.stop(); dvEngine = null; } }
@@ -366,7 +392,7 @@ function updateDesertVehicles(dt) {
     let m = dvMeshes[v.id];
     if (!m || m.userData.team !== v.team) {
       if (m) dvGroup.remove(m);
-      m = dvMeshes[v.id] = v.kind === 'tank' ? buildDTank(v.team) : buildJeep(v.team);
+      m = dvMeshes[v.id] = v.kind === 'tank' ? buildDTank(v.team) : v.kind === 'jet' ? buildF16(v.team) : v.kind === 'heli' ? buildHeli(v.team) : buildJeep(v.team);
       m.userData.team = v.team; m.userData.cur = { x: v.x, y: v.y, z: v.z, yaw: v.yaw, ty: v.ty, tp: v.tp };
       m.traverse(c => { c.raycast = () => {}; });
       dvGroup.add(m);
@@ -379,6 +405,12 @@ function updateDesertVehicles(dt) {
     c.yaw = turnTo(c.yaw, T.yaw); c.ty = turnTo(c.ty, T.ty); c.tp += (T.tp - c.tp) * k;
     m.position.set(c.x, c.y, c.z);
     m.rotation.y = c.yaw;
+    if (dvIsAir(v.kind)) {                            // [NY] fly: nesa opp/ned (tp) og krenging (ty)
+      m.userData.body.rotation.order = 'YXZ'; m.userData.body.rotation.set(c.tp, 0, c.ty);
+      if (m.userData.rotor) { m.userData.rotor.rotation.y += dt * (v.driver ? 28 : 3); m.userData.tail.rotation.x += dt * (v.driver ? 40 : 4); }
+      if (m.userData.flame) m.userData.flame.visible = !!v.driver;
+      return;
+    }
     m.userData.tur.rotation.y = c.ty - c.yaw;
     m.userData.piv.rotation.x = c.tp;
     if (m.userData.mg) {                              // maskingeværet på taket følger skytteren
@@ -394,13 +426,15 @@ function updateDesertVehicles(dt) {
   if (v) {
     const rel = Math.max(0, (dvShellReady - performance.now()) / 1000);
     if (myDvSeat === 'gun') txt = '&#128737;&#65039; SKYTTER ' + v.hp + '% &nbsp; MG ' + tankMgW.mag + (isTouch ? '' : ' &nbsp; E = gå ut');
+    else if (dvIsAir(v.kind)) txt = (v.kind === 'jet' ? '&#9992;&#65039; F-16 ' : '&#128641; HELIKOPTER ') + v.hp + '% &nbsp; ' + Math.round(dvl.spd * 3.6) + ' km/t &nbsp; høyde ' + Math.round(dvl.y) + ' m &nbsp; ' +
+      (v.kind === 'jet' ? '&#128640; missiler ' : '&#128640; raketter ') + (v.ammo || 0) + ' (G)' + (isTouch ? '' : ' &nbsp; E = gå ut (på bakken)');
     else txt = (v.kind === 'tank' ? '&#128737;&#65039; STRIDSVOGN ' : '&#128665; JEEP ') + v.hp + '% &nbsp; ' +
       (v.kind === 'tank' ? (rel > 0 ? '<span style="color:#ffb000">lader ' + rel.toFixed(1) + '</span>' : '<span style="color:#7dff7d">KANON KLAR</span>') : 'MG ' + jeepW.mag) +
       (isTouch ? '' : ' &nbsp; E = gå ut');
     btn = 'GÅ UT';
   } else {
     const n = dvNear();
-    if (n) { txt = (isTouch ? 'Trykk KJØR' : 'Trykk <b>E</b>') + (n.driver ? ' for å skyte maskingeværet på stridsvognen &#128737;&#65039;' : ' for å kjøre ' + (n.kind === 'tank' ? 'stridsvognen &#128737;&#65039;' : 'jeepen &#128665;')); btn = n.driver ? 'SKYTTER' : 'KJØR'; }
+    if (n) { txt = (isTouch ? 'Trykk KJØR' : 'Trykk <b>E</b>') + (n.driver ? ' for å skyte maskingeværet på stridsvognen &#128737;&#65039;' : n.kind === 'jet' ? ' for å fly F-16 &#9992;&#65039;' : n.kind === 'heli' ? ' for å fly helikopteret &#128641;' : ' for å kjøre ' + (n.kind === 'tank' ? 'stridsvognen &#128737;&#65039;' : 'jeepen &#128665;')); btn = n.driver ? 'SKYTTER' : dvIsAir(n.kind) ? 'FLY' : 'KJØR'; }
   }
   dvHud.style.display = txt ? 'block' : 'none';
   dvHud.innerHTML = txt;
