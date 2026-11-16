@@ -566,6 +566,7 @@ if (isTouch) {
 let stepSmooth = 0;                                      // [FIKS] kameraet glir opp trinn
 function updatePlayer(dt) {
   if (typeof farmVehicleUpdate === 'function' && farmVehicleUpdate(dt)) return;   // [NY] sitter i doseren (farmvehicles.js)
+  if (typeof dvDrive === 'function' && dvDrive(dt)) return;   // [NY] kjører stridsvogn / jeep i ørkenen (desertvehicles.js)
   if (typeof spaceFlyUpdate === 'function' && spaceFlyUpdate(dt)) return;   // [NY] sitter i et jagerfly (space.js)
   // Hvilken vei vil spilleren gå? (fremover/sidelengs, -1 til 1)
   let fwd = touchMove.y, strafe = touchMove.x;
@@ -828,6 +829,7 @@ function showWeaponModel() {
 function switchWeapon(w) {
   if (!joined || weapon === w) return;
   if (typeof noWeapons === 'function' && noWeapons()) return;   // [FIKS] loungen: mus-hjul / touchpad bytter ikke våpen
+  if (typeof dvBusy === 'function' && dvBusy()) return;           // [NY] kjører: våpenet er kjøretøyets
   weapon = w;
   reloading = 0;
   scoped = false;
@@ -1313,6 +1315,7 @@ function updateRockets(dt) {
         if (Math.hypot(r.pos.x - o.cur.x, r.pos.y - (o.cur.y + 0.9), r.pos.z - o.cur.z) < 0.9) { hit = true; break; }
       }
       if (!hit && typeof dragonNear === 'function' && dragonNear(r.pos, 1)) hit = true;   // [NY] raketten smeller ved en drage
+      if (!hit && typeof dvPointHit === 'function' && dvPointHit(r.pos)) hit = true;      // [NY] ... eller ved en stridsvogn / jeep
     }
     r.mesh.position.copy(r.pos);
     r.mesh.rotateZ(dt * 8);                       // snurrer litt
@@ -1535,6 +1538,7 @@ const LOBBY_NO_WEAPONS = true;
 function noWeapons() { return LOBBY_NO_WEAPONS && typeof currentMap !== 'undefined' && currentMap === 'lobby'; }
 function shoot() {
   if (noWeapons()) return;                        // [NY] ingen våpen i loungen
+  if (typeof dvShoot === 'function' && dvShoot()) return;   // [NY] stridsvognkanonen
   if (typeof seaRepairing !== 'undefined' && seaRepairing) return;   // [NY] reparerer basen: hendene er opptatt
   if (typeof farmShoot === 'function' && farmShoot()) return;   // [NY] dosertankens kanon / A-10 fra radioen
   if (typeof spaceShoot === 'function' && spaceShoot()) return;   // [NY] laser fra jagerfly / kanontårn
@@ -1573,6 +1577,7 @@ function shoot() {
   for (const id in others) {
     const r = others[id];
     if (!r.alive || r.team === myTeam) continue;
+    if (typeof dvDriverIds !== 'undefined' && dvDriverIds.has(id)) continue;   // [NY] sitter i et kjøretøy (treff kjøretøyet i stedet)
     const p = r.cur;
     // [NY] Hele figuren = kroppstreff. Bare midten av hodet = hodeskudd (dreper med én kule).
     // Dukket = alt er lavere.
@@ -1595,9 +1600,17 @@ function shoot() {
     const dh = dragonRayTest(o, d, bestT);
     if (dh) { bestT = dh.t; target = null; chick = null; barrelHit = null; dragonHit = dh; }
   }
+  let dvHitV = null;                               // [NY] fiendtlig stridsvogn / jeep i ørkenen
+  if (typeof dvRayTest === 'function') {
+    const vh = dvRayTest(o, d, bestT);
+    if (vh) { bestT = vh.t; target = null; chick = null; barrelHit = null; dragonHit = null; dvHitV = vh; }
+  }
   const end = o.clone().addScaledVector(d, bestT);
 
-  if (dragonHit) {
+  if (dvHitV) {
+    socket.emit('dvHit', { id: dvHitV.id, w: weapon.id });
+    hitmarkTime = 0.06;
+  } else if (dragonHit) {
     socket.emit('dragonHit', { id: dragonHit.id, w: weapon.id, head: !!dragonHit.head });   // [NY] head = hodeskudd
     addStuffing(end);
     hitmarkTime = 0.1;
@@ -1688,7 +1701,7 @@ function updateWeapon(dt) {
     window.__scopeBtn.style.display = weapon === sniperW && joined ? 'flex' : 'none';
     window.__scopeBtn.style.background = scoped ? 'rgba(255,150,205,0.6)' : 'rgba(255,255,255,0.3)';
   }
-  gun.visible = alive && joined && !noWeapons() && !scoped && !(typeof inMortar !== 'undefined' && inMortar) && !(typeof spaceHideGun === 'function' && spaceHideGun()) && !(typeof farmHideGun === 'function' && farmHideGun());  // [NY] skjul våpenet i menyen, når du er død, i kikkerten og i morteren
+  gun.visible = alive && joined && !noWeapons() && !scoped && !(typeof inMortar !== 'undefined' && inMortar) && !(typeof spaceHideGun === 'function' && spaceHideGun()) && !(typeof farmHideGun === 'function' && farmHideGun()) && !(typeof dvHideGun === 'function' && dvHideGun());  // [NY] skjul våpenet i menyen, når du er død, i kikkerten og i morteren
 
   flashTime -= dt;
   flash.visible = flashTime > 0;
@@ -1722,6 +1735,7 @@ function updateWeapon(dt) {
   if (window.__mobBtns) ['fireBtn', 'nadeBtn', 'reloadBtn', 'swapBtn', 'scopeBtn'].forEach(k => { if (__mobBtns[k]) __mobBtns[k].style.visibility = ''; });
   const wIcon = typeof desertWeaponsOn !== 'undefined' && desertWeaponsOn ? desertHudName() : akW.id === 'bow' ? (weapon === sniperW ? 'ARMBRØST ' : weapon === bazW ? '⚔️ ' : weapon !== akW ? 'KULE ' : 'BUE ') :   // [NY] Ridderborgen
     weapon === sniperW ? (myTeam === 'bunny' ? '🥕 ' : '🌰 ') : weapon === bazW ? '🚀 ' : akW.id === 'dart' ? 'PIL ' : 'AK ';   // [NY] pilgevær   // [NY] gulrot / nøtt / bazooka
+  if (typeof dvBusy === 'function' && dvBusy() && typeof jeepW !== 'undefined' && weapon !== jeepW) { hud.textContent = ''; return; }   // [NY] i stridsvognen: teksten nede viser kanonen
   const medHud = akW.id === 'bow';   // [NY] Ridderborgen: bunnløst kogger, ildpotter i stedet for granater
   if (typeof hammerW !== 'undefined' && weapon === hammerW) {   // [NY] hammeren: bare antall klosser
     hud.textContent = '🔨 ' + myStash + (medHud ? '   🔥 ' : '   💣 ') + (underNow() || (typeof hordeOn === 'function' && hordeOn()) ? '∞' : grenades);

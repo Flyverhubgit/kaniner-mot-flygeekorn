@@ -158,7 +158,7 @@
       box(B.x0, B.x1, 0, 2, B.z1, B.z1, T.HESCO);
       box(B.x0, B.x0, 0, 2, B.z0, B.z1, T.HESCO); box(B.x1, B.x1, 0, 2, B.z0, B.z1, T.HESCO);
       box(B.x0, B.x1, 0, 2, B.z0, B.z0, T.HESCO);
-      box(-5, 5, 0, 2, B.z0, B.z0, 0); box(B.x0 - 0, B.x0, 0, 2, 214, 219, 0); box(B.x1, B.x1, 0, 2, 214, 219, 0);   // porter
+      box(-9, 9, 0, 2, B.z0, B.z0, 0);   // bred port (stridsvognene skal ut) box(B.x0 - 0, B.x0, 0, 2, 214, 219, 0); box(B.x1, B.x1, 0, 2, 214, 219, 0);   // porter
       box(-24, -1, 0, 0, 228, 228, T.BAG);
       tentAt(-26, 205); tentAt(-26, 220); tentAt(24, 205); tentAt(24, 220);
       box(0, 0, 0, 9, 230, 230, T.METAL); box(1, 4, 7, 9, 230, 230, flag);                      // flaggstang

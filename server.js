@@ -32,7 +32,8 @@ const DESERT_W = {
   minimi: { dmg: 16, head: 40, ms: 60 },      // Minimi lett maskingevær
   mg42: { dmg: 15, head: 38, ms: 45 },        // MG42 – skyter veldig fort
   pistol: { dmg: 24, head: 55, ms: 160 },     // pistol
-  sniper50: { dmg: 90, head: 200, ms: 1000 }  // .50 kaliber (12,7 mm) snikskytter: hodeskudd dreper alltid
+  sniper50: { dmg: 90, head: 200, ms: 1000 }, // .50 kaliber (12,7 mm) snikskytter: hodeskudd dreper alltid
+  jeepmg: { dmg: 18, head: 40, ms: 70 }       // [NY] maskingeværet på jeepen
 };
 const BREAK_SECONDS = 8;       // [NY] resultater i 8 sek, så tilbake til loungen
 const RESPAWN_SECONDS = 3;
@@ -320,6 +321,7 @@ function fleetState() {
   return o;
 }
 function leaveVehicle(p) {                       // ut av jagerfly / kanontårn / doser
+  if (p.vehicle === 'dv') { dvLeave(p, false); return; }   // [NY] ørken-kjøretøy
   if (p.vehicle === 'tank') tankLeave(p);
   if (p.vehicle === 'turret' && fleet[p.team]) {
     const u = fleet[p.team].turrets[p.turret];
@@ -1121,6 +1123,11 @@ function num(v, lo, hi) {
 // Skade fra skudd eller granat. weapon = 'gun' eller 'nade'
 function applyDamage(p, t, dmg, head, weapon) {
   if (Date.now() < (t.protectedUntil || 0)) return;   // nettopp startet på nytt: beskyttet
+  if (t.vehicle === 'dv') {                            // [NY] ørken-kjøretøy: kjøretøyet tar støyten
+    const v = dvOf(t);
+    if (v && !['rocket', 'nade', 'firepot', 'dvshell', 'holy', 'crash'].includes(weapon)) dvDamage(v, dvBulletDmg(v, weapon === 'sniper' ? 'sniper50' : 'c7'), p);   // smell tas av dvArea
+    return;
+  }
   if (p !== t) questAddDmg(p, Math.min(dmg, Math.max(0, t.hp)));   // [NY] fotball-oppdraget
   t.hp -= dmg;
   io.to(p.id).emit('hitConfirm', { head, kill: t.hp <= 0 });
@@ -1288,6 +1295,8 @@ io.on('connection', socket => {
     if (mapName === 'desert') {
       const W = DESERT_W[d.weapon];
       if (!W) return;
+      if (d.weapon === 'jeepmg' ? !(dvOf(p) && dvOf(p).kind === 'jeep') : !!p.vehicle) return;   // [NY] taket-MG bare i jeepen, vanlige våpen bare til fots
+      if (t.vehicle === 'dv') { dvDamage(dvOf(t), dvBulletDmg(dvOf(t), d.weapon), p); return; }
       if (now - (p['last_' + d.weapon] || 0) < W.ms) return;
       p['last_' + d.weapon] = now;
       applyDamage(p, t, head ? W.head : W.dmg, head, d.weapon === 'sniper50' ? 'sniper' : 'gun');
@@ -1384,6 +1393,7 @@ io.on('connection', socket => {
       const dist = Math.hypot(t.x - pos[0], t.y + 0.9 - pos[1], t.z - pos[2]);
       if (dist < NADE_RADIUS) applyDamage(p, t, Math.round(NADE_MAX_DMG * (firepot ? 0.6 : 1) * (1 - dist / NADE_RADIUS)), false, firepot ? 'firepot' : 'nade');
     });
+    if (mapName === 'desert') dvArea(pos, NADE_RADIUS, 90, p);       // [NY] granat mot kjøretøy
     if (firepot) {
       fires.push({ cx: pos[0], cz: pos[2], r: 3, until: Date.now() + 4000, team: p.team, owner: p, dmg: 8 });
       io.emit('firezone', { x: pos[0], z: pos[2], r: 3, ms: 4000 });
@@ -1617,6 +1627,79 @@ io.on('connection', socket => {
     setTimeout(() => Object.values(players).forEach(o => respawn(o)), 800);
   });
 
+  // [NY] ØRKEN-KJØRETØY: inn, ut, kjør, skyt, treff, kjør over
+  socket.on('dvIn', d => {
+    const p = players[socket.id], v = d && dvList[d.id | 0];
+    if (!p || !p.alive || intermission || mapName !== 'desert' || p.vehicle || !v || !v.alive || v.driver || v.team !== p.team) return;
+    if (Math.hypot(p.x - v.x, p.z - v.z) > 6) return;
+    dropHoly(p);
+    v.driver = p.id; v.at = Date.now(); p.vehicle = 'dv'; p.dv = v.id;
+    io.emit('dveh', dvState());
+  });
+  socket.on('dvOut', () => { const p = players[socket.id]; if (p && p.vehicle === 'dv') { dvLeave(p, true); io.emit('dveh', dvState()); } });
+  socket.on('dvMove', d => {
+    const p = players[socket.id], v = dvOf(p);
+    if (!v || v.driver !== p.id || !d) return;
+    const x = num(d.x, -240, 240), y = num(d.y, 0, 16), z = num(d.z, -240, 240), yaw = num(d.yaw, -1e6, 1e6), ty = num(d.ty, -1e6, 1e6), tp = num(d.tp, -1, 1);
+    if ([x, y, z, yaw, ty, tp].includes(null)) return;
+    const now = Date.now(), dt = Math.max(0.05, (now - v.at) / 1000);
+    if (Math.hypot(x - v.x, z - v.z) > DV[v.kind].speed * dt * 1.6 + 2) return;   // for fort: avvis
+    v.at = now; v.x = x; v.y = y; v.z = z; v.yaw = yaw; v.ty = ty; v.tp = tp;
+    p.x = x; p.y = y; p.z = z;
+  });
+  socket.on('dvFire', d => {                          // stridsvognkanonen
+    const p = players[socket.id], v = dvOf(p), now = Date.now();
+    if (!v || v.kind !== 'tank' || v.driver !== p.id || now < v.shellAt || !d || typeof d.id !== 'string' || d.id.length > 40) return;
+    if (!Array.isArray(d.p) || !Array.isArray(d.v)) return;
+    const pos = d.p.map(q => num(q, -250, 250)), vel = d.v.map(q => num(q, -150, 150));
+    if (pos.includes(null) || vel.includes(null)) return;
+    v.shellAt = now + DV.tank.shellMs;
+    p.pending[d.id] = 'dvshell';
+    p.protectedUntil = 0;
+    socket.broadcast.emit('dvShell', { id: d.id, p: pos, v: vel });
+  });
+  socket.on('dvBoom', d => {                          // granaten fra kanonen smalt
+    const p = players[socket.id];
+    if (!p || !d || p.pending[d.id] !== 'dvshell' || !Array.isArray(d.p)) return;
+    delete p.pending[d.id];
+    const pos = d.p.map(q => num(q, -250, 250));
+    if (pos.includes(null)) return;
+    io.emit('boom', { id: d.id, p: pos, big: 2.6 });
+    blastOwner = p; blastCells(pos[0], pos[1], pos[2], 3.2); blastOwner = null;
+    if (intermission) return;
+    Object.values(players).forEach(t => {
+      if (!t.alive || t.team === p.team || t.vehicle === 'dv') return;
+      const dist = Math.hypot(t.x - pos[0], t.y + 0.9 - pos[1], t.z - pos[2]);
+      if (dist < 6) applyDamage(p, t, Math.round(150 * (1 - dist / 6)), false, 'dvshell');
+    });
+    dvArea(pos, 4, 240, p);
+  });
+  socket.on('dvHit', d => {                           // kule traff et kjøretøy
+    const p = players[socket.id], v = d && dvList[d.id | 0], now = Date.now();
+    if (!p || !p.alive || !v || !v.alive || v.team === p.team || intermission || now - (p.lastDvHit || 0) < 40) return;
+    p.lastDvHit = now;
+    const w = typeof d.w === 'string' ? d.w : '';
+    if (w === 'jeepmg' && !(dvOf(p) && dvOf(p).kind === 'jeep')) return;
+    dvDamage(v, dvBulletDmg(v, w), p);
+  });
+  socket.on('dvRam', d => {                           // kjørte over en fiende
+    const p = players[socket.id], v = dvOf(p), t = d && players[d.target];
+    if (!v || !t || !t.alive || t.team === p.team || t.vehicle) return;
+    if (Math.hypot(t.x - v.x, t.z - v.z) > 4.5) return;
+    applyDamage(p, t, 200, false, 'crash');
+  });
+  socket.on('dvDoze', d => {                          // stridsvognen knuser sandsekker, telt og palmer
+    const p = players[socket.id], v = dvOf(p);
+    if (!v || v.kind !== 'tank' || !d || !Array.isArray(d.cells)) return;
+    const V = VOX.desert, T = DM.T, soft = [T.BAG, T.WOOD, T.CLOTH, T.TENT_R, T.TENT_G, T.LEAF, T.TRUNK];
+    const ok = d.cells.slice(0, 40).map(i => i | 0).filter(i => {
+      if (i < 0 || i >= V.grid.length || !soft.includes(V.grid[i])) return false;
+      const x = i % DM.NX + DM.X0, z = Math.floor(i / DM.NX) % DM.NZ + DM.Z0;
+      return Math.hypot(x + 0.5 - v.x, z + 0.5 - v.z) < 6;
+    });
+    if (ok.length) destroyCells(ok);
+  });
+
   // Bazooka: rakett skutt (vises for de andre)
   socket.on('rocketFire', d => {
     const p = players[socket.id];
@@ -1654,6 +1737,7 @@ io.on('connection', socket => {
       const dist = Math.hypot(t.x - pos[0], t.y + 0.9 - pos[1], t.z - pos[2]);
       if (dist < ROCKET_RADIUS) applyDamage(p, t, Math.round(ROCKET_MAX_DMG * (1 - dist / ROCKET_RADIUS)), false, 'rocket');
     });
+    if (mapName === 'desert') dvArea(pos, ROCKET_RADIUS, 260, p);   // [NY] RPG/bazooka mot kjøretøy
   });
 
   // Morter avfyrt: alle ser granaten fly, og 3 sek senere smeller den
@@ -1841,6 +1925,7 @@ function startMap(name) {
   Object.values(players).forEach(p => { leaveVehicle(p); p.kills = 0; p.deaths = 0; p.streak = 0; respawn(p); });
   roundEndsAt = mapName === 'lobby' ? Infinity : Date.now() + (hordeMap() ? FARM_SECONDS : mapName === 'dragon' ? DRAGON_SECONDS : mapName === 'desert' ? DESERT_SECONDS : ROUND_SECONDS) * 1000;
   if (mapName === 'dragon') resetDragons(); else dragonGame = null;   // [NY] dragebølgene
+  dvReset();                                                       // [NY] ørken-kjøretøy på plass
   intermission = false;
   if (hordeMap()) resetFarm(); else farm = null;
   foamOn = false; foamHoles = [];
@@ -2250,6 +2335,85 @@ setInterval(() => {
 }, DRAGON_TICK);
 
 // ===================================================================
+// [NY] ØRKEN-KJØRETØY 🛡️🚙: 2 stridsvogner og 3 jeeper per lag. ÉN person både kjører og skyter.
+// Sjåføren kjører i nettleseren og sender posisjonen; serveren sjekker farten og holder liv/skade.
+// Kjøretøyet tar støyten: sjåføren kan ikke skytes, men dør når kjøretøyet sprenges.
+// ===================================================================
+const DV_ON = true;                                 // false = ingen kjøretøy i ørkenen
+const DV = {
+  tank: { hp: 700, speed: 9, shellMs: 3000 },       // stridsvogn: kanon (lader 3 sek)
+  jeep: { hp: 260, speed: 18 }                      // jeep: maskingevær på taket
+};
+const DV_PARK = [                                   // kaninenes plasser (flygeekornene er speilet)
+  { kind: 'tank', x: -5, z: 210 }, { kind: 'tank', x: 5, z: 210 },
+  { kind: 'jeep', x: -4, z: 191 }, { kind: 'jeep', x: 4, z: 191 }, { kind: 'jeep', x: 0, z: 184 }
+];
+const DV_RESPAWN_MS = 40000;
+let dvList = [];
+function dvReset() {
+  dvList = [];
+  if (!DV_ON || mapName !== 'desert') return;
+  TEAMS.forEach(team => DV_PARK.forEach((pk, i) => {
+    const sq = team === 'squirrel', x = sq ? -pk.x : pk.x, z = sq ? -pk.z : pk.z, yaw = sq ? Math.PI : 0;
+    dvList.push({ id: dvList.length, kind: pk.kind, team, home: { x, z, yaw }, x, y: 0, z, yaw, ty: yaw, tp: 0, hp: DV[pk.kind].hp, alive: true, driver: null, at: 0, shellAt: 0, respawnAt: 0 });
+  }));
+}
+function dvOf(p) { return p && p.vehicle === 'dv' ? dvList[p.dv] || null : null; }
+function dvLeave(p, place) {
+  const v = dvOf(p);
+  if (v && v.driver === p.id) v.driver = null;
+  p.vehicle = null; p.dv = -1;
+  if (v && place) {                                 // gå ut ved siden av kjøretøyet
+    const sx = Math.cos(v.yaw) * (v.kind === 'tank' ? 2.8 : 2), sz = -Math.sin(v.yaw) * (v.kind === 'tank' ? 2.8 : 2);
+    p.x = v.x + sx; p.z = v.z + sz; p.y = v.y;
+    io.to(p.id).emit('dvExit', { x: +p.x.toFixed(2), y: v.y, z: +p.z.toFixed(2) });
+  }
+}
+// Skade på et kjøretøy. by = den som skjøt (kan være null)
+function dvDamage(v, dmg, by) {
+  if (!v || !v.alive || dmg <= 0) return;
+  v.hp -= dmg;
+  if (by && !by.isBot) io.to(by.id).emit('hitConfirm', { head: false, kill: v.hp <= 0 });
+  if (v.hp > 0) return;
+  v.alive = false; v.respawnAt = Date.now() + DV_RESPAWN_MS;
+  io.emit('boom', { id: 'dv' + v.id + '_' + Date.now(), p: [v.x, v.y + 1, v.z], big: v.kind === 'tank' ? 3.2 : 2.4 });
+  const d = v.driver && players[v.driver];
+  if (d) {                                           // sjåføren klarer seg ikke
+    dvLeave(d, false);
+    if (by && by.team !== d.team) applyDamage(by, d, 999, false, 'rocket');
+    else killByWorld(d, '💥', 'crash');
+  }
+  v.driver = null;
+}
+// Smell nær kjøretøy (rakett, granat, stridsvognkanon)
+function dvArea(pos, r, base, by) {
+  dvList.forEach(v => {
+    if (!v.alive || (by && v.team === by.team)) return;
+    const dist = Math.hypot(v.x - pos[0], v.y + 1 - pos[1], v.z - pos[2]);
+    if (dist < r + (v.kind === 'tank' ? 2 : 1.4)) dvDamage(v, Math.round(base * (1 - Math.max(0, dist - 1.5) / (r + 2))), by);
+  });
+}
+// Skudd mot kjøretøy: jeepen tåler litt, stridsvognen nesten alt (bare .50 riper)
+function dvBulletDmg(v, w) {
+  if (v.kind === 'tank') return w === 'sniper50' ? 4 : 0;
+  return { c7: 6, minimi: 5, mg42: 5, pistol: 4, sniper50: 45, jeepmg: 7 }[w] || 0;
+}
+function dvState() {
+  return dvList.map(v => [v.id, v.kind === 'tank' ? 1 : 2, v.team === 'bunny' ? 1 : 2, +v.x.toFixed(2), +v.y.toFixed(2), +v.z.toFixed(2), +v.yaw.toFixed(3), +v.ty.toFixed(3), +v.tp.toFixed(3),
+    Math.max(0, Math.round(v.hp / DV[v.kind].hp * 100)), v.driver || '', v.alive ? 1 : 0]);
+}
+setInterval(() => {
+  if (mapName !== 'desert' || !dvList.length) return;
+  const now = Date.now();
+  dvList.forEach(v => {                              // nytt kjøretøy hjemme etter 40 sek
+    if (!v.alive && now >= v.respawnAt) Object.assign(v, { x: v.home.x, y: 0, z: v.home.z, yaw: v.home.yaw, ty: v.home.yaw, tp: 0, hp: DV[v.kind].hp, alive: true, driver: null });
+    if (v.driver && !players[v.driver]) v.driver = null;
+  });
+  io.emit('dveh', dvState());
+}, 100);
+dvReset();                                          // (START_MAP=desert ved testing)
+
+// ===================================================================
 // [NY] ROBOTER: fyller opp det minste laget så lagene alltid er like store.
 // Bare på klosse-banene (Klosseslottet og Ridderborgen) der serveren vet hvor veggene er.
 // De er med vilje ganske dårlige: treg reaksjon, bommer mye, går saktere enn deg.
@@ -2407,12 +2571,12 @@ setInterval(() => {
     let best = null, bestD = desert ? 85 : 42;
     if (desert && now < b.thinkAt) {           // [NY] ørkenen: let etter fiender bare ca. 3 ganger i sekundet (sparer serveren)
       const t = b.target && players[b.target];
-      if (t && t.alive && !t.vehicle) { best = t; bestD = Math.hypot(t.x - b.x, t.z - b.z); }
+      if (t && t.alive && (!t.vehicle || t.vehicle === 'dv')) { best = t; bestD = Math.hypot(t.x - b.x, t.z - b.z); }
     } else {
       if (desert) b.thinkAt = now + 280 + Math.random() * 140;
       for (const oid in players) {
         const t = players[oid];
-        if (!t.alive || t.team === b.team || t.vehicle) continue;
+        if (!t.alive || t.team === b.team || (t.vehicle && !(desert && t.vehicle === 'dv'))) continue;   // [NY] ørkenen: skyter også på kjøretøy
         const d = Math.hypot(t.x - b.x, t.z - b.z);
         if (d < bestD && losClear(eye, { x: t.x, y: t.y + 1.2, z: t.z })) { best = t; bestD = d; }
       }
