@@ -521,7 +521,15 @@ function toggleGear(id) {
   renderGearMenu();
   if (joined) socket.emit('profile', profilePayload());
 }
+// [NY] Testkode for GMLRS-radioen (for å prøve den uten 100 drap). GMLRS_TEST_CODE = '' slår den av.
+const GMLRS_TEST_CODE = 'RAKETT-PAPPA';
 function useCode() {
+  const raw = (document.getElementById('codeIn').value || '').trim().toUpperCase();
+  if (GMLRS_TEST_CODE && raw === GMLRS_TEST_CODE) {
+    profile.gmlrs = true; saveProfile();
+    document.getElementById('codeMsg').textContent = '🚀 GMLRS-radio låst opp!';
+    return;
+  }
   const c = readCode(document.getElementById('codeIn').value);
   const msg = document.getElementById('codeMsg');
   if (c === null) { msg.textContent = '❌ Feil kode'; return; }

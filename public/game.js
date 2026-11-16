@@ -1542,6 +1542,7 @@ function noWeapons() { return LOBBY_NO_WEAPONS && typeof currentMap !== 'undefin
 function shoot() {
   if (noWeapons()) return;                        // [NY] ingen våpen i loungen
   if (typeof dvShoot === 'function' && dvShoot()) return;   // [NY] stridsvognkanonen
+  if (typeof gmlrsShoot === 'function' && gmlrsShoot()) return;   // [NY] GMLRS: klikk = skyt dit du sikter
   if (typeof seaRepairing !== 'undefined' && seaRepairing) return;   // [NY] reparerer basen: hendene er opptatt
   if (typeof farmShoot === 'function' && farmShoot()) return;   // [NY] dosertankens kanon / A-10 fra radioen
   if (typeof spaceShoot === 'function' && spaceShoot()) return;   // [NY] laser fra jagerfly / kanontårn

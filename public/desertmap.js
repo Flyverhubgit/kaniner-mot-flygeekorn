@@ -37,6 +37,7 @@
 
   // Ting både klient og server trenger (kaninene; flygeekornene er speilet)
   const SPAWNS = { bunny: { x0: -18, x1: 18, z0: 212, z1: 226 } };   // inne i basen i nordenden
+  const RADIO = { x: 40, y: 12, z: 215 };                             // [NY] radioen på toppen av radiotårnet (kaninene; speilet for flygeekornene)
   const OASES = [{ x: -152, z: 10, r: 15 }, { x: 151, z: -11, r: 15 }];   // vann (tegnes av klienten), én på hver side
   const BOUND = 236;                                                  // usynlig kant rundt kartet
 
@@ -163,6 +164,14 @@
       tentAt(-26, 205); tentAt(-26, 220); tentAt(24, 205); tentAt(24, 220);
       box(0, 0, 0, 9, 230, 230, T.METAL); box(1, 4, 7, 9, 230, 230, flag);                      // flaggstang
       waterTower(-31, 223);
+      // [NY] Radiotårnet (GMLRS): utenfor østporten. Trapp opp langs x = 41 (sør -> nord), plattform på y = 11.
+      [[38, 213], [42, 213], [38, 217], [42, 217]].forEach(([x, z]) => box(x, x, 0, 10, z, z, T.METAL));
+      box(37, 43, 11, 11, 212, 218, T.ROOF);                                   // plattform
+      box(37, 43, 12, 12, 218, 218, T.METAL); box(37, 37, 12, 12, 212, 218, T.METAL); box(43, 43, 12, 12, 212, 218, T.METAL);   // rekkverk
+      box(37, 39, 12, 12, 212, 212, T.METAL);
+      box(40, 40, 12, 15, 217, 217, T.METAL);                                  // antennemast
+      for (let k = 0; k <= 11; k++) box(41 + 0, 41, k, k, 200 + k, 200 + k, T.STEP);   // trapp: 12 trinn opp til plattformen
+      box(41, 41, 0, 10, 211, 211, 0);                                         // fri plass under toppen av trappa
       nest(-12, 196, 'N'); nest(12, 196, 'N');                                                  // reir foran porten
       container(-20, 190, T.BOX_B, true); container(14, 188, T.BOX_O, false);
       // --- Utposter halvveis: små gårder med mur, et hus og sandsekker ---
@@ -188,7 +197,7 @@
       // --- Sanddyner overalt (myk dekning) ---
       for (let k = 0; k < 70; k++) {
         const x = ri(-225, 225), z = ri(58, 195);
-        if (Math.abs(x) < 40 && z > 185) continue;             // ikke i basen
+        if (Math.abs(x) < 52 && z > 185) continue;             // ikke i basen (eller ved radiotårnet)
         if (Math.abs(x) < 62 && z < 60) continue;              // ikke i landsbyen
         if ((x - OASES[0].x) ** 2 + (z - OASES[0].z) ** 2 < 900) continue;
         dune(x, z, ri(5, 11), ri(4, 9), ri(1, 3));
@@ -204,7 +213,7 @@
     return g;
   }
 
-  const api = { NX, NY, NZ, X0, Z0, T, INFO, idx, build, SPAWNS, OASES, BOUND };
+  const api = { NX, NY, NZ, X0, Z0, T, INFO, idx, build, SPAWNS, OASES, BOUND, RADIO };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.DesertMap = api;
 })(this);

@@ -9,6 +9,20 @@ const QUEST_NEED = 5000;
 const COACH = { x: -16.6, z: 9.5 };                  // vestveggen, sør for butikken
 const COACH_ZONE = { x: -14.4, z: 9.5, r: 2.4 };
 
+// [NY] Oppdrag 2 (etter fotballdrakta): 100 drap -> GMLRS-radioen (profile.gmlrs). Telles her i nettleseren.
+const QUEST2_NEED = 100;
+function quest2State() {
+  if (!profile.q2) profile.q2 = { on: false, kills: 0 };
+  return profile.q2;
+}
+socket.on('kill', d => {
+  if (!profile.kit || profile.gmlrs || d.killer !== myId || d.victim === myId) return;
+  const q2 = quest2State();
+  if (!q2.on || q2.kills >= QUEST2_NEED) return;
+  q2.kills++; saveProfile();
+  if (q2.kills === QUEST2_NEED) showToast('🎯 100 drap! Gå til treneren i loungen og hent GMLRS-radioen 🚀');
+  else if (q2.kills % 25 === 0) showToast('🎯 GMLRS-oppdraget: ' + q2.kills + ' / ' + QUEST2_NEED + ' drap');
+});
 function questState() {
   if (!profile.quest) profile.quest = { on: false, done: false, best: 0 };
   return profile.quest;
@@ -60,16 +74,30 @@ const questPanel = document.createElement('div');
 questPanel.style.cssText = 'position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);width:min(90vw,420px);background:rgba(13,60,48,0.95);border:3px solid #fff;border-radius:16px;padding:14px;z-index:20;display:none;color:#fff;font:15px sans-serif;text-align:center;';
 document.body.appendChild(questPanel);
 let questOpen = false;
-function questBar(n) {
-  const k = Math.max(0, Math.min(1, n / QUEST_NEED));
+function questBar(n, need) {
+  const k = Math.max(0, Math.min(1, n / (need || QUEST_NEED)));
   return '<div style="height:10px;background:rgba(255,255,255,.2);border-radius:5px;overflow:hidden;margin:8px 0"><div style="height:100%;width:' + (k * 100).toFixed(0) + '%;background:#ffd23a"></div></div>';
 }
 function renderQuest() {
   const q = questState();
   let h = '<div style="font:bold 18px sans-serif;margin-bottom:6px">⚽ Treneren</div>';
-  if (profile.kit) {
-    h += '<div>Kul drakt! 😎 Drakta finner du under <b>Utstyr</b>, og MIL-skinnen under <b>Skins</b> i butikken.</div>' +
-      '<button id="qClose" style="margin-top:10px;font:bold 15px sans-serif;padding:6px 16px;border-radius:8px">OK</button>';
+  if (profile.kit) {                                  // [NY] oppdrag 2: 100 drap -> GMLRS-radioen
+    const q2 = quest2State();
+    if (profile.gmlrs) {
+      h += '<div>Du har GMLRS-radioen! 🚀<br>Gå opp i <b>radiotårnet</b> ved basen i <b>Ørkenkrigen</b>, trykk <b>E</b> ved radioen, sikt og skyt.<br><span style="font-size:13px;opacity:.85">Laget må vente 1 minutt mellom hver.</span></div>' +
+        '<button id="qClose" style="margin-top:10px;font:bold 15px sans-serif;padding:6px 16px;border-radius:8px">OK</button>';
+    } else if (q2.on && q2.kills >= QUEST2_NEED) {
+      h += '<div>100 drap! 🎉 Her er GMLRS-radioen! 🚀</div>' +
+        '<button id="qClaim2" style="margin-top:10px;font:bold 16px sans-serif;padding:8px 18px;border-radius:10px;background:#ffd23a;border:none">🚀 Ta imot</button>';
+    } else if (q2.on) {
+      h += '<div>Få <b>100 drap</b>! 🎯<br><span style="font-size:13px;opacity:.85">Alle baner teller – roboter også.</span></div>' + questBar(q2.kills, QUEST2_NEED) +
+        '<div style="font-size:13px;opacity:.85">' + q2.kills + ' / ' + QUEST2_NEED + ' drap</div>' +
+        '<button id="qClose" style="margin-top:10px;font:bold 15px sans-serif;padding:6px 16px;border-radius:8px">OK</button>';
+    } else {
+      h += '<div>Kul drakt! 😎<br>Nytt oppdrag: få <b>100 drap</b>, så får du <b>GMLRS-radioen</b> 🚀<br><span style="font-size:13px;opacity:.85">Et rakettangrep fra himmelen i Ørkenkrigen!</span></div>' +
+        '<button id="qTake2" style="margin-top:10px;font:bold 16px sans-serif;padding:8px 18px;border-radius:10px;background:#ffd23a;border:none">Jeg tar oppdraget!</button> ' +
+        '<button id="qClose" style="margin-top:10px;font:15px sans-serif;padding:6px 12px;border-radius:8px">Senere</button>';
+    }
   } else if (q.done) {
     h += '<div>Du klarte det! 🎉 Her er fotballdrakta og MIL-våpenskinnen!</div>' +
       '<button id="qClaim" style="margin-top:10px;font:bold 16px sans-serif;padding:8px 18px;border-radius:10px;background:#ffd23a;border:none">⚽ Ta imot</button>';
@@ -85,6 +113,12 @@ function renderQuest() {
   questPanel.innerHTML = h;
   const b = id => document.getElementById(id);
   if (b('qClose')) b('qClose').addEventListener('click', closeQuest);
+  if (b('qTake2')) b('qTake2').addEventListener('click', () => { const q2 = quest2State(); q2.on = true; q2.kills = 0; saveProfile(); playCoachWhistle(); renderQuest(); });
+  if (b('qClaim2')) b('qClaim2').addEventListener('click', () => {
+    profile.gmlrs = true; saveProfile();
+    showToast('🚀 Du fikk GMLRS-radioen! Bruk den i radiotårnet i Ørkenkrigen.');
+    playCoachWhistle(); renderQuest();
+  });
   if (b('qTake')) b('qTake').addEventListener('click', () => {
     q.on = true; q.done = false; q.best = 0; saveProfile();
     if (joined) socket.emit('questOn', true);

@@ -1682,6 +1682,35 @@ io.on('connection', socket => {
     if (w === 'jeepmg' && !(dvOf(p) && dvOf(p).kind === 'jeep')) return;
     dvDamage(v, dvBulletDmg(v, w), p);
   });
+  socket.on('gmlrsCall', d => {                      // [NY] GMLRS fra radiotårnet
+    const p = players[socket.id], now = Date.now();
+    if (!GM_ON || !p || !p.alive || intermission || mapName !== 'desert' || p.vehicle || !d || !d.ok) return;
+    if (process.env.GM_DEBUG) console.log('gmlrsCall', p.x, p.y, p.z, JSON.stringify(d));
+    const R = gmSide(p.team, { x: DM.RADIO.x + 0.5, z: DM.RADIO.z + 0.5 });
+    if (Math.hypot(p.x - R.x, p.z - R.z) > 5 || p.y < 10) return;       // må stå ved radioen
+    if (now < gmReady[p.team]) { socket.emit('gmlrsWait', { ms: gmReady[p.team] - now }); return; }
+    const x = num(d.x, -236, 236), z = num(d.z, -236, 236);
+    if (x === null || z === null) return;
+    gmReady[p.team] = now + GM.cooldownMs;
+    const T = gmSide(p.team, GM_TRUCK), team = p.team, shooter = p.id;
+    io.emit('gmlrs', { team, by: p.name, from: [T.x, T.z], x, z, flight: GM.flightMs, cd: GM.cooldownMs });
+    setTimeout(() => {
+      if (mapName !== 'desert' || intermission) return;
+      io.emit('gmlrsBoom', { x, z, team });
+      const by = players[shooter] || null;
+      blastOwner = by; blastCells(x, 1, z, GM.blocks); blastOwner = null;
+      Object.values(players).forEach(t => {
+        if (!t.alive || t.team === team) return;
+        const dist = Math.hypot(t.x - x, t.y - 0, t.z - z);
+        if (dist >= GM.r) return;
+        if (t.vehicle === 'dv') return;                                 // kjøretøy: se under
+        if (by) applyDamage(by, t, Math.round(GM.dmg * (1 - dist / GM.r)), false, 'gmlrs');
+        else { const dmg = Math.round(GM.dmg * (1 - dist / GM.r)); if (dmg >= t.hp) killByWorld(t, '🚀 GMLRS', 'gmlrs'); else t.hp -= dmg; }
+      });
+      dvArea([x, 1, z], GM.vr, GM.vdmg, by, team);
+    }, GM.flightMs);
+  });
+
   socket.on('dvRam', d => {                           // kjørte over en fiende
     const p = players[socket.id], v = dvOf(p), t = d && players[d.target];
     if (!v || !t || !t.alive || t.team === p.team || t.vehicle) return;
@@ -1926,6 +1955,7 @@ function startMap(name) {
   roundEndsAt = mapName === 'lobby' ? Infinity : Date.now() + (hordeMap() ? FARM_SECONDS : mapName === 'dragon' ? DRAGON_SECONDS : mapName === 'desert' ? DESERT_SECONDS : ROUND_SECONDS) * 1000;
   if (mapName === 'dragon') resetDragons(); else dragonGame = null;   // [NY] dragebølgene
   dvReset();                                                       // [NY] ørken-kjøretøy på plass
+  gmReady = { bunny: 0, squirrel: 0 };                             // [NY] GMLRS klar med en gang
   intermission = false;
   if (hordeMap()) resetFarm(); else farm = null;
   foamOn = false; foamHoles = [];
@@ -2388,9 +2418,10 @@ function dvDamage(v, dmg, by) {
   v.driver = null;
 }
 // Smell nær kjøretøy (rakett, granat, stridsvognkanon)
-function dvArea(pos, r, base, by) {
+function dvArea(pos, r, base, by, team) {          // team = laget som skjøt (hvis skytteren er borte)
+  const tm = by ? by.team : team;
   dvList.forEach(v => {
-    if (!v.alive || (by && v.team === by.team)) return;
+    if (!v.alive || (tm && v.team === tm)) return;
     const dist = Math.hypot(v.x - pos[0], v.y + 1 - pos[1], v.z - pos[2]);
     if (dist < r + (v.kind === 'tank' ? 2 : 1.4)) dvDamage(v, Math.round(base * (1 - Math.max(0, dist - 1.5) / (r + 2))), by);
   });
@@ -2414,6 +2445,18 @@ setInterval(() => {
   io.emit('dveh', dvState());
 }, 100);
 dvReset();                                          // (START_MAP=desert ved testing)
+
+// ===================================================================
+// [NY] GMLRS 🚀 (Ørkenkrigen): radioen på toppen av radiotårnet ved hver base.
+// Bare for de som har fått GMLRS-radioen av treneren (100 drap). Lastebilen i basen skyter raketten,
+// den kommer ned fra himmelen 7 sek senere: kjempesmell (som to ferskener), sjokkbølge, krater.
+// Direkte treff dreper alt. Laget må vente 1 minutt før neste. Skader bare fiender.
+// ===================================================================
+const GM_ON = true;
+const GM = { cooldownMs: 60000, flightMs: 7000, r: 18, dmg: 450, blocks: 7, vr: 14, vdmg: 1500 };
+const GM_TRUCK = { x: 29.5, z: 214.5 };             // kaninenes lastebil (speilet for flygeekornene)
+let gmReady = { bunny: 0, squirrel: 0 };
+function gmSide(team, pt) { return team === 'squirrel' ? { x: -pt.x, z: -pt.z } : { x: pt.x, z: pt.z }; }
 
 // ===================================================================
 // [NY] ROBOTER: fyller opp det minste laget så lagene alltid er like store.
