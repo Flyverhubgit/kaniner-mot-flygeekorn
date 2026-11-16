@@ -22,6 +22,8 @@ const TEAMS2 = ['bunny', 'squirrel'];
 const TEAM_COL = { bunny: 0xd23b2f, squirrel: 0x7fb02a };
 const LASER_COL = { bunny: 0xff3a2a, squirrel: 0x5dff4a };
 
+const SPACE_FX = true;    // [NY] kulere lasere, munningsflamme, gnister, sjokkbølge. false = som før
+const SPACE_SND = true;   // [NY] dypere lyder: laser med bass + ekko, dypt smell, romsus, dypere motor. false = som før
 function spaceOn() { return typeof currentMap !== 'undefined' && currentMap === 'space' && !underNow(); }
 function noRay(o) { o.traverse(c => { c.raycast = () => {}; }); return o; }
 // Speil til flygeekornenes side: (x, z) -> (-x, -z)
@@ -539,9 +541,30 @@ function boltMat(team, heavy) {
   if (!boltMats[k]) boltMats[k] = new THREE.MeshBasicMaterial({ color: heavy ? 0xffa030 : LASER_COL[team], transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false });
   return boltMats[k];
 }
+// [NY] Ny laser: hvit kjerne + farget glød + svak hale bak
+const boltCoreGeo = new THREE.BoxGeometry(0.07, 0.07, 3.0), boltGlowGeo = new THREE.BoxGeometry(0.22, 0.22, 3.4), boltTailGeo = new THREE.BoxGeometry(0.06, 0.06, 5);
+const heavyCoreGeo = new THREE.BoxGeometry(0.16, 0.16, 3.8), heavyGlowGeo = new THREE.BoxGeometry(0.5, 0.5, 4.4), heavyTailGeo = new THREE.BoxGeometry(0.14, 0.14, 6);
+const boltFx = {};
+function boltFxMats(team, heavy) {
+  const k = team + (heavy ? 'h' : '');
+  if (!boltFx[k]) {
+    const col = heavy ? 0xffa030 : LASER_COL[team];
+    const mk = (c, o) => new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: o, blending: THREE.AdditiveBlending, depthWrite: false });
+    boltFx[k] = { core: mk(0xffffff, 1), glow: mk(col, 0.55), tail: mk(col, 0.35) };
+  }
+  return boltFx[k];
+}
+function fancyBolt(team, heavy) {
+  const M = boltFxMats(team, heavy), g = new THREE.Group();
+  const core = new THREE.Mesh(heavy ? heavyCoreGeo : boltCoreGeo, M.core), glow = new THREE.Mesh(heavy ? heavyGlowGeo : boltGlowGeo, M.glow), tail = new THREE.Mesh(heavy ? heavyTailGeo : boltTailGeo, M.tail);
+  tail.position.z = heavy ? -4.5 : -3.8;   // halen henger bak
+  g.add(tail, glow, core);
+  return noRay(g);
+}
 function spawnBolt(pos, vel, team, mine, heavy) {
-  const m = new THREE.Mesh(heavy ? heavyGeo : boltGeo, boltMat(team, heavy));
+  const m = SPACE_FX ? fancyBolt(team, heavy) : new THREE.Mesh(heavy ? heavyGeo : boltGeo, boltMat(team, heavy));
   m.raycast = () => {};
+  if (SPACE_FX) muzzleFlash(pos, heavy ? 0xffa030 : LASER_COL[team], heavy);
   m.position.copy(pos);
   m.lookAt(pos.clone().add(vel));
   spaceGroup.add(m);
@@ -653,6 +676,7 @@ function updateBolts(dt) {
     if (h && !(h.kind === 'own' && b.heavy)) {     // kanontårnene skyter ut fra eget skip
       const at = a.clone().lerp(nb, h.t);
       spark(at, b.heavy ? 0xffa030 : LASER_COL[b.team]);
+      if (SPACE_FX) hitBurst(at, b.heavy ? 0xffa030 : LASER_COL[b.team], b.heavy);   // [NY] gnister + lysring
       gone = true;
       if (b.mine) {
         if (h.kind === 'player') {
@@ -754,7 +778,8 @@ function spaceBoomFx(p, size) {
     f.life = 0.7 + k * 0.25; f.size = size * (k ? 0.7 : 1); f.m.visible = true;
     f.m.material.color.setHex(k ? 0xff5a20 : 0xffd070);
   }
-  for (let k = 0; k < 14; k++) {
+  if (SPACE_FX) shockwave(p, size);   // [NY] sjokkbølge-ring
+  for (let k = 0; k < (SPACE_FX ? 28 : 14); k++) {
     const s = shards[shI]; shI = (shI + 1) % shards.length;
     s.m.position.set(p[0], p[1], p[2]);
     s.v.set(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).normalize().multiplyScalar(6 + Math.random() * 14 * (size / 2));
@@ -762,7 +787,8 @@ function spaceBoomFx(p, size) {
   }
   const dist = Math.hypot(p[0] - camera.position.x, p[1] - camera.position.y, p[2] - camera.position.z);
   shake = Math.max(shake, Math.min(1.5, size * 0.4 - dist / 60));
-  playBoom(Math.max(0.04, 0.55 - dist * 0.004));
+  if (SPACE_SND) playSpaceBoom(Math.max(0.04, 0.6 - dist * 0.004), size);   // [NY] dypt smell med ekko
+  else playBoom(Math.max(0.04, 0.55 - dist * 0.004));
 }
 const sparks = [];
 function spark(p, col, s) {
@@ -771,7 +797,52 @@ function spark(p, col, s) {
   spaceGroup.add(m);
   sparks.push({ m, life: 0.25 });
 }
+// [NY] ---------- Ekstra effekter (SPACE_FX): munningsflamme, gnister, lysringer, sjokkbølge ----------
+const fxParts = [];
+const fxBallGeo = new THREE.SphereGeometry(1, 10, 8), fxDotGeo = new THREE.BoxGeometry(0.12, 0.12, 0.9), fxRingGeo = new THREE.RingGeometry(0.82, 1, 48);
+function fxMat(col, o) { return new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: o, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }); }
+function fxAdd(geo, col, p, o) {
+  const m = new THREE.Mesh(geo, fxMat(col, o.op || 1)); m.raycast = () => {};
+  m.position.copy(p); m.scale.setScalar(o.s0 || 1);
+  if (o.face) m.lookAt(camera.position);
+  if (o.v) m.lookAt(p.clone().add(o.v));
+  spaceGroup.add(m);
+  fxParts.push({ m, v: o.v || null, life: o.life, max: o.life, s0: o.s0 || 1, s1: o.s1 || o.s0 || 1, op: o.op || 1, face: !!o.face });
+  if (fxParts.length > 260) { const f = fxParts.shift(); spaceGroup.remove(f.m); f.m.material.dispose(); }
+}
+function muzzleFlash(p, col, heavy) {
+  fxAdd(fxBallGeo, 0xffffff, p, { life: 0.07, s0: heavy ? 0.5 : 0.28, s1: heavy ? 1.1 : 0.6 });
+  fxAdd(fxBallGeo, col, p, { life: 0.12, s0: heavy ? 0.9 : 0.5, s1: heavy ? 2.0 : 1.2, op: 0.6 });
+}
+function hitBurst(p, col, heavy) {
+  const n = heavy ? 10 : 6;
+  for (let k = 0; k < n; k++) {
+    const v = new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).normalize().multiplyScalar(10 + Math.random() * 18);
+    fxAdd(fxDotGeo, k % 2 ? 0xffffff : col, p, { v, life: 0.25 + Math.random() * 0.25 });
+  }
+  fxAdd(fxRingGeo, col, p, { life: 0.3, s0: 0.3, s1: heavy ? 3.2 : 1.8, op: 0.9, face: true });
+  fxAdd(fxBallGeo, 0xffffff, p, { life: 0.08, s0: 0.4, s1: heavy ? 1.4 : 0.8 });
+}
+function shockwave(p, size) {
+  const at = new THREE.Vector3(p[0], p[1], p[2]);
+  fxAdd(fxRingGeo, 0xffd9a0, at, { life: 0.9, s0: 1, s1: size * 9, op: 0.8, face: true });
+  fxAdd(fxRingGeo, 0x80c8ff, at, { life: 1.2, s0: 1, s1: size * 6, op: 0.45, face: true });
+  fxAdd(fxBallGeo, 0xffffff, at, { life: 0.12, s0: size * 0.6, s1: size * 2.2 });
+}
+function updateFxParts(dt) {
+  for (let i = fxParts.length - 1; i >= 0; i--) {
+    const f = fxParts[i];
+    f.life -= dt;
+    if (f.life <= 0) { spaceGroup.remove(f.m); f.m.material.dispose(); fxParts.splice(i, 1); continue; }
+    const k = 1 - f.life / f.max;
+    if (f.v) f.m.position.addScaledVector(f.v, dt);
+    else f.m.scale.setScalar(f.s0 + (f.s1 - f.s0) * Math.sqrt(k));
+    if (f.face) f.m.lookAt(camera.position);
+    f.m.material.opacity = f.op * (1 - k);
+  }
+}
 function updateFx(dt) {
+  if (SPACE_FX) updateFxParts(dt);
   fireballs.forEach(f => {
     if (!f.m.visible) return;
     f.life -= dt;
@@ -890,6 +961,7 @@ function updateSpace(dt) {
   tidyScreen();
   updateOthersSpace(dt);
   hud.style.visibility = spaceHideGun() ? 'hidden' : '';   // ingen AK-teller i jagerflyet / kanontårnet
+  if (SPACE_SND) { if (spaceOn()) startSpaceAmb(); else stopSpaceAmb(); }   // [NY] romsus bare i rommet
   if (!spaceOn()) {
     spaceHud.style.display = 'none'; flyHud.style.display = 'none';
     if (spaceBtn) spaceBtn.style.display = 'none';
@@ -955,8 +1027,82 @@ function updateSpace(dt) {
 // ===================================================================
 //  Lyder (laget i koden)
 // ===================================================================
+// [NY] ---------- Romlyder (SPACE_SND) ----------
+// Felles "rom-ekko": en konvolver med en laget etterklang (2,6 s) – lydene sendes litt inn i den
+let spaceEcho = null;
+function echoBus() {
+  if (spaceEcho) return spaceEcho;
+  const sr = audioCtx.sampleRate, len = Math.floor(2.6 * sr), b = audioCtx.createBuffer(2, len, sr);
+  for (let c = 0; c < 2; c++) { const d = b.getChannelData(c); for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3); }
+  const cv = audioCtx.createConvolver(); cv.buffer = b;
+  const wet = audioCtx.createGain(); wet.gain.value = 0.5;
+  cv.connect(wet); wet.connect(audioCtx.destination);
+  spaceEcho = cv; return cv;
+}
+function toOut(node, echo) { node.connect(audioCtx.destination); if (echo) { const s = audioCtx.createGain(); s.gain.value = echo; node.connect(s); s.connect(echoBus()); } }
+function playLaser2(vol, heavy) {
+  const t = audioCtx.currentTime, len = heavy ? 0.45 : 0.24;
+  // "pew": to oscillatorer som faller i tone (lavere enn før)
+  const o = audioCtx.createOscillator(), o2 = audioCtx.createOscillator(), lp = audioCtx.createBiquadFilter(), g = audioCtx.createGain();
+  o.type = heavy ? 'sawtooth' : 'square'; o2.type = 'sawtooth';
+  const f0 = heavy ? 520 : 1250, f1 = heavy ? 48 : 150;
+  o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f1, t + len * 0.85);
+  o2.frequency.setValueAtTime(f0 * 0.503, t); o2.frequency.exponentialRampToValueAtTime(f1 * 0.503, t + len * 0.85);
+  lp.type = 'lowpass'; lp.frequency.setValueAtTime(heavy ? 2200 : 4200, t); lp.frequency.exponentialRampToValueAtTime(heavy ? 300 : 600, t + len);
+  g.gain.setValueAtTime(vol * 0.9, t); g.gain.exponentialRampToValueAtTime(0.001, t + len);
+  o.connect(lp); o2.connect(lp); lp.connect(g); toOut(g, 0.45);
+  o.start(t); o2.start(t); o.stop(t + len + 0.05); o2.stop(t + len + 0.05);
+  // bass-dunk under
+  const th = audioCtx.createOscillator(), tg = audioCtx.createGain();
+  th.type = 'sine'; th.frequency.setValueAtTime(heavy ? 95 : 130, t); th.frequency.exponentialRampToValueAtTime(heavy ? 28 : 42, t + (heavy ? 0.4 : 0.14));
+  tg.gain.setValueAtTime(vol * (heavy ? 1.8 : 1.5), t); tg.gain.exponentialRampToValueAtTime(0.001, t + (heavy ? 0.45 : 0.16));
+  th.connect(tg); toOut(tg, 0.2); th.start(t); th.stop(t + 0.5);
+  if (heavy) {   // tunge kanoner: litt "BWOOM"-sus
+    const src = audioCtx.createBufferSource(); src.buffer = noiseBuf(0.5);
+    const nl = audioCtx.createBiquadFilter(); nl.type = 'lowpass'; nl.frequency.setValueAtTime(900, t); nl.frequency.exponentialRampToValueAtTime(120, t + 0.45);
+    const ng = audioCtx.createGain(); ng.gain.setValueAtTime(vol * 1.2, t); ng.gain.exponentialRampToValueAtTime(0.001, t + 0.48);
+    src.connect(nl); nl.connect(ng); toOut(ng, 0.4); src.start(t);
+  }
+}
+function playSpaceBoom(vol, size) {
+  if (!audioCtx) return;
+  const t = audioCtx.currentTime, len = 1.6 + Math.min(1.2, (size || 2) * 0.25);
+  const src = audioCtx.createBufferSource(); src.buffer = noiseBuf(len);
+  const lp = audioCtx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.setValueAtTime(1400, t); lp.frequency.exponentialRampToValueAtTime(90, t + len);
+  const g = audioCtx.createGain(); g.gain.setValueAtTime(vol * 0.75, t); g.gain.exponentialRampToValueAtTime(0.001, t + len);
+  src.connect(lp); lp.connect(g); toOut(g, 0.55); src.start(t);
+  // under-bass som ruller
+  const o = audioCtx.createOscillator(), og = audioCtx.createGain();
+  o.type = 'sine'; o.frequency.setValueAtTime(62, t); o.frequency.exponentialRampToValueAtTime(24, t + len * 0.8);
+  og.gain.setValueAtTime(vol * 1.0, t); og.gain.exponentialRampToValueAtTime(0.001, t + len * 0.85);
+  o.connect(og); toOut(og, 0.25); o.start(t); o.stop(t + len);
+}
+// Romsus i bakgrunnen: dyp brumming som "puster" sakte
+let spaceAmb = null;
+function startSpaceAmb() {
+  if (!audioCtx || spaceAmb) return;
+  const t = audioCtx.currentTime, out = audioCtx.createGain();
+  out.gain.setValueAtTime(0.0001, t); out.gain.exponentialRampToValueAtTime(0.05, t + 3);
+  const lp = audioCtx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 260;
+  const o1 = audioCtx.createOscillator(), o2 = audioCtx.createOscillator(), o3 = audioCtx.createOscillator();
+  o1.type = 'sawtooth'; o1.frequency.value = 41; o2.type = 'sawtooth'; o2.frequency.value = 41.6; o3.type = 'sine'; o3.frequency.value = 61.7;
+  const src = audioCtx.createBufferSource(); src.buffer = noiseBuf(4); src.loop = true;
+  const nb = audioCtx.createBiquadFilter(); nb.type = 'bandpass'; nb.frequency.value = 180; nb.Q.value = 0.7;
+  const ng = audioCtx.createGain(); ng.gain.value = 0.6;
+  const breathe = audioCtx.createGain(); breathe.gain.value = 0.7;
+  const lfo = audioCtx.createOscillator(), lfoG = audioCtx.createGain(); lfo.frequency.value = 0.07; lfoG.gain.value = 0.3;
+  lfo.connect(lfoG); lfoG.connect(breathe.gain);
+  const lfo2 = audioCtx.createOscillator(), lfo2G = audioCtx.createGain(); lfo2.frequency.value = 0.045; lfo2G.gain.value = 120;
+  lfo2.connect(lfo2G); lfo2G.connect(lp.frequency);
+  o1.connect(lp); o2.connect(lp); o3.connect(lp); src.connect(nb); nb.connect(ng); ng.connect(lp);
+  lp.connect(breathe); breathe.connect(out); toOut(out, 0.3);
+  [o1, o2, o3, src, lfo, lfo2].forEach(n => n.start());
+  spaceAmb = { stop() { const tt = audioCtx.currentTime; out.gain.setTargetAtTime(0.0001, tt, 0.4); [o1, o2, o3, src, lfo, lfo2].forEach(n => { try { n.stop(tt + 2); } catch (e) {} }); } };
+}
+function stopSpaceAmb() { if (spaceAmb) { spaceAmb.stop(); spaceAmb = null; } }
 function playLaser(vol, heavy) {
   if (!audioCtx) return;
+  if (SPACE_SND) return playLaser2(vol, heavy);
   const t = audioCtx.currentTime;
   const o = audioCtx.createOscillator(), o2 = audioCtx.createOscillator(), g = audioCtx.createGain(), lp = audioCtx.createBiquadFilter();
   o.type = heavy ? 'sawtooth' : 'square'; o2.type = 'sine';
@@ -1020,9 +1166,21 @@ function startEngine() {
   g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.06, t + 0.5);
   o1.connect(lp); o2.connect(lp); lp.connect(g); src.connect(nlp); nlp.connect(ng); ng.connect(g); g.connect(audioCtx.destination);
   o1.start(); o2.start(); src.start();
+  // [NY] dyp bass-lag + turbo-brøl
+  let sub = null, roarG = null;
+  if (SPACE_SND) {
+    sub = audioCtx.createOscillator(); sub.type = 'sine'; sub.frequency.value = 28;
+    const sg = audioCtx.createGain(); sg.gain.value = 0.9; sub.connect(sg); sg.connect(g); sub.start();
+    const rs = audioCtx.createBufferSource(); rs.buffer = noiseBuf(2); rs.loop = true;
+    const rl = audioCtx.createBiquadFilter(); rl.type = 'lowpass'; rl.frequency.value = 700;
+    roarG = audioCtx.createGain(); roarG.gain.value = 0.0001;
+    rs.connect(rl); rl.connect(roarG); roarG.connect(g); rs.start();
+    src.__extra = [sub, rs];
+  }
   engine = {
     setSpeed(k, boost) {
       const tt = audioCtx.currentTime;
+      if (sub) { sub.frequency.setTargetAtTime(24 + k * 22, tt, 0.25); roarG.gain.setTargetAtTime(boost ? 0.55 : 0.0001, tt, boost ? 0.12 : 0.3); }
       o1.frequency.setTargetAtTime(45 + k * 45 + (boost ? 25 : 0), tt, 0.2);
       o2.frequency.setTargetAtTime(68 + k * 68 + (boost ? 40 : 0), tt, 0.2);
       lp.frequency.setTargetAtTime(300 + k * 500 + (boost ? 600 : 0), tt, 0.2);
@@ -1031,7 +1189,7 @@ function startEngine() {
     stop() {
       const tt = audioCtx.currentTime;
       g.gain.setTargetAtTime(0.0001, tt, 0.15);
-      [o1, o2, src].forEach(n => { try { n.stop(tt + 0.6); } catch (e) {} });
+      [o1, o2, src].concat(src.__extra || []).forEach(n => { try { n.stop(tt + 0.6); } catch (e) {} });
     }
   };
 }
