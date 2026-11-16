@@ -13,6 +13,8 @@ const DV_SPEC = {
   tank: { max: 9, back: 4, acc: 1.4, turn: 0.85, hw: 1.6, hl: 2.9, camBack: 11, camUp: 5.6 },
   jeep: { max: 18, back: 7, acc: 2.2, turn: 1.7, hw: 1.0, hl: 2.0, camBack: 7.5, camUp: 3.4 }
 };
+const tankMgW = { id: 'tankmg', mag: 200, magSize: 200, reserve: Infinity, fireDelay: 0.08, reloadTime: 3, climb: 0.002 };   // [NY] nr. 2 i stridsvognen
+let myDvSeat = null, dvGunSend = 0;                    // 'drive' eller 'gun'
 const jeepW = { id: 'jeepmg', mag: 200, magSize: 200, reserve: Infinity, fireDelay: 0.08, reloadTime: 3, climb: 0.002 };
 let dvInfo = [], myDv = null, dvPrevWeapon = null, dvShellReady = 0, dvSendT = 0, dvRamAt = {}, dvDozeSet = new Set(), dvDozeT = 0;
 const dvl = { x: 0, y: 0, z: 0, yaw: 0, spd: 0, ty: 0, tp: 0 };   // ditt eget kjøretøy (kjøres her)
@@ -49,7 +51,13 @@ function buildDTank(team) {
   const piv = new THREE.Group(); piv.position.set(0, 0.4, -1.25); tur.add(piv);
   const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.13, 3.6, 10), DVM.steel); bar.rotation.x = Math.PI / 2; bar.position.z = -1.8; piv.add(bar);
   const brake = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.17, 0.35, 10), DVM.dark); brake.rotation.x = Math.PI / 2; brake.position.z = -3.6; piv.add(brake);
-  g.userData = { tur, piv, tip: new THREE.Vector3(0, 0, -3.8), kind: 'tank' };
+  const mg = new THREE.Group(); mg.position.set(0.5, 1.05, 0.5); tur.add(mg);      // [NY] maskingevær ved luka (for nr. 2)
+  dvB(mg, 0.08, 0.5, 0.08, 0, -0.1, 0, DVM.dark);
+  const mgp = new THREE.Group(); mgp.position.y = 0.18; mg.add(mgp);
+  dvB(mgp, 0.12, 0.14, 0.7, 0, 0, -0.15, DVM.dark);
+  const mb = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.7, 8), DVM.dark); mb.rotation.x = Math.PI / 2; mb.position.z = -0.75; mgp.add(mb);
+  dvB(mgp, 0.45, 0.28, 0.04, 0, 0.1, -0.3, DVM.steel);                          // skjold
+  g.userData = { tur, piv, mg, mgp, tip: new THREE.Vector3(0, 0, -3.8), kind: 'tank' };
   return g;
 }
 function buildJeep(team) {
@@ -74,27 +82,29 @@ function buildJeep(team) {
 
 // ---------- Fra serveren ----------
 socket.on('dveh', list => {
-  dvInfo = list.map(a => ({ id: a[0], kind: a[1] === 1 ? 'tank' : 'jeep', team: a[2] === 1 ? 'bunny' : 'squirrel', x: a[3], y: a[4], z: a[5], yaw: a[6], ty: a[7], tp: a[8], hp: a[9], driver: a[10], alive: !!a[11] }));
-  dvDriverIds.clear(); dvInfo.forEach(v => { if (v.driver) dvDriverIds.add(v.driver); });
-  const mine = dvInfo.find(v => v.driver && v.driver === myId);
-  if (mine && myDv === null) dvEnterLocal(mine);
+  dvInfo = list.map(a => ({ id: a[0], kind: a[1] === 1 ? 'tank' : 'jeep', team: a[2] === 1 ? 'bunny' : 'squirrel', x: a[3], y: a[4], z: a[5], yaw: a[6], ty: a[7], tp: a[8], hp: a[9], driver: a[10], alive: !!a[11], gunner: a[12] || '', gy: a[13] || 0, gp: a[14] || 0 }));
+  dvDriverIds.clear(); dvInfo.forEach(v => { if (v.driver) dvDriverIds.add(v.driver); if (v.gunner) dvDriverIds.add(v.gunner); });
+  const mine = dvInfo.find(v => (v.driver && v.driver === myId) || (v.gunner && v.gunner === myId));
+  const seat = mine ? (mine.driver === myId ? 'drive' : 'gun') : null;
+  if (mine && (myDv === null || myDvSeat !== seat)) { if (myDv !== null) dvExitLocal(); dvEnterLocal(mine, seat); }
   if (!mine && myDv !== null) dvExitLocal();
 });
 socket.on('dvExit', d => { dvExitLocal(); player.x = d.x; player.z = d.z; player.feetY = d.y || 0; player.vy = 0; });
 socket.on('respawn', () => { if (myDv !== null) dvExitLocal(); });
 socket.on('map', () => { if (myDv !== null) dvExitLocal(); dvInfo = []; dvDriverIds.clear(); });
-function dvEnterLocal(v) {
-  myDv = v.id;
+function dvEnterLocal(v, seat) {
+  myDv = v.id; myDvSeat = seat || 'drive';
   Object.assign(dvl, { x: v.x, y: v.y, z: v.z, yaw: v.yaw, spd: 0, ty: v.ty, tp: 0 });
   player.yaw = v.yaw; player.pitch = 0;
   dvPrevWeapon = weapon; scoped = false;
   if (v.kind === 'jeep') { weapon = jeepW; jeepW.mag = jeepW.magSize; }
+  if (myDvSeat === 'gun') { weapon = tankMgW; tankMgW.mag = tankMgW.magSize; player.yaw = v.ty; }
   if (typeof showWeaponModel === 'function') showWeaponModel();
-  bannerMsg = v.kind === 'tank' ? '&#128737;&#65039; STRIDSVOGN – klikk = kanon' : '&#128665; JEEP – klikk = maskingevær'; bannerTime = 2;
-  dvEngineStart(v.kind);
+  bannerMsg = myDvSeat === 'gun' ? '&#128737;&#65039; SKYTTER – klikk = maskingevær på taket' : v.kind === 'tank' ? '&#128737;&#65039; STRIDSVOGN – klikk = kanon, høyre knapp = zoom' : '&#128665; JEEP – klikk = maskingevær'; bannerTime = 2;
+  if (myDvSeat === 'drive') dvEngineStart(v.kind);
 }
 function dvExitLocal() {
-  myDv = null;
+  myDv = null; myDvSeat = null; scoped = false;
   if (dvPrevWeapon) weapon = dvPrevWeapon;
   dvPrevWeapon = null;
   if (typeof showWeaponModel === 'function') showWeaponModel();
@@ -103,6 +113,7 @@ function dvExitLocal() {
 function dvMine() { return myDv !== null ? dvInfo.find(v => v.id === myDv) || null : null; }
 function dvBusy() { return myDv !== null; }
 function dvHideGun() { return myDv !== null && desertOn(); }
+function dvCanZoom() { const v = dvMine(); return !!v && v.kind === 'tank' && desertOn(); }   // [NY] zoom i stridsvognen (begge plassene)
 
 // ---------- Kjøring (din egen) ----------
 const DV_SOFT = new Set([DESERT.T.BAG, DESERT.T.WOOD, DESERT.T.CLOTH, DESERT.T.TENT_R, DESERT.T.TENT_G, DESERT.T.LEAF, DESERT.T.TRUNK]);
@@ -141,6 +152,16 @@ function dvDrive(dt) {
   const v = dvMine();
   if (!v || !v.alive || !alive) { if (myDv !== null) dvExitLocal(); return false; }
   const spec = DV_SPEC[v.kind], tank = v.kind === 'tank';
+  if (myDvSeat === 'gun') {                           // [NY] nr. 2: sitter i luka og skyter maskingeværet
+    const m = dvMeshes[v.id], c = m ? m.userData.cur : v;
+    player.x = c.x; player.z = c.z; player.feetY = c.y; player.vy = 0; player.onGround = true;
+    const fx = -Math.sin(player.yaw), fz = -Math.cos(player.yaw);
+    if (scoped) { camera.position.set(c.x, c.y + 3.3, c.z); camera.rotation.set(player.pitch, player.yaw, 0); }
+    else { camera.position.set(c.x - fx * 4.5, c.y + 4.4 - player.pitch * 2, c.z - fz * 4.5); camera.rotation.set(player.pitch - 0.1, player.yaw, 0); }
+    dvGunSend -= dt;
+    if (dvGunSend <= 0) { dvGunSend = 0.1; socket.emit('dvGunAim', { gy: +player.yaw.toFixed(3), gp: +Math.max(-0.35, Math.min(0.7, player.pitch)).toFixed(3) }); }
+    return true;
+  }
   let thr = touchMove.y, turn = touchMove.x;
   if (keys['KeyW'] || keys['ArrowUp']) thr += 1;
   if (keys['KeyS'] || keys['ArrowDown']) thr -= 1;
@@ -178,8 +199,11 @@ function dvDrive(dt) {
   // Spilleren sitter i kjøretøyet; kameraet bak og over
   player.x = dvl.x; player.z = dvl.z; player.feetY = dvl.y; player.vy = 0; player.onGround = true;
   const fx = -Math.sin(player.yaw), fz = -Math.cos(player.yaw), back = spec.camBack * Math.cos(player.pitch * 0.5);
-  camera.position.set(dvl.x - fx * back, dvl.y + spec.camUp - player.pitch * 3, dvl.z - fz * back);
-  camera.rotation.set(player.pitch - (tank ? 0.18 : 0.14), player.yaw, 0);
+  if (scoped && tank) { camera.position.set(dvl.x, dvl.y + 3.0, dvl.z); camera.rotation.set(player.pitch, player.yaw, 0); }   // [NY] zoom: gjennom kanonsiktet
+  else {
+    camera.position.set(dvl.x - fx * back, dvl.y + spec.camUp - player.pitch * 3, dvl.z - fz * back);
+    camera.rotation.set(player.pitch - (tank ? 0.18 : 0.14), player.yaw, 0);
+  }
   if (dvEngine) dvEngine.set(Math.abs(dvl.spd) / spec.max);
   return true;
 }
@@ -202,7 +226,7 @@ function dvTip(v) {                                     // munningen på stridsv
 function dvShoot() {                                    // kalles først i shoot(). true = ferdig
   if (myDv === null || !desertOn()) return false;
   const v = dvMine();
-  if (!v || v.kind !== 'tank') return false;            // jeepen: vanlig skudd med jeepW (maskingeværet)
+  if (!v || v.kind !== 'tank' || myDvSeat === 'gun') return false;   // jeepen / skytteren: vanlig skudd med maskingeværet
   fireCooldown = 0.3;
   if (performance.now() < dvShellReady) return true;
   dvShellReady = performance.now() + 3000;
@@ -284,7 +308,7 @@ function dvNear() {
   if (!desertOn() || !alive || myDv !== null) return null;
   let best = null, bd = 5.5;
   dvInfo.forEach(v => {
-    if (!v.alive || v.driver || v.team !== myTeam) return;
+    if (!v.alive || v.team !== myTeam || (v.driver && (v.kind !== 'tank' || v.gunner))) return;   // [NY] stridsvogn med sjåfør: plass til skytter
     const d = Math.hypot(player.x - v.x, player.z - v.z);
     if (d < bd) { bd = d; best = v; }
   });
@@ -357,6 +381,10 @@ function updateDesertVehicles(dt) {
     m.rotation.y = c.yaw;
     m.userData.tur.rotation.y = c.ty - c.yaw;
     m.userData.piv.rotation.x = c.tp;
+    if (m.userData.mg) {                              // maskingeværet på taket følger skytteren
+      const gy = mine && myDvSeat === 'gun' ? player.yaw : v.gy, gp = mine && myDvSeat === 'gun' ? player.pitch : v.gp;
+      m.userData.mg.rotation.y = (v.gunner ? gy : c.ty) - c.ty; m.userData.mgp.rotation.x = v.gunner ? Math.max(-0.35, Math.min(0.7, gp)) : 0;
+    }
   });
   // Sjåførene sitter inne (figuren skjules)
   for (const id in others) others[id].root.visible = !dvDriverIds.has(id);
@@ -365,13 +393,14 @@ function updateDesertVehicles(dt) {
   const v = dvMine();
   if (v) {
     const rel = Math.max(0, (dvShellReady - performance.now()) / 1000);
-    txt = (v.kind === 'tank' ? '&#128737;&#65039; STRIDSVOGN ' : '&#128665; JEEP ') + v.hp + '% &nbsp; ' +
+    if (myDvSeat === 'gun') txt = '&#128737;&#65039; SKYTTER ' + v.hp + '% &nbsp; MG ' + tankMgW.mag + (isTouch ? '' : ' &nbsp; E = gå ut');
+    else txt = (v.kind === 'tank' ? '&#128737;&#65039; STRIDSVOGN ' : '&#128665; JEEP ') + v.hp + '% &nbsp; ' +
       (v.kind === 'tank' ? (rel > 0 ? '<span style="color:#ffb000">lader ' + rel.toFixed(1) + '</span>' : '<span style="color:#7dff7d">KANON KLAR</span>') : 'MG ' + jeepW.mag) +
       (isTouch ? '' : ' &nbsp; E = gå ut');
     btn = 'GÅ UT';
   } else {
     const n = dvNear();
-    if (n) { txt = (isTouch ? 'Trykk KJØR' : 'Trykk <b>E</b>') + ' for å kjøre ' + (n.kind === 'tank' ? 'stridsvognen &#128737;&#65039;' : 'jeepen &#128665;'); btn = 'KJØR'; }
+    if (n) { txt = (isTouch ? 'Trykk KJØR' : 'Trykk <b>E</b>') + (n.driver ? ' for å skyte maskingeværet på stridsvognen &#128737;&#65039;' : ' for å kjøre ' + (n.kind === 'tank' ? 'stridsvognen &#128737;&#65039;' : 'jeepen &#128665;')); btn = n.driver ? 'SKYTTER' : 'KJØR'; }
   }
   dvHud.style.display = txt ? 'block' : 'none';
   dvHud.innerHTML = txt;

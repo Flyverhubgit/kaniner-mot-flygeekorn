@@ -33,7 +33,8 @@ const DESERT_W = {
   mg42: { dmg: 15, head: 38, ms: 45 },        // MG42 – skyter veldig fort
   pistol: { dmg: 24, head: 55, ms: 160 },     // pistol
   sniper50: { dmg: 90, head: 200, ms: 1000 }, // .50 kaliber (12,7 mm) snikskytter: hodeskudd dreper alltid
-  jeepmg: { dmg: 18, head: 40, ms: 70 }       // [NY] maskingeværet på jeepen
+  jeepmg: { dmg: 18, head: 40, ms: 70 },      // [NY] maskingeværet på jeepen
+  tankmg: { dmg: 18, head: 40, ms: 70 }       // [NY] maskingeværet på taket av stridsvognen
 };
 const BREAK_SECONDS = 8;       // [NY] resultater i 8 sek, så tilbake til loungen
 const RESPAWN_SECONDS = 3;
@@ -1265,7 +1266,7 @@ io.on('connection', socket => {
     const to = d.to.map(v => num(v, -500, 500));
     if (to.includes(null)) return;
     p.protectedUntil = 0;                 // skyter du, er beskyttelsen over
-    const SHOT_W = ['sniper', 'dart', 'bow', 'crossbow', 'sword', 'flail', 'c7', 'c7s', 'minimi', 'mg42', 'pistol', 'sniper50', 'jeepmg'];   // [NY] pilgevær under vann, bue/armbrøst/sverd på Ridderborgen, ørken-våpen (c7s = med lyddemper)
+    const SHOT_W = ['sniper', 'dart', 'bow', 'crossbow', 'sword', 'flail', 'c7', 'c7s', 'minimi', 'mg42', 'pistol', 'sniper50', 'jeepmg', 'tankmg'];   // [NY] pilgevær under vann, bue/armbrøst/sverd på Ridderborgen, ørken-våpen (c7s = med lyddemper)
     socket.broadcast.emit('shot', { id: socket.id, to, w: SHOT_W.includes(d.w) ? d.w : 'ak' });
   });
   // [NY] Krigsbrøl (V) på Ridderborgen: alle hører det
@@ -1300,7 +1301,7 @@ io.on('connection', socket => {
     if (mapName === 'desert') {
       const W = DESERT_W[d.weapon];
       if (!W) return;
-      if (d.weapon === 'jeepmg' ? !(dvOf(p) && dvOf(p).kind === 'jeep') : !!p.vehicle) return;   // [NY] taket-MG bare i jeepen, vanlige våpen bare til fots
+      if (d.weapon === 'jeepmg' ? !(dvOf(p) && dvOf(p).kind === 'jeep') : d.weapon === 'tankmg' ? !(dvOf(p) && dvOf(p).gunner === p.id) : !!p.vehicle) return;   // [NY] taket-MG bare i jeepen / for stridsvognskytteren, vanlige våpen bare til fots
       if (t.vehicle === 'dv') { dvDamage(dvOf(t), dvBulletDmg(dvOf(t), d.weapon), p); return; }
       if (now - (p['last_' + d.weapon] || 0) < W.ms) return;
       p['last_' + d.weapon] = now;
@@ -1635,13 +1636,22 @@ io.on('connection', socket => {
   // [NY] ØRKEN-KJØRETØY: inn, ut, kjør, skyt, treff, kjør over
   socket.on('dvIn', d => {
     const p = players[socket.id], v = d && dvList[d.id | 0];
-    if (!p || !p.alive || intermission || mapName !== 'desert' || p.vehicle || !v || !v.alive || v.driver || v.team !== p.team) return;
+    if (!p || !p.alive || intermission || mapName !== 'desert' || p.vehicle || !v || !v.alive || v.team !== p.team) return;
     if (Math.hypot(p.x - v.x, p.z - v.z) > 6) return;
+    if (v.driver && (v.kind !== 'tank' || v.gunner || !DV_GUNNER)) return;   // [NY] stridsvognen har plass til en skytter på taket
     dropHoly(p);
-    v.driver = p.id; v.at = Date.now(); p.vehicle = 'dv'; p.dv = v.id;
+    if (!v.driver) { v.driver = p.id; v.at = Date.now(); }
+    else v.gunner = p.id;
+    p.vehicle = 'dv'; p.dv = v.id;
     io.emit('dveh', dvState());
   });
   socket.on('dvOut', () => { const p = players[socket.id]; if (p && p.vehicle === 'dv') { dvLeave(p, true); io.emit('dveh', dvState()); } });
+  socket.on('dvGunAim', d => {                      // [NY] skytteren på taket sikter
+    const p = players[socket.id], v = dvOf(p);
+    if (!v || v.gunner !== p.id || !d) return;
+    const gy = num(d.gy, -1e6, 1e6), gp = num(d.gp, -1, 1);
+    if (gy !== null && gp !== null) { v.gy = gy; v.gp = gp; }
+  });
   socket.on('dvMove', d => {
     const p = players[socket.id], v = dvOf(p);
     if (!v || v.driver !== p.id || !d) return;
@@ -1685,6 +1695,7 @@ io.on('connection', socket => {
     p.lastDvHit = now;
     const w = typeof d.w === 'string' ? d.w : '';
     if (w === 'jeepmg' && !(dvOf(p) && dvOf(p).kind === 'jeep')) return;
+    if (w === 'tankmg' && !(dvOf(p) && dvOf(p).gunner === p.id)) return;
     dvDamage(v, dvBulletDmg(v, w), p);
   });
   // [NY] RØYKGRANAT (ørkenen): kastes som en granat, alle ser den. Kasteren sier fra når røyken kommer.
@@ -2450,6 +2461,7 @@ const DV_PARK = [                                   // kaninenes plasser (flygee
   { kind: 'jeep', x: -4, z: 191 }, { kind: 'jeep', x: 4, z: 191 }, { kind: 'jeep', x: 0, z: 184 }
 ];
 const DV_RESPAWN_MS = 40000;
+const DV_GUNNER = true;                             // [NY] nr. 2 i stridsvognen styrer maskingeværet på taket
 // [NY] Stridsvogn-granaten (sterkere 2026-11-16): dreper innen ca. 5 m, skader ut til 11 m, store hull i husene
 const DV_SHELL = { dmg: 220, r: 11, blocks: 4.8, big: 3.6, vr: 6, vdmg: 320 };   // (før: 150 / 6 m / 3.2 / 2.6 / 4 m / 240)
 let dvList = [];
@@ -2465,6 +2477,7 @@ function dvOf(p) { return p && p.vehicle === 'dv' ? dvList[p.dv] || null : null;
 function dvLeave(p, place) {
   const v = dvOf(p);
   if (v && v.driver === p.id) v.driver = null;
+  if (v && v.gunner === p.id) v.gunner = null;        // [NY] skytteren på taket
   p.vehicle = null; p.dv = -1;
   if (v && place) {                                 // gå ut ved siden av kjøretøyet
     const sx = Math.cos(v.yaw) * (v.kind === 'tank' ? 2.8 : 2), sz = -Math.sin(v.yaw) * (v.kind === 'tank' ? 2.8 : 2);
@@ -2480,6 +2493,9 @@ function dvDamage(v, dmg, by) {
   if (v.hp > 0) return;
   v.alive = false; v.respawnAt = Date.now() + DV_RESPAWN_MS;
   io.emit('boom', { id: 'dv' + v.id + '_' + Date.now(), p: [v.x, v.y + 1, v.z], big: v.kind === 'tank' ? 3.2 : 2.4 });
+  const gn = v.gunner && players[v.gunner];
+  if (gn) { dvLeave(gn, false); if (by && by.team !== gn.team) applyDamage(by, gn, 999, false, 'rocket'); else killByWorld(gn, '💥', 'crash'); }   // [NY] skytteren også
+  v.gunner = null;
   const d = v.driver && players[v.driver];
   if (d) {                                           // sjåføren klarer seg ikke
     dvLeave(d, false);
@@ -2500,18 +2516,21 @@ function dvArea(pos, r, base, by, team) {          // team = laget som skjøt (h
 // Skudd mot kjøretøy: jeepen tåler litt, stridsvognen nesten alt (bare .50 riper)
 function dvBulletDmg(v, w) {
   if (v.kind === 'tank') return w === 'sniper50' ? 4 : 0;
-  return { c7: 6, minimi: 5, mg42: 5, pistol: 4, sniper50: 45, jeepmg: 7 }[w] || 0;
+  return { c7: 6, minimi: 5, mg42: 5, pistol: 4, sniper50: 45, jeepmg: 7, tankmg: 7 }[w] || 0;
 }
 function dvState() {
   return dvList.map(v => [v.id, v.kind === 'tank' ? 1 : 2, v.team === 'bunny' ? 1 : 2, +v.x.toFixed(2), +v.y.toFixed(2), +v.z.toFixed(2), +v.yaw.toFixed(3), +v.ty.toFixed(3), +v.tp.toFixed(3),
-    Math.max(0, Math.round(v.hp / DV[v.kind].hp * 100)), v.driver || '', v.alive ? 1 : 0]);
+    Math.max(0, Math.round(v.hp / DV[v.kind].hp * 100)), v.driver || '', v.alive ? 1 : 0, v.gunner || '', +(v.gy || 0).toFixed(3), +(v.gp || 0).toFixed(3)]);
 }
 setInterval(() => {
   if (mapName !== 'desert' || !dvList.length) return;
   const now = Date.now();
   dvList.forEach(v => {                              // nytt kjøretøy hjemme etter 40 sek
-    if (!v.alive && now >= v.respawnAt) Object.assign(v, { x: v.home.x, y: 0, z: v.home.z, yaw: v.home.yaw, ty: v.home.yaw, tp: 0, hp: DV[v.kind].hp, alive: true, driver: null });
+    if (!v.alive && now >= v.respawnAt) Object.assign(v, { x: v.home.x, y: 0, z: v.home.z, yaw: v.home.yaw, ty: v.home.yaw, tp: 0, hp: DV[v.kind].hp, alive: true, driver: null, gunner: null });
     if (v.driver && !players[v.driver]) v.driver = null;
+    if (v.gunner && !players[v.gunner]) v.gunner = null;
+    const g = v.gunner && players[v.gunner];
+    if (g) { g.x = v.x; g.y = v.y + 2; g.z = v.z; }   // skytteren følger stridsvognen
   });
   io.emit('dveh', dvState());
 }, 100);
