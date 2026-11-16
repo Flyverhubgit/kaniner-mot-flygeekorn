@@ -1561,7 +1561,8 @@ function shoot() {
   flashTime = med ? 0 : sn ? 0.07 : dart ? 0 : 0.04;        // ingen munningsflamme under vann eller fra buen
   flash.rotation.z = Math.random() * Math.PI;
   const desW = typeof desertWeaponsOn !== 'undefined' && desertWeaponsOn && !egg;   // [NY] Ørkenkrigen
-  if (desW && playDesertShot(weapon.id, 1)) {}   // [NY] hvert ørken-våpen har sitt smell
+  const quiet = desW && typeof c7Quiet === 'function' && c7Quiet();   // [NY] C7 med lyddemper
+  if (desW && playDesertShot(quiet ? 'c7s' : weapon.id, 1)) { if (quiet) flashTime = 0; }   // [NY] hvert ørken-våpen har sitt smell
   else if (med && typeof playTwang === 'function') playTwang(0.3, sn);   // [NY] buestreng-smell
   else if (sn) playShot(0.55, 650); else if (dart && typeof playDart === 'function') playDart(0.3); else playShot();  // [NY] dypere og høyere smell
 
@@ -1640,7 +1641,7 @@ function shoot() {
   else if (med && typeof medArrowFx === 'function') medArrowFx(muzzleWorld(), end, !target, sn);   // [NY] pil / armbrøstbolt
   else addTracer(muzzleWorld(), end);
   if (egg && typeof eggShotFx === 'function') eggShotFx(muzzleWorld(), end);
-  socket.emit('shot', { to: [+end.x.toFixed(2), +end.y.toFixed(2), +end.z.toFixed(2)], w: weapon.id });
+  socket.emit('shot', { to: [+end.x.toFixed(2), +end.y.toFixed(2), +end.z.toFixed(2)], w: quiet ? 'c7s' : weapon.id });
 
   // Liten rekyl i sikte
   player.pitch = Math.min(1.45, player.pitch + (sn ? 0.03 : 0.004) + (weapon.climb || 0));   // [NY] maskingevær klatrer mer
@@ -1746,7 +1747,7 @@ function updateWeapon(dt) {
     return;
   }
   hud.textContent = wIcon + (medHud ? '∞' : reloading > 0 ? 'LADER...' : weapon.mag + ' / ' + (weapon.reserve === Infinity ? '∞' : weapon.reserve)) +
-    (medHud ? '   🔥 ' : '   💣 ') + (underNow() || (typeof hordeOn === 'function' && hordeOn()) || (typeof dragonOn === 'function' && dragonOn()) ? '∞' : grenades) + (window.holyMine ? '   🍑 HELLIG FERSKEN (G)' : '');   // [NY] viser granater også (uendelig i underverdenen)
+    (medHud ? '   🔥 ' : '   💣 ') + (underNow() || (typeof hordeOn === 'function' && hordeOn()) || (typeof dragonOn === 'function' && dragonOn()) ? '∞' : grenades) + (window.holyMine ? '   🍑 HELLIG FERSKEN (G)' : '') + (typeof desertWeaponsOn !== 'undefined' && desertWeaponsOn && typeof desertExtrasHud === 'function' ? desertExtrasHud() : '');   // [NY] røyk og C4   // [NY] viser granater også (uendelig i underverdenen)
 }
 
 // ===================================================================

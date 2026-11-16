@@ -69,6 +69,10 @@ const TEAMS = ['bunny', 'squirrel'];
 const NADES_PER_LIFE = 3;      // granater per liv
 const ROCKETS_PER_LIFE = 2;    // bazooka-raketter per liv
 const DESERT_ROCKETS = 3;      // [NY] Ørkenkrigen: RPG + bazooka, 3 per liv til sammen
+const DESERT_SMOKES = 2, DESERT_C4 = 2;                       // [NY] røykgranater og klebeladninger (C4) per liv
+const SMOKE_MS = 18000, SMOKE_R = 6.5;                        // røyken står i 18 sek, ca. 6,5 m radius (robotene ser ikke gjennom)
+const C4 = { r: 7, dmg: 200, blocks: 4.5, vr: 4, vdmg: 450, stuck: 600 };   // klebeladning: dreper innen ca. 3,5 m, 2 stk dreper en stridsvogn
+let smokes = [];                                              // { x, y, z, until }
 const ROCKET_RADIUS = 4.5, ROCKET_MAX_DMG = 120, ROCKET_BLOCKS = 3.5;
 const SPAWN_PROTECT_MS = 2000; // usårbar i 2 sek etter ny start
 const NADE_RADIUS = 6;         // sprengradius i meter
@@ -1174,6 +1178,7 @@ function respawn(p) {
   const sp = spawnFor(p.team);
   p.nades = hordeMap() ? FARM_NADES : NADES_PER_LIFE;      // [NY] 10 granater på kyllingfarmen
   p.rockets = hordeMap() ? FARM_ROCKETS : mapName === 'desert' ? DESERT_ROCKETS : ROCKETS_PER_LIFE;   // [NY] ørkenen: 3 (RPG + bazooka til sammen)
+  p.smokes = DESERT_SMOKES; p.c4n = DESERT_C4;               // [NY] ørkenen: røykgranater og klebeladninger per liv
   p.protectedUntil = Date.now() + SPAWN_PROTECT_MS;
   p.hp = MAX_HP;
   p.alive = true;
@@ -1260,7 +1265,7 @@ io.on('connection', socket => {
     const to = d.to.map(v => num(v, -500, 500));
     if (to.includes(null)) return;
     p.protectedUntil = 0;                 // skyter du, er beskyttelsen over
-    const SHOT_W = ['sniper', 'dart', 'bow', 'crossbow', 'sword', 'flail'];   // [NY] pilgevær under vann, bue/armbrøst/sverd på Ridderborgen
+    const SHOT_W = ['sniper', 'dart', 'bow', 'crossbow', 'sword', 'flail', 'c7', 'c7s', 'minimi', 'mg42', 'pistol', 'sniper50', 'jeepmg'];   // [NY] pilgevær under vann, bue/armbrøst/sverd på Ridderborgen, ørken-våpen (c7s = med lyddemper)
     socket.broadcast.emit('shot', { id: socket.id, to, w: SHOT_W.includes(d.w) ? d.w : 'ak' });
   });
   // [NY] Krigsbrøl (V) på Ridderborgen: alle hører det
@@ -1682,6 +1687,71 @@ io.on('connection', socket => {
     if (w === 'jeepmg' && !(dvOf(p) && dvOf(p).kind === 'jeep')) return;
     dvDamage(v, dvBulletDmg(v, w), p);
   });
+  // [NY] RØYKGRANAT (ørkenen): kastes som en granat, alle ser den. Kasteren sier fra når røyken kommer.
+  socket.on('smokeThrow', d => {
+    const p = players[socket.id];
+    if (!p || !p.alive || mapName !== 'desert' || p.vehicle || !d || typeof d.id !== 'string' || d.id.length > 40 || !Array.isArray(d.p) || !Array.isArray(d.v)) return;
+    if ((p.smokes === undefined ? DESERT_SMOKES : p.smokes) <= 0) return;
+    const pos = d.p.map(q => num(q, -250, 250)), vel = d.v.map(q => num(q, -40, 40));
+    if (pos.includes(null) || vel.includes(null)) return;
+    p.smokes = (p.smokes === undefined ? DESERT_SMOKES : p.smokes) - 1;
+    p.pending[d.id] = 'smoke';
+    socket.broadcast.emit('smokeNade', { id: d.id, p: pos, v: vel });
+  });
+  socket.on('smokePop', d => {
+    const p = players[socket.id];
+    if (!p || !d || p.pending[d.id] !== 'smoke' || !Array.isArray(d.p)) return;
+    delete p.pending[d.id];
+    const pos = d.p.map(q => num(q, -250, 250));
+    if (pos.includes(null)) return;
+    smokes = smokes.filter(c => c.until > Date.now());
+    smokes.push({ x: pos[0], y: pos[1] + 1.5, z: pos[2], until: Date.now() + SMOKE_MS });
+    io.emit('smokePop', { id: d.id, p: pos, ms: SMOKE_MS });
+  });
+  // [NY] KLEBELADNING / C4 (ørkenen): B = kast (fester seg der den treffer, også på kjøretøy), X = smell
+  socket.on('c4Throw', d => {
+    const p = players[socket.id];
+    if (!p || !p.alive || mapName !== 'desert' || p.vehicle || !d || typeof d.id !== 'string' || d.id.length > 40 || !Array.isArray(d.p) || !Array.isArray(d.v)) return;
+    if ((p.c4n === undefined ? DESERT_C4 : p.c4n) <= 0) return;
+    const pos = d.p.map(q => num(q, -250, 250)), vel = d.v.map(q => num(q, -40, 40));
+    if (pos.includes(null) || vel.includes(null)) return;
+    p.c4n = (p.c4n === undefined ? DESERT_C4 : p.c4n) - 1;
+    if (!p.c4list) p.c4list = [];
+    p.c4list.push({ id: d.id, x: pos[0], y: pos[1], z: pos[2], veh: -1 });
+    p.protectedUntil = 0;
+    socket.broadcast.emit('c4', { id: d.id, owner: p.id, team: p.team, p: pos, v: vel });
+  });
+  socket.on('c4Stick', d => {
+    const p = players[socket.id], c = d && p && p.c4list && p.c4list.find(q => q.id === d.id);
+    if (!c || !Array.isArray(d.p)) return;
+    const pos = d.p.map(q => num(q, -250, 250));
+    if (pos.includes(null)) return;
+    c.x = pos[0]; c.y = pos[1]; c.z = pos[2];
+    c.veh = Number.isInteger(d.veh) && dvList[d.veh] ? d.veh : -1;
+    if (c.veh >= 0) { const v = dvList[c.veh]; c.ox = c.x - v.x; c.oy = c.y - v.y; c.oz = c.z - v.z; }
+    socket.broadcast.emit('c4Stick', { id: d.id, p: pos, veh: c.veh });
+  });
+  socket.on('c4Det', () => {
+    const p = players[socket.id];
+    if (!p || !p.c4list || !p.c4list.length || mapName !== 'desert' || intermission) return;
+    const list = p.c4list; p.c4list = [];
+    list.forEach((c, k) => setTimeout(() => {
+      if (mapName !== 'desert') return;
+      let x = c.x, y = c.y, z = c.z;
+      const v = c.veh >= 0 ? dvList[c.veh] : null;
+      if (v && v.alive) { x = v.x + c.ox; y = v.y + c.oy; z = v.z + c.oz; }   // den kjørte avgårde med ladningen på
+      io.emit('boom', { id: c.id, p: [x, y, z], big: 2.2 });
+      blastOwner = p; blastCells(x, y, z, C4.blocks); blastOwner = null;
+      Object.values(players).forEach(t => {
+        if (!t.alive || t.team === p.team || t.vehicle === 'dv') return;
+        const dist = Math.hypot(t.x - x, t.y + 0.9 - y, t.z - z);
+        if (dist < C4.r) applyDamage(p, t, Math.round(C4.dmg * (1 - dist / C4.r)), false, 'nade');
+      });
+      if (v && v.alive && v.team !== p.team) dvDamage(v, C4.stuck, p);
+      else dvArea([x, y, z], C4.vr, C4.vdmg, p);
+    }, k * 120));
+  });
+
   socket.on('gmlrsCall', d => {                      // [NY] GMLRS fra radiotårnet
     const p = players[socket.id], now = Date.now();
     if (!GM_ON || !p || !p.alive || intermission || mapName !== 'desert' || p.vehicle || !d || !d.ok) return;
@@ -1956,6 +2026,7 @@ function startMap(name) {
   if (mapName === 'dragon') resetDragons(); else dragonGame = null;   // [NY] dragebølgene
   dvReset();                                                       // [NY] ørken-kjøretøy på plass
   gmReady = { bunny: 0, squirrel: 0 };                             // [NY] GMLRS klar med en gang
+  smokes = []; Object.values(players).forEach(p => { p.c4list = []; });   // [NY] røyk og klebeladninger bort
   intermission = false;
   if (hordeMap()) resetFarm(); else farm = null;
   foamOn = false; foamHoles = [];
@@ -2508,7 +2579,18 @@ function groundBelow(x, y, z) {              // høyeste klosstopp under føtten
   }
   return 0;
 }
+function smokeBlocks(a, b) {                 // [NY] går sikten gjennom en røyksky?
+  const now = Date.now();
+  for (const c of smokes) {
+    if (c.until < now) continue;
+    const dx = b.x - a.x, dy = b.y - a.y, dz = b.z - a.z, L2 = dx * dx + dy * dy + dz * dz || 1;
+    const k = Math.max(0, Math.min(1, ((c.x - a.x) * dx + (c.y - a.y) * dy + (c.z - a.z) * dz) / L2));
+    if (Math.hypot(a.x + dx * k - c.x, a.y + dy * k - c.y, a.z + dz * k - c.z) < SMOKE_R) return true;
+  }
+  return false;
+}
 function losClear(a, b) {                    // fri sikt mellom to punkter?
+  if (mapName === 'desert' && smokes.length && smokeBlocks(a, b)) return false;
   const dx = b.x - a.x, dy = b.y - a.y, dz = b.z - a.z, d = Math.hypot(dx, dy, dz), n = Math.ceil(d / (mapName === 'desert' ? 0.8 : 0.4));   // [NY] ørkenen: grovere sjekk (mange roboter, lange avstander)
   for (let i = 1; i < n; i++) { const k = i / n; if (bSolid(a.x + dx * k, a.y + dy * k, a.z + dz * k)) return false; }
   return true;

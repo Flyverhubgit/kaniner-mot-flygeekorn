@@ -168,7 +168,8 @@ function desertKey(code) {
 function desertHudName() { const c = dwCur(); return c ? DW_NAMES[c] + ' ' : 'AK '; }
 // Skuddlyder: hver sitt smell (vol = styrke, avstand er regnet inn)
 function playDesertShot(id, vol) {
-  if (id === 'c7') playShot(0.32 * vol, 2600);
+  if (id === 'c7s') playShot(0.1 * vol, 700);            // C7 med lyddemper: lavt "pfft"
+  else if (id === 'c7') playShot(0.32 * vol, 2600);
   else if (id === 'minimi') playShot(0.36 * vol, 2000);
   else if (id === 'mg42') playShot(0.38 * vol, 1500);
   else if (id === 'pistol') playShot(0.28 * vol, 3200);
