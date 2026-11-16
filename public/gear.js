@@ -394,7 +394,7 @@ function applyGear(body, team, wear) {
   (wear || []).forEach(id => {
     if (id === 'goldfur' || id === 'nobelt' || /^nor\d+$/.test(id)) return;   // [NY] nummer-valget bygges sammen med Norge-drakten
     if (id === 'norway') { const n = GEAR.find(x => x.back && (wear || []).includes(x.id)); norBack = n ? n.back : null; }
-    gg.add(buildGearPart(id, team));
+    const part = buildGearPart(id, team); part.userData.gearId = id; gg.add(part);   // [NY] merket, så ørken-hjelmen kan skjule hatter
   });
   const belts = !(wear || []).includes('nobelt');      // [NY] kulebeltene av/på
   body.traverse(o => { if (o.userData && o.userData.belt) o.visible = belts; });

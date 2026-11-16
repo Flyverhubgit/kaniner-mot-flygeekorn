@@ -1246,7 +1246,7 @@ io.on('connection', socket => {
     p.x = x; p.y = y; p.z = z; p.yaw = yaw; p.pitch = pitch; p.slide = s[5] ? 1 : 0;
     p.crouch = s[6] ? 1 : 0;
     p.glide = s[7] ? 1 : 0;
-    p.weapon = s[8] === 4 && VOX[mapName] ? 4 : s[8] === 3 && mapName === 'medieval' ? 3 : s[8] === 2 ? 2 : s[8] ? 1 : 0;   // [NY] 4 = hammeren      // 0 = AK, 1 = snikskytter, 2 = bazooka, 3 = kule og kjetting (Ridderborgen)
+    p.weapon = mapName === 'desert' && [5, 6, 7, 8].includes(s[8]) ? s[8] : s[8] === 4 && VOX[mapName] ? 4 : s[8] === 3 && mapName === 'medieval' ? 3 : s[8] === 2 ? 2 : s[8] ? 1 : 0;   // [NY] 4 = hammeren      // 0 = AK, 1 = snikskytter, 2 = bazooka, 3 = kule og kjetting (Ridderborgen)
     p.roll = num(s[9], -2, 2) || 0;                  // [NY] jagerflyet krenger
 
     // Toppen av pyramiden (2 x 2 m, 13 m høyt) = SKUMFEST!
@@ -2641,7 +2641,7 @@ function addBot(team) {
     level: 2 + Math.floor(Math.random() * 8), wear: Math.random() < 0.5 ? ['shades'] : ['cap'], skins: {},
     weapon: 0, target: null, seenAt: 0, nextShot: 0, stuck: 0, lastX: sp.x, lastZ: sp.z, side: 0, sideUntil: 0, strafe: 1, strafeAt: 0
   };
-  if (mapName === 'desert') { b.dw = DESERT_BOT_W[Math.floor(Math.random() * DESERT_BOT_W.length)]; b.weapon = b.dw === 'sniper50' ? 1 : 0; b.thinkAt = 0; }   // [NY]
+  if (mapName === 'desert') { b.dw = DESERT_BOT_W[Math.floor(Math.random() * DESERT_BOT_W.length)]; b.weapon = { c7: 0, sniper50: 1, minimi: 5, mg42: 6 }[b.dw] || 0; b.thinkAt = 0; }   // [NY]
   botPlan(b);
   io.emit('playerJoined', publicPlayer(b));
 }

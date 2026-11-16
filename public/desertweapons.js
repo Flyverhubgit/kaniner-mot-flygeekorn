@@ -181,3 +181,44 @@ function playDesertShot(id, vol) {
 function updateDesertWeapons(dt) {
   setDesertWeapons(typeof desertOn === 'function' && desertOn());
 }
+
+// ===================================================================
+//  [NY] Våpnene i hånden på de ANDRE spillerne (og robotene) i ørkenen.
+//  Kode i tilstanden (s[8]): 0 C7, 1 .50, 2 bazooka, 5 Minimi, 6 MG42, 7 pistol, 8 RPG.
+// ===================================================================
+function dwStateCode() {                              // hva sender DU til serveren? (0 = vanlig regel)
+  if (!desertWeaponsOn) return 0;
+  if (weapon === minimiW) return 5;
+  if (weapon === mg42W) return 6;
+  if (weapon === pistolW) return 7;
+  if (weapon === bazW && rocketKind === 'rpg') return 8;
+  return 0;
+}
+const DW_HELD_CODE = { 0: 'c7', 5: 'minimi', 6: 'mg42', 7: 'pistol', 1: 'sniper50', 8: 'rpg' };
+const DW_BUILD = { c7: buildC7, minimi: buildMinimi, mg42: buildMG42, pistol: buildPistol, sniper50: buildSniper50, rpg: buildRPG };
+function dwHeldFor(r) {
+  if (r.dwHeld) return r.dwHeld;
+  const H = {}, gp = r.body.userData.gun.position;
+  Object.keys(DW_BUILD).forEach(k => {
+    const m = DW_BUILD[k]();
+    m.rotation.y = Math.PI;                           // modellene peker mot -z, figuren mot +z
+    m.scale.setScalar(k === 'pistol' ? 1.3 : 1.15);
+    if (k === 'rpg') m.position.set(0.36, 1.1, 0.08); else m.position.copy(gp);
+    m.traverse(o => { o.raycast = () => {}; o.castShadow = true; });
+    m.visible = false; r.body.add(m); H[k] = m;
+  });
+  return (r.dwHeld = H);
+}
+function updateDesertHeld() {
+  const on = desertWeaponsOn;
+  for (const id in others) {
+    const r = others[id];
+    if (!r.body || !r.body.userData.gun) continue;
+    if (!on) { if (r.dwHeld) Object.values(r.dwHeld).forEach(m => { m.visible = false; }); continue; }
+    const H = dwHeldFor(r), want = r.alive !== false ? DW_HELD_CODE[r.weapon || 0] : null;
+    Object.keys(H).forEach(k => { H[k].visible = k === want; });
+    r.body.userData.gun.visible = false;               // ikke AK-en
+    if (r.heldSniper) r.heldSniper.visible = false;    // ikke gulrot/nøtt-geværet
+    if (r.heldBaz) r.heldBaz.visible = (r.weapon || 0) === 2;
+  }
+}

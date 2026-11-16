@@ -80,6 +80,7 @@ function updateDesert(dt) {
   if (typeof updateDesertVehicles === 'function') updateDesertVehicles(dt); // stridsvogner og jeeper (desertvehicles.js)
   if (typeof updateGmlrs === 'function') updateGmlrs(dt);                   // GMLRS fra radiotårnet (gmlrs.js)
   if (typeof updateDesertExtras === 'function') updateDesertExtras(dt);     // røyk, C4, lyddemper (desertextras.js)
+  if (typeof updateDesertHeld === 'function') updateDesertHeld();           // våpnene i hånden på de andre
   const on = desertOn();
   if (!on) {
     if (desertWasOn) { sun.position.set(20, 30, 10); sun.target.position.set(0, 0, 0); sun.target.updateMatrixWorld(); desertWasOn = false; }

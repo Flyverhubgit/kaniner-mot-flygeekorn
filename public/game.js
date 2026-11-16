@@ -2181,7 +2181,7 @@ function sendState(dt) {
   sendTimer -= dt;
   if (sendTimer > 0 || !joined || !alive) return;
   sendTimer = 0.05;
-  socket.emit('state', [+player.x.toFixed(2), +player.feetY.toFixed(2), +player.z.toFixed(2), +player.yaw.toFixed(3), +player.pitch.toFixed(3), slide.active ? 1 : 0, crouching ? 1 : 0, gliding ? 1 : 0, weapon === sniperW ? 1 : weapon === bazW ? 2 : (typeof flailW !== 'undefined' && weapon === flailW) ? 3 : (typeof hammerW !== 'undefined' && weapon === hammerW) ? 4 : 0, typeof spaceRoll === 'function' ? spaceRoll() : 0]);
+  socket.emit('state', [+player.x.toFixed(2), +player.feetY.toFixed(2), +player.z.toFixed(2), +player.yaw.toFixed(3), +player.pitch.toFixed(3), slide.active ? 1 : 0, crouching ? 1 : 0, gliding ? 1 : 0, (typeof dwStateCode === 'function' && dwStateCode()) || (weapon === sniperW ? 1 : weapon === bazW ? 2 : (typeof flailW !== 'undefined' && weapon === flailW) ? 3 : (typeof hammerW !== 'undefined' && weapon === hammerW) ? 4 : 0), typeof spaceRoll === 'function' ? spaceRoll() : 0]);
 }
 
 // ===================================================================

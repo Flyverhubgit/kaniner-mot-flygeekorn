@@ -141,6 +141,7 @@ function desertExtrasHud() { return '   💨 ' + smokesLeft + '   🧨 ' + c4Lef
 // ---------- Hver ramme ----------
 function updateDesertExtras(dt) {
   const on = desertOn();
+  if (typeof refreshDesertGear === 'function') refreshDesertGear();   // hjelm, vest, øreklokker, støvler på alle
   if (isTouch) { const show = on && joined && alive && !(typeof dvBusy === 'function' && dvBusy()); Object.entries(xtraBtns).forEach(([k, b]) => { b.style.display = show && (k !== 'det' || myC4.size) ? 'flex' : 'none'; }); }
   silencerMesh.visible = c7Silenced;
   if (!on) return;
@@ -190,4 +191,46 @@ function updateDesertExtras(dt) {
     });
     if (c.t >= c.life) { c.parts.forEach(m => { scene.remove(m); m.material.dispose(); }); smokeClouds.splice(i, 1); }
   }
+}
+
+// ===================================================================
+//  [NY] ØRKEN-UTSTYR på alle i Ørkenkrigen: hjelm, skuddsikker vest, øreklokke med mikrofon og støvler.
+//  (Som rustningen på Ridderborgen.) Hatter skjules under hjelmen; drakter (MIL / Norge) vises under vesten.
+// ===================================================================
+const DESERT_GEAR_ON = true;
+const DG = { tan: new THREE.MeshStandardMaterial({ color: 0xb59a6a, roughness: 0.9 }), olive: new THREE.MeshStandardMaterial({ color: 0x6b6a45, roughness: 0.9 }),
+  dark: new THREE.MeshStandardMaterial({ color: 0x2a2826, roughness: 0.8 }), boot: new THREE.MeshStandardMaterial({ color: 0x5a4028, roughness: 0.95 }),
+  bunny: new THREE.MeshStandardMaterial({ color: 0xb3261e, roughness: 0.8 }), squirrel: new THREE.MeshStandardMaterial({ color: 0x556b2f, roughness: 0.8 }) };
+function buildDesertGear(team) {
+  const H = HEAD[team] || HEAD.bunny, g = new THREE.Group(), sq = team === 'squirrel';
+  const add = (w, h, d, x, y, z, mat) => { const m = new THREE.Mesh(typeof softBox === 'function' ? softBox(w, h, d) : new THREE.BoxGeometry(w, h, d), mat); m.position.set(x, y, z); m.castShadow = true; m.raycast = () => {}; g.add(m); return m; };
+  // Hjelm (ørene stikker opp gjennom)
+  add(H.w + 0.1, 0.2, H.d + 0.1, 0, H.top - 0.04, 0, DG.tan);
+  add(H.w + 0.16, 0.04, H.d + 0.16, 0, H.top - 0.13, 0, DG.tan);                 // kant
+  add(0.1, 0.08, 0.02, -H.w / 2 - 0.06, H.top - 0.02, 0, DG[team]);              // lagmerke på siden
+  add(0.26, 0.07, 0.04, 0, H.top + 0.02, H.d / 2 + 0.07, DG.dark);               // briller oppå hjelmen
+  // Øreklokker med mikrofon
+  [-1, 1].forEach(s => add(0.06, 0.13, 0.13, s * (H.w / 2 + 0.04), H.eyeY - 0.04, -0.02, DG.dark));
+  add(0.02, 0.02, 0.2, H.w / 2 + 0.05, H.eyeY - 0.12, 0.1, DG.dark);              // mikrofonarm
+  add(0.04, 0.04, 0.04, H.w / 2 - 0.02, H.eyeY - 0.13, H.d / 2 + 0.02, DG.dark);
+  // Skuddsikker vest med lommer
+  if (sq) { add(0.52, 0.36, 0.38, 0, 0.86, 0, DG.olive); [-0.13, 0, 0.13].forEach(x => add(0.11, 0.12, 0.06, x, 0.76, 0.2, DG.tan)); add(0.1, 0.07, 0.02, 0.14, 0.97, 0.195, DG[team]); }
+  else { add(0.62, 0.4, 0.48, 0, 0.8, 0, DG.olive); add(0.5, 0.2, 0.42, 0, 0.98, 0, DG.olive); [-0.17, 0, 0.17].forEach(x => add(0.13, 0.13, 0.06, x, 0.7, 0.25, DG.tan)); add(0.12, 0.08, 0.02, 0.16, 0.95, 0.215, DG[team]); }
+  [-1, 1].forEach(s => add(0.08, 0.04, sq ? 0.36 : 0.44, s * (sq ? 0.16 : 0.18), sq ? 1.05 : 1.1, 0, DG.olive));   // skulderstropper
+  // Støvler
+  if (sq) [-0.13, 0.13].forEach(x => add(0.21, 0.19, 0.22, x, 0.09, 0.02, DG.boot));
+  else [-0.16, 0.16].forEach(x => add(0.27, 0.17, 0.44, x, 0.08, 0.09, DG.boot));
+  return g;
+}
+function desertGearize(body, team, on) {
+  if (!body) return;
+  if (body.userData.dgear) { body.remove(body.userData.dgear); body.userData.dgear = null; }
+  const gg = body.userData.gearGroup;
+  if (gg) gg.children.forEach(c => { const G = typeof GEAR !== 'undefined' && GEAR.find(x => x.id === c.userData.gearId); if (G && G.slot === 'head') c.visible = !on; });   // hatter under hjelmen
+  if (!on) return;
+  const d = buildDesertGear(team); body.add(d); body.userData.dgear = d;
+}
+function refreshDesertGear() {
+  const on = DESERT_GEAR_ON && desertOn();
+  for (const id in others) { const r = others[id]; const key = on ? r.team + (r.body && r.body.userData.gearGroup ? r.body.userData.gearGroup.children.length : 0) : ''; if (r.dgKey !== key) { desertGearize(r.body, r.team, on); r.dgKey = key; } }
 }
