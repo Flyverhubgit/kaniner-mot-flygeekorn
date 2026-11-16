@@ -1241,7 +1241,7 @@ io.on('connection', socket => {
   socket.on('state', s => {
     const p = players[socket.id];
     if (!p || !p.alive || !Array.isArray(s)) return;
-    const x = num(s[0], -300, 300), y = num(s[1], -200, 200), z = num(s[2], -300, 300);   // [NY] verdensrommet er stort
+    const x = num(s[0], -900, 900), y = num(s[1], -500, 500), z = num(s[2], -900, 900);   // [NY] verdensrommet er stort   // [FIKS] hangarene ligger på z ±405 og flyene går ut til ca. 780 m (var ±300: E virket ikke i hangaren)
     const yaw = num(s[3], -1e6, 1e6), pitch = num(s[4], -2, 2);
     if (x === null || y === null || z === null || yaw === null || pitch === null) return;
     p.x = x; p.y = y; p.z = z; p.yaw = yaw; p.pitch = pitch; p.slide = s[5] ? 1 : 0;
@@ -1446,7 +1446,7 @@ io.on('connection', socket => {
     const now = Date.now();
     if (now - (p.lastLaser || 0) < 60) return;
     p.lastLaser = now;
-    const pos = d.p.map(v => num(v, -400, 400)), vel = d.v.map(v => num(v, -400, 400));
+    const pos = d.p.map(v => num(v, -900, 900)), vel = d.v.map(v => num(v, -400, 400));
     if (pos.includes(null) || vel.includes(null)) return;
     socket.broadcast.emit('laser', { p: pos, v: vel, team: p.team, heavy: p.vehicle === 'turret' ? 1 : 0, id: p.id });
   });
@@ -1463,7 +1463,7 @@ io.on('connection', socket => {
     const p = players[socket.id];
     if (!p || !p.alive || p.vehicle !== 'fighter' || p.torps <= 0 || !d || typeof d.id !== 'string' || d.id.length > 40) return;
     if (!Array.isArray(d.p) || !Array.isArray(d.v)) return;
-    const pos = d.p.map(v => num(v, -400, 400)), vel = d.v.map(v => num(v, -400, 400));
+    const pos = d.p.map(v => num(v, -900, 900)), vel = d.v.map(v => num(v, -400, 400));
     if (pos.includes(null) || vel.includes(null)) return;
     p.torps--;
     p.pending[d.id] = 'torp';
@@ -1473,7 +1473,7 @@ io.on('connection', socket => {
     const p = players[socket.id];
     if (!p || !d || p.pending[d.id] !== 'torp' || !Array.isArray(d.p)) return;
     delete p.pending[d.id];
-    const pos = d.p.map(v => num(v, -400, 400));
+    const pos = d.p.map(v => num(v, -900, 900));
     if (pos.includes(null)) return;
     io.emit('boom', { id: d.id, p: pos, big: 4, space: 1 });
     if (TEAMS.includes(d.team) && d.team !== p.team) {
