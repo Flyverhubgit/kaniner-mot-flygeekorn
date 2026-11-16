@@ -67,6 +67,7 @@ const MIN_HIT_MS = 80;         // våpenet skyter hvert 100. ms – litt slingri
 const TEAMS = ['bunny', 'squirrel'];
 const NADES_PER_LIFE = 3;      // granater per liv
 const ROCKETS_PER_LIFE = 2;    // bazooka-raketter per liv
+const DESERT_ROCKETS = 3;      // [NY] Ørkenkrigen: RPG + bazooka, 3 per liv til sammen
 const ROCKET_RADIUS = 4.5, ROCKET_MAX_DMG = 120, ROCKET_BLOCKS = 3.5;
 const SPAWN_PROTECT_MS = 2000; // usårbar i 2 sek etter ny start
 const NADE_RADIUS = 6;         // sprengradius i meter
@@ -1165,7 +1166,7 @@ function respawn(p) {
   leaveVehicle(p);                                   // [NY]
   const sp = spawnFor(p.team);
   p.nades = hordeMap() ? FARM_NADES : NADES_PER_LIFE;      // [NY] 10 granater på kyllingfarmen
-  p.rockets = hordeMap() ? FARM_ROCKETS : ROCKETS_PER_LIFE;
+  p.rockets = hordeMap() ? FARM_ROCKETS : mapName === 'desert' ? DESERT_ROCKETS : ROCKETS_PER_LIFE;   // [NY] ørkenen: 3 (RPG + bazooka til sammen)
   p.protectedUntil = Date.now() + SPAWN_PROTECT_MS;
   p.hp = MAX_HP;
   p.alive = true;
@@ -1189,7 +1190,7 @@ io.on('connection', socket => {
       id: socket.id, name, team,
       x: sp.x, y: 0, z: sp.z, yaw: sp.yaw, pitch: 0, slide: 0,
       hp: MAX_HP, alive: true, kills: 0, deaths: 0, lastHit: 0,
-      nades: NADES_PER_LIFE, rockets: ROCKETS_PER_LIFE, pending: {},
+      nades: NADES_PER_LIFE, rockets: mapName === 'desert' ? DESERT_ROCKETS : ROCKETS_PER_LIFE, pending: {},
       streak: 0, protectedUntil: Date.now() + SPAWN_PROTECT_MS,
       ...cleanProfile(data)                            // [NY] nivå + utstyr
     };
@@ -1619,7 +1620,7 @@ io.on('connection', socket => {
   // Bazooka: rakett skutt (vises for de andre)
   socket.on('rocketFire', d => {
     const p = players[socket.id];
-    if (!p || !p.alive || (p.rockets <= 0 && !hordeMap() && mapName !== 'dragon' && mapName !== 'desert') || !d || typeof d.id !== 'string' || d.id.length > 40) return;   // [NY] uendelig på kyllingfarmen (og i ørkenen: lang lading i stedet)
+    if (!p || !p.alive || (p.rockets <= 0 && !hordeMap() && mapName !== 'dragon') || !d || typeof d.id !== 'string' || d.id.length > 40) return;   // [NY] uendelig på kyllingfarmen
     if (!Array.isArray(d.p) || !Array.isArray(d.v)) return;
     if (mapName === 'desert' && Date.now() - (p.lastRocket || 0) < 2500) return;   // [NY] ørkenen: RPG/bazooka må lades (2,5 sek)
     p.lastRocket = Date.now();

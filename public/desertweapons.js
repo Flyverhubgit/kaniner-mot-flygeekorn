@@ -6,6 +6,7 @@
 // ===================================================================
 let desertWeaponsOn = false;
 let rocketKind = 'rpg';                    // bazW er enten RPG (6) eller bazooka (7)
+const DESERT_ROCKETS = 3;                  // RPG + bazooka: 3 raketter per liv til sammen
 const minimiW = { id: 'minimi', mag: 100, magSize: 100, reserve: Infinity, fireDelay: 0.075, reloadTime: 4.5, climb: 0.006 };
 const mg42W = { id: 'mg42', mag: 50, magSize: 50, reserve: Infinity, fireDelay: 0.05, reloadTime: 4, climb: 0.008 };
 const pistolW = { id: 'pistol', mag: 12, magSize: 12, reserve: Infinity, fireDelay: 0.17, reloadTime: 1.4, climb: 0.01 };
@@ -143,7 +144,7 @@ function setDesertWeapons(on) {
   desertWeaponsOn = on;
   akW.id = on ? 'c7' : 'ak'; akW.magSize = on ? 30 : 100; akW.mag = akW.magSize; akW.fireDelay = on ? 0.09 : 0.1; akW.reloadTime = on ? 2.2 : 2.0; akW.climb = on ? 0.005 : 0;
   sniperW.id = on ? 'sniper50' : 'sniper'; sniperW.fireDelay = on ? 1.4 : 1.1; sniperW.reloadTime = on ? 3 : 2.5;
-  bazW.id = on ? rocketKind : 'bazooka'; bazW.reserve = on ? Infinity : 1;
+  bazW.id = on ? rocketKind : 'bazooka'; bazW.mag = 1; bazW.reserve = on ? DESERT_ROCKETS - 1 : 1;
   const extra = [minimiW, mg42W, pistolW];
   WEAPON_ORDER.length = 0;
   (on ? [akW, minimiW, mg42W, sniperW, pistolW, bazW] : [akW, sniperW, bazW]).forEach(w => WEAPON_ORDER.push(w));
@@ -175,5 +176,4 @@ function playDesertShot(id, vol) {
 }
 function updateDesertWeapons(dt) {
   setDesertWeapons(typeof desertOn === 'function' && desertOn());
-  if (desertWeaponsOn) bazW.reserve = Infinity;               // RPG/bazooka: uendelig, men lang lading
 }

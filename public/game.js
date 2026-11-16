@@ -2118,7 +2118,7 @@ socket.on('respawn', sp => {
   myProtectUntil = performance.now() + 2000;   // [NY] skjold i 2 sek
   akW.mag = akW.magSize;         // full ammo ved ny start (begge våpen)
   sniperW.mag = sniperW.magSize;
-  bazW.mag = 1; bazW.reserve = 1;   // [NY] 2 raketter per liv
+  bazW.mag = 1; bazW.reserve = typeof desertWeaponsOn !== 'undefined' && desertWeaponsOn ? DESERT_ROCKETS - 1 : 1;   // [NY] 2 raketter per liv (ørkenen: 3)
   scoped = false;
   grenades = GRENADES_MAX;       // [NY] nye granater ved ny start
   reloading = 0;
