@@ -13,6 +13,7 @@ const LM = require('./public/lobbymap.js');    // [NY] loungen der alle møtes m
 const MM = require('./public/medievalmap.js'); // [NY] Ridderborgen (middelalder-borgene)
 const WM = require('./public/westmap.js');     // [NY] Ville Vesten (cowboybyen)
 const JM = require('./public/japanmap.js');    // [NY] Dragetempelet (japansk tempel, drager)
+const DM = require('./public/desertmap.js');   // [NY] Ørkenkrigen (stort slagfelt, 16 mot 16)
 
 const app = express();
 app.use(require('compression')());                // [NY] pakker filene (ca. 1 MB -> 250 KB) – raskere lasting på mobil
@@ -23,6 +24,16 @@ const PORT = process.env.PORT || 3000;
 
 // ---------- Regler ----------
 const ROUND_SECONDS = +process.env.ROUND_SECONDS || 300;     // 5 minutter per runde (kan endres for testing)
+// [NY] Ørkenkrigen: lagkamp (team deathmatch) – første lag til 100 drap, eller flest drap etter 15 minutter
+const DESERT_SECONDS = +process.env.DESERT_SECONDS || 15 * 60, DESERT_KILLS = +process.env.DESERT_KILLS || 100;
+// Ørken-våpen: skade i kroppen / hodet, og korteste tid mellom to treff (ms). 100 liv.
+const DESERT_W = {
+  c7: { dmg: 20, head: 50, ms: 80 },          // C7-karabin (2 i hodet / 5 i kroppen)
+  minimi: { dmg: 16, head: 40, ms: 60 },      // Minimi lett maskingevær
+  mg42: { dmg: 15, head: 38, ms: 45 },        // MG42 – skyter veldig fort
+  pistol: { dmg: 24, head: 55, ms: 160 },     // pistol
+  sniper50: { dmg: 90, head: 200, ms: 1000 }  // .50 kaliber (12,7 mm) snikskytter: hodeskudd dreper alltid
+};
 const BREAK_SECONDS = 8;       // [NY] resultater i 8 sek, så tilbake til loungen
 const RESPAWN_SECONDS = 3;
 const MAX_HP = 100;
@@ -69,7 +80,7 @@ let foamHoles = [];            // [x, z] for hvert granat-hull (til nye spillere
 // Underverdenen: et skjult håndtak sender alle ned til lava-arenaen til neste runde
 let worldName = 'main';        // 'main' eller 'underworld'
 // Baner byttes hver runde: tempelet og det kjempestore barnerommet (snikskytterbane)
-const MAPS = ['temple', 'room', 'castle', 'space', 'farm', 'sea', 'medieval', 'west', 'dragon']       // rekkefølgen banene byttes i
+const MAPS = ['temple', 'room', 'castle', 'space', 'farm', 'sea', 'medieval', 'west', 'dragon', 'desert']       // rekkefølgen banene byttes i
   .filter(m => !LM.HIDDEN_MAPS.includes(m) || process.env.START_MAP === m);   // [NY] zombie-kyllinger og dyphavet er tatt bort (se lobbymap.js)
 // [NY] Alle starter i LOUNGEN ('lobby'). Der stemmer man ved å stå i en portal. (START_MAP er for testing)
 let mapName = MAPS.includes(process.env.START_MAP) || process.env.START_MAP === 'lobby' ? process.env.START_MAP : 'lobby';
@@ -97,7 +108,7 @@ function makeVox(LIB) {
   const pristine = LIB.build();
   return { LIB, pristine, grid: pristine.slice(), hp: new Uint8Array(pristine.length), gone: [], built: [] };
 }
-const VOX = { castle: makeVox(CM), farm: makeVox(FM), sea: makeVox(SM), medieval: makeVox(MM), west: makeVox(WM), dragon: makeVox(JM) };
+const VOX = { castle: makeVox(CM), farm: makeVox(FM), sea: makeVox(SM), medieval: makeVox(MM), west: makeVox(WM), dragon: makeVox(JM), desert: makeVox(DM) };
 function resetVox(name) {
   const V = VOX[name];
   if (!V) return;
@@ -106,7 +117,7 @@ function resetVox(name) {
   V.gone = [];
   V.built = [];                                     // [NY] byggeklosser forsvinner ved ny runde
 }
-resetVox('castle'); resetVox('farm'); resetVox('sea'); resetVox('medieval'); resetVox('west'); resetVox('dragon');
+resetVox('castle'); resetVox('farm'); resetVox('sea'); resetVox('medieval'); resetVox('west'); resetVox('dragon'); resetVox('desert');
 // [NY] "Horde"-baner: alle spillerne sammen mot monstre (kyllingfarmen og dyphavsbasen)
 function hordeMap() { return mapName === 'farm' || mapName === 'sea'; }
 function HL() { return mapName === 'sea' ? SM : FM; }          // kartet til horde-banen
@@ -192,7 +203,8 @@ const HOLY_SPOTS = {
   room: { x: 47, y: 0.9, z: -21 },           // i et hjørne mellom møblene
   medieval: { x: -9.5, y: 0.9, z: -0.5 },    // bak en mosegrodd stein i gjørme-dalen i midten
   west: { x: -20.5, y: 0.9, z: -10.5 },      // gjemt i et hjørne nær midten
-  dragon: { x: 1.5, y: 7.9, z: 1.5 }         // 2. etasje i pagoden
+  dragon: { x: 1.5, y: 7.9, z: 1.5 },        // 2. etasje i pagoden
+  desert: { x: -9.5, y: 4.9, z: 15.5 }        // [NY] 2. etasje i et hus i landsbyen
 };
 const HOLY_DRAGON_DMG = 600;                  // Dragetempelet: ferskenen skader bare dragene
 function holySpot() {
@@ -971,7 +983,7 @@ setInterval(farmTick, 100);
 
 const HANDLE = { x: -25, z: -3 };   // håndtaket i bakre hjørne av venstre hus
 const UNDER_HANDLES = [{ x: 0, z: 24 }, { x: 0, z: -24 }];   // skyll-håndtak i underverdenen (ett per lag)
-let roundEndsAt = mapName === 'lobby' ? Infinity : Date.now() + ROUND_SECONDS * 1000;   // [NY] ingen klokke i loungen
+let roundEndsAt = mapName === 'lobby' ? Infinity : Date.now() + (mapName === 'desert' ? DESERT_SECONDS : ROUND_SECONDS) * 1000;   // [NY] ingen klokke i loungen
 let intermission = false;
 if (hordeMap()) { resetFarm(); roundEndsAt = Date.now() + FARM_SECONDS * 1000; }   // [NY] start rett på kyllingfarmen (testing)
 
@@ -1010,6 +1022,19 @@ function spawnFor(team) {
       if (ok) return { x, y: 0, z, yaw: Math.atan2(x, z) + Math.PI };   // se utover (mot dragene)
     }
     return { x: 0, y: 0, z: 14, yaw: Math.PI };
+  }
+  if (mapName === 'desert') {                               // [NY] Ørkenkrigen: inne i egen base
+    const S = DM.SPAWNS.bunny, G = VOX.desert.grid, sq = team === 'squirrel';
+    for (let k = 0; k < 60; k++) {
+      let x = S.x0 + Math.random() * (S.x1 - S.x0), z = S.z0 + Math.random() * (S.z1 - S.z0);
+      if (sq) { x = -x; z = -z; }
+      let ok = true;
+      for (let ix = Math.floor(x - 0.5); ix <= Math.floor(x + 0.5); ix++)
+        for (let iz = Math.floor(z - 0.5); iz <= Math.floor(z + 0.5); iz++)
+          for (let y = 0; y < 2; y++) if (G[DM.idx(ix, y, iz)]) ok = false;
+      if (ok) return { x, y: 0, z, yaw: sq ? Math.PI : 0 };    // se mot fienden (mot midten)
+    }
+    return { x: 0, y: 0, z: sq ? -215 : 215, yaw: sq ? Math.PI : 0 };
   }
   if (mapName === 'west') {                                 // [NY] Ville Vesten: i innhegningen i egen ende av byen
     const S = WM.SPAWNS.bunny, G = VOX.west.grid, sq = team === 'squirrel';
@@ -1109,6 +1134,7 @@ function applyDamage(p, t, dmg, head, weapon) {
     t.streak = 0;
     p.kills++;
     score[p.team]++;
+    if (mapName === 'desert' && score[p.team] >= DESERT_KILLS && roundEndsAt > Date.now() + 4000) roundEndsAt = Date.now() + 4000;   // [NY] første lag til 100 drap vinner
     // Drap på rad: KILLINGSPREE (3), USTOPPELIG (5), LEGENDARISK (10), så hver 5.
     p.streak = (p.streak || 0) + 1;
     if (p.streak === 3 || p.streak === 5 || p.streak === 10 || (p.streak > 10 && p.streak % 5 === 0)) {
@@ -1246,7 +1272,7 @@ io.on('connection', socket => {
     const t = players[d.target];
     if (!t || !t.alive || t.team === p.team) return;
     const now = Date.now();
-    if (now - p.lastHit < MIN_HIT_MS) return;
+    if (now - p.lastHit < (mapName === 'desert' ? 40 : MIN_HIT_MS)) return;   // [NY] ørkenen: MG42 skyter fortere (egen sjekk per våpen under)
     p.lastHit = now;
 
     const head = !!d.head;
@@ -1255,6 +1281,15 @@ io.on('connection', socket => {
       if (d.weapon === 'laser' && p.vehicle !== 'fighter') return;
       if (d.weapon === 'turret' && p.vehicle !== 'turret') return;
       applyDamage(p, t, d.weapon === 'laser' ? LASER_DMG : TURRET_DMG, false, d.weapon);
+      return;
+    }
+    // [NY] ØRKENKRIGEN: egne våpen (C7, Minimi, MG42, pistol, .50 snikskytter). Raketter går via rocketBoom.
+    if (mapName === 'desert') {
+      const W = DESERT_W[d.weapon];
+      if (!W) return;
+      if (now - (p['last_' + d.weapon] || 0) < W.ms) return;
+      p['last_' + d.weapon] = now;
+      applyDamage(p, t, head ? W.head : W.dmg, head, d.weapon === 'sniper50' ? 'sniper' : 'gun');
       return;
     }
     // [NY] RIDDERBORGEN: bare middelaldervåpen (langbue, armbrøst, sverd)
@@ -1584,9 +1619,11 @@ io.on('connection', socket => {
   // Bazooka: rakett skutt (vises for de andre)
   socket.on('rocketFire', d => {
     const p = players[socket.id];
-    if (!p || !p.alive || (p.rockets <= 0 && !hordeMap() && mapName !== 'dragon') || !d || typeof d.id !== 'string' || d.id.length > 40) return;   // [NY] uendelig på kyllingfarmen
+    if (!p || !p.alive || (p.rockets <= 0 && !hordeMap() && mapName !== 'dragon' && mapName !== 'desert') || !d || typeof d.id !== 'string' || d.id.length > 40) return;   // [NY] uendelig på kyllingfarmen (og i ørkenen: lang lading i stedet)
     if (!Array.isArray(d.p) || !Array.isArray(d.v)) return;
-    const pos = d.p.map(v => num(v, -100, 100)), vel = d.v.map(v => num(v, -40, 40));
+    if (mapName === 'desert' && Date.now() - (p.lastRocket || 0) < 2500) return;   // [NY] ørkenen: RPG/bazooka må lades (2,5 sek)
+    p.lastRocket = Date.now();
+    const pos = d.p.map(v => num(v, -250, 250)), vel = d.v.map(v => num(v, -40, 40));   // [FIKS] ørkenen er 480 m bred
     if (pos.includes(null) || vel.includes(null)) return;
     p.rockets--;
     p.pending[d.id] = Date.now();
@@ -1599,7 +1636,7 @@ io.on('connection', socket => {
     if (!p || !d || !p.pending[d.id]) return;
     delete p.pending[d.id];
     if (!Array.isArray(d.p)) return;
-    const pos = d.p.map(v => num(v, -100, 100));
+    const pos = d.p.map(v => num(v, -250, 250));         // [FIKS] ørkenen er 480 m bred
     if (pos.includes(null)) return;
     io.emit('boom', { id: d.id, p: pos, big: 1.6 });
     blastOwner = p; blastCells(pos[0], pos[1], pos[2], ROCKET_BLOCKS); blastOwner = null;
@@ -1666,7 +1703,7 @@ io.on('connection', socket => {
   // [NY] HAMMEREN: sett en byggekloss. Serveren sjekker alt (avstand, ledig, inntil noe, ikke i spawn, ikke inni noen).
   socket.on('build', d => {
     const p = players[socket.id], V = vox();
-    if (!p || !p.alive || !d || !V || intermission || mapName === 'lobby') return;
+    if (!p || !p.alive || !d || !V || intermission || mapName === 'lobby' || mapName === 'desert') return;   // [NY] ingen hammer i ørkenen
     const now = Date.now();
     if (now - (p.lastBuild || 0) < 200) return;
     if (p.blocks === undefined) p.blocks = BUILD_MAX;
@@ -1801,7 +1838,7 @@ function startMap(name) {
   io.emit('map', { name: mapName, lastResult });
   balanceBots();                                                   // [NY] roboter inn/ut med en gang
   Object.values(players).forEach(p => { leaveVehicle(p); p.kills = 0; p.deaths = 0; p.streak = 0; respawn(p); });
-  roundEndsAt = mapName === 'lobby' ? Infinity : Date.now() + (hordeMap() ? FARM_SECONDS : mapName === 'dragon' ? DRAGON_SECONDS : ROUND_SECONDS) * 1000;
+  roundEndsAt = mapName === 'lobby' ? Infinity : Date.now() + (hordeMap() ? FARM_SECONDS : mapName === 'dragon' ? DRAGON_SECONDS : mapName === 'desert' ? DESERT_SECONDS : ROUND_SECONDS) * 1000;
   if (mapName === 'dragon') resetDragons(); else dragonGame = null;   // [NY] dragebølgene
   intermission = false;
   if (hordeMap()) resetFarm(); else farm = null;
@@ -2216,7 +2253,10 @@ setInterval(() => {
 // Bare på klosse-banene (Klosseslottet og Ridderborgen) der serveren vet hvor veggene er.
 // De er med vilje ganske dårlige: treg reaksjon, bommer mye, går saktere enn deg.
 // ===================================================================
-const BOT_MAPS = ['castle', 'medieval', 'room', 'temple', 'west'];
+const BOT_MAPS = ['castle', 'medieval', 'room', 'temple', 'west', 'desert'];
+const DESERT_TEAM = 16;                      // [NY] Ørkenkrigen: robotene fyller hvert lag opp til 16 (16 mot 16)
+const DESERT_BOT_W = ['c7', 'c7', 'c7', 'minimi', 'mg42', 'sniper50'];   // robotenes våpen (tilfeldig)
+const DESERT_BOT_MS = { c7: 330, minimi: 230, mg42: 170, sniper50: 1700 };   // tid mellom robot-skudd
 // [NY] Barnerommet og tempelet er bygd av vanlige bokser (ikke klosser). Boksene er hentet fra nettleseren
 // (room.js / game.js) og lagret i filer, så serveren vet hvor veggene er. Endres banen, må filene lages på nytt.
 const BOX_MAPS = {
@@ -2259,7 +2299,7 @@ function groundBelow(x, y, z) {              // høyeste klosstopp under føtten
   return 0;
 }
 function losClear(a, b) {                    // fri sikt mellom to punkter?
-  const dx = b.x - a.x, dy = b.y - a.y, dz = b.z - a.z, d = Math.hypot(dx, dy, dz), n = Math.ceil(d / 0.4);
+  const dx = b.x - a.x, dy = b.y - a.y, dz = b.z - a.z, d = Math.hypot(dx, dy, dz), n = Math.ceil(d / (mapName === 'desert' ? 0.8 : 0.4));   // [NY] ørkenen: grovere sjekk (mange roboter, lange avstander)
   for (let i = 1; i < n; i++) { const k = i / n; if (bSolid(a.x + dx * k, a.y + dy * k, a.z + dz * k)) return false; }
   return true;
 }
@@ -2273,9 +2313,17 @@ const BOT_OUT = {
   castle: [[0, 31.5], [0, 26], [0, 19]],
   medieval: [[0, 30.5], [0, 26.5], [0, 22.5], [0, 18]],
   room: [], temple: [],                       // åpne baner: rett ut på gulvet
-  west: [[0, 47], [0, 30]]                    // Ville Vesten: ut av innhegningen og ned hovedgata
+  west: [[0, 47], [0, 30]],                   // Ville Vesten: ut av innhegningen og ned hovedgata
+  desert: [[0, 206], [0, 194]]                // [NY] Ørkenkrigen: ut sørporten av basen
 };
 function botField() {                        // tilfeldig ledig punkt ute på slagmarka
+  if (mapName === 'desert') {                // [NY] Ørkenkrigen: oftest mot midten (landsbyen), ellers hvor som helst
+    for (let k = 0; k < 40; k++) {
+      const mid = Math.random() < 0.55, x = (Math.random() * 2 - 1) * (mid ? 110 : 215), z = (Math.random() * 2 - 1) * (mid ? 70 : 185);
+      if (freeSpot(x, z) >= 0) return [x, z];
+    }
+    return [60, 0];
+  }
   const bm = boxMap(), west = mapName === 'west';
   const zMax = bm ? bm.zMax : west ? 44 : mapName === 'medieval' ? 16 : 17, xMax = bm ? bm.xMax : west ? 40 : mapName === 'medieval' ? 55 : 60;
   for (let k = 0; k < 40; k++) {
@@ -2301,6 +2349,7 @@ function addBot(team) {
     level: 2 + Math.floor(Math.random() * 8), wear: Math.random() < 0.5 ? ['shades'] : ['cap'], skins: {},
     weapon: 0, target: null, seenAt: 0, nextShot: 0, stuck: 0, lastX: sp.x, lastZ: sp.z, side: 0, sideUntil: 0, strafe: 1, strafeAt: 0
   };
+  if (mapName === 'desert') { b.dw = DESERT_BOT_W[Math.floor(Math.random() * DESERT_BOT_W.length)]; b.weapon = b.dw === 'sniper50' ? 1 : 0; b.thinkAt = 0; }   // [NY]
   botPlan(b);
   io.emit('playerJoined', publicPlayer(b));
 }
@@ -2315,7 +2364,8 @@ function balanceBots() {
   if (!botOn() || humans.length === 0) { bots.forEach(b => removeBot(b.id)); return; }
   const h = { bunny: 0, squirrel: 0 };
   humans.forEach(p => h[p.team]++);
-  const want = { bunny: Math.max(0, h.squirrel - h.bunny), squirrel: Math.max(0, h.bunny - h.squirrel) };
+  const want = mapName === 'desert' ? { bunny: Math.max(0, DESERT_TEAM - h.bunny), squirrel: Math.max(0, DESERT_TEAM - h.squirrel) }   // [NY] 16 mot 16
+    : { bunny: Math.max(0, h.squirrel - h.bunny), squirrel: Math.max(0, h.bunny - h.squirrel) };
   TEAMS.forEach(team => {
     const mine = bots.filter(b => b.team === team);
     for (let i = mine.length; i < want[team]; i++) addBot(team);
@@ -2352,13 +2402,19 @@ setInterval(() => {
     const b = players[id];
     if (!b.isBot || !b.alive) continue;
     // --- Se etter fiender (nærmeste med fri sikt) ---
-    const eye = { x: b.x, y: b.y + 1.4, z: b.z };
-    let best = null, bestD = 42;
-    for (const oid in players) {
-      const t = players[oid];
-      if (!t.alive || t.team === b.team || t.vehicle) continue;
-      const d = Math.hypot(t.x - b.x, t.z - b.z);
-      if (d < bestD && losClear(eye, { x: t.x, y: t.y + 1.2, z: t.z })) { best = t; bestD = d; }
+    const eye = { x: b.x, y: b.y + 1.4, z: b.z }, desert = mapName === 'desert';
+    let best = null, bestD = desert ? 85 : 42;
+    if (desert && now < b.thinkAt) {           // [NY] ørkenen: let etter fiender bare ca. 3 ganger i sekundet (sparer serveren)
+      const t = b.target && players[b.target];
+      if (t && t.alive && !t.vehicle) { best = t; bestD = Math.hypot(t.x - b.x, t.z - b.z); }
+    } else {
+      if (desert) b.thinkAt = now + 280 + Math.random() * 140;
+      for (const oid in players) {
+        const t = players[oid];
+        if (!t.alive || t.team === b.team || t.vehicle) continue;
+        const d = Math.hypot(t.x - b.x, t.z - b.z);
+        if (d < bestD && losClear(eye, { x: t.x, y: t.y + 1.2, z: t.z })) { best = t; bestD = d; }
+      }
     }
     if (best && (!b.target || b.target !== best.id)) { b.target = best.id; b.seenAt = now; }
     if (!best) b.target = null;
@@ -2368,13 +2424,24 @@ setInterval(() => {
       // --- Kamp: gå nærmere hvis langt unna, ellers gå litt fra side til side ---
       const dx = best.x - b.x, dz = best.z - b.z;
       if (now > b.strafeAt) { b.strafe = Math.random() < 0.5 ? -1 : 1; b.strafeAt = now + 1200 + Math.random() * 1500; }
-      if (bestD > 14) { dirX = dx; dirZ = dz; }
+      const near = desert ? (b.dw === 'sniper50' ? 70 : 30) : 14;   // [NY] ørkenen: holder større avstand
+      if (bestD > near) { dirX = dx; dirZ = dz; }
       else { dirX = -dz * b.strafe; dirZ = dx * b.strafe; }
-      botMove(b, dirX, dirZ, BOT_SPEED * (bestD > 14 ? 1 : 0.6), dt);
+      botMove(b, dirX, dirZ, BOT_SPEED * (bestD > near ? 1 : 0.6), dt);
       b.yaw = Math.atan2(-dx, -dz);                                   // se på fienden
       b.pitch = Math.atan2((best.y + 1.1) - (b.y + 1.4), bestD) ;
       // --- Skyt (etter reaksjonstid, sakte tempo, bommer ofte) ---
-      if (now - b.seenAt > BOT_REACT_MS && now >= b.nextShot) {
+      if (desert && now - b.seenAt > BOT_REACT_MS && now >= b.nextShot) {   // [NY] ørken-robot: eget våpen
+        const W = DESERT_W[b.dw], sn = b.dw === 'sniper50';
+        b.nextShot = now + DESERT_BOT_MS[b.dw] + Math.random() * 150;
+        b.protectedUntil = 0;
+        const chance = (sn ? Math.max(0.1, 0.3 - bestD * 0.002) : Math.max(0.06, 0.36 - bestD * 0.0045)) * (best.crouch ? 0.7 : 1);
+        const hit = Math.random() < chance, head = hit && Math.random() < (sn ? 0.2 : 0.07);
+        const miss = hit ? 0 : 0.8 + Math.random() * 1.8;
+        const to = [+(best.x + (Math.random() - 0.5) * miss).toFixed(2), +(best.y + (head ? 1.3 : 0.9) + (Math.random() - 0.5) * miss).toFixed(2), +(best.z + (Math.random() - 0.5) * miss).toFixed(2)];
+        io.emit('shot', { id: b.id, to, w: b.dw });
+        if (hit) applyDamage(b, best, head ? W.head : W.dmg, head, sn ? 'sniper' : 'gun');
+      } else if (!desert && now - b.seenAt > BOT_REACT_MS && now >= b.nextShot) {
         b.nextShot = now + (med ? 1300 : 450) + Math.random() * 250;
         b.protectedUntil = 0;
         const chance = Math.max(0.1, 0.4 - bestD * 0.007) * (best.crouch ? 0.7 : 1);
@@ -2388,7 +2455,7 @@ setInterval(() => {
     } else {
       // --- Ingen fiende: følg ruta (ut av borgen), så rundt på slagmarka ---
       if (!b.route || !b.route.length) {
-        if (Math.random() < 0.25 && BOT_OUT[mapName].length) b.route = BOT_OUT[mapName].slice().reverse().map(pt => mir(b.team === 'bunny' ? 'squirrel' : 'bunny', pt));   // raid: inn i fiendens borg
+        if (Math.random() < (mapName === 'desert' ? 0.08 : 0.25) && BOT_OUT[mapName].length) b.route = BOT_OUT[mapName].slice().reverse().map(pt => mir(b.team === 'bunny' ? 'squirrel' : 'bunny', pt));   // raid: inn i fiendens borg
         else b.route = [botField()];
       }
       const wp = b.route[0], dx = wp[0] - b.x, dz = wp[1] - b.z;

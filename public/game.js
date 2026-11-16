@@ -306,7 +306,8 @@ function voxelOn() {
     (currentMap === 'sea' && typeof seaWorld !== 'undefined' && seaWorld) ||
     (currentMap === 'medieval' && typeof medWorld !== 'undefined' && medWorld) ||
     (currentMap === 'west' && typeof westWorld !== 'undefined' && westWorld) ||
-    (currentMap === 'dragon' && typeof dragonWorld !== 'undefined' && dragonWorld)) && !underNow() && typeof castleBlocked === 'function';   // [NY] + dyphavet + Ridderborgen
+    (currentMap === 'dragon' && typeof dragonWorld !== 'undefined' && dragonWorld) ||
+    (currentMap === 'desert' && typeof desertWorld !== 'undefined' && desertWorld)) && !underNow() && typeof castleBlocked === 'function';   // [NY] + dyphavet + Ridderborgen
 }
 
 // Høyden på bakken (eller trinnet) under spilleren
@@ -347,6 +348,7 @@ window.addEventListener('keydown', e => {
   if (e.code === 'KeyC' || (e.code === 'ControlLeft' && !CTRL_CROUCH)) slideQueued = true;   // [NY] C = slide (Ctrl dukker nå)
   if (e.code === 'KeyR') startReload();
   if (e.code === 'KeyG') nadeQueued = true;            // [NY] kast granat
+  if (typeof desertKey === 'function' && desertKey(e.code)) return;   // [NY] Ørkenkrigen: tastene 1–7
   if (e.code === 'Digit1') switchWeapon(akW);          // [NY] bytt våpen
   if (e.code === 'Digit2') switchWeapon(sniperW);
   if (e.code === 'Digit3') switchWeapon(bazW);       // [NY] bazooka
@@ -820,6 +822,7 @@ function showWeaponModel() {
   flash.position.set(bz ? 0.05 : 0, bz ? 0.15 : 0.012, sn ? -0.8 : bz ? -0.2 : -0.56);   // [NY] bazooka-munningen er på skulderen
   if (typeof medWeaponView === 'function') medWeaponView();   // [NY] Ridderborgen: bue, armbrøst og sverd
   if (typeof hammerWeaponView === 'function') hammerWeaponView();   // [NY] hammeren
+  if (typeof desertWeaponView === 'function') desertWeaponView();   // [NY] ørken-våpnene
   if (typeof applyMySkins === 'function') applyMySkins();   // [FIKS] skins til slutt, når vi vet hvilket våpen som vises (ellers ble pynten hengende på hammeren)
 }
 function switchWeapon(w) {
@@ -1549,7 +1552,9 @@ function shoot() {
   recoil = sn ? 1.5 : Math.min(recoil + (dart ? 1 : 0.7), 1.5);
   flashTime = med ? 0 : sn ? 0.07 : dart ? 0 : 0.04;        // ingen munningsflamme under vann eller fra buen
   flash.rotation.z = Math.random() * Math.PI;
-  if (med && typeof playTwang === 'function') playTwang(0.3, sn);   // [NY] buestreng-smell
+  const desW = typeof desertWeaponsOn !== 'undefined' && desertWeaponsOn && !egg;   // [NY] Ørkenkrigen
+  if (desW && playDesertShot(weapon.id, 1)) {}   // [NY] hvert ørken-våpen har sitt smell
+  else if (med && typeof playTwang === 'function') playTwang(0.3, sn);   // [NY] buestreng-smell
   else if (sn) playShot(0.55, 650); else if (dart && typeof playDart === 'function') playDart(0.3); else playShot();  // [NY] dypere og høyere smell
 
   // Skuddet går rett ut fra midten av skjermen
@@ -1560,10 +1565,11 @@ function shoot() {
   const hits = raycaster.intersectObject(activeWorldGroup(), true);   // [NY] bare verden (ikke spor/fyll), riktig bane
   if (currentMap === 'lobby' && hits[0] && typeof lobbyShot === 'function') lobbyShot(hits[0].object);   // [NY] skyteskivene i loungen
   const o = raycaster.ray.origin, d = raycaster.ray.direction;
-  const vox = voxelOn() ? castleRay(o, d, 200) : null;   // [NY] første kloss kula treffer
+  const RANGE = desW ? 450 : 200;                  // [NY] ørkenen: skuddene går mye lenger
+  const vox = voxelOn() ? castleRay(o, d, RANGE) : null;   // [NY] første kloss kula treffer
 
   // [NY] Traff vi en fiende før veggen?
-  let bestT = Math.min(hits.length ? hits[0].distance : 200, vox ? vox.dist : 200), target = null, head = false;
+  let bestT = Math.min(hits.length ? hits[0].distance : RANGE, vox ? vox.dist : RANGE), target = null, head = false;
   for (const id in others) {
     const r = others[id];
     if (!r.alive || r.team === myTeam) continue;
@@ -1620,7 +1626,7 @@ function shoot() {
   socket.emit('shot', { to: [+end.x.toFixed(2), +end.y.toFixed(2), +end.z.toFixed(2)], w: weapon.id });
 
   // Liten rekyl i sikte
-  player.pitch = Math.min(1.45, player.pitch + (sn ? 0.03 : 0.004));
+  player.pitch = Math.min(1.45, player.pitch + (sn ? 0.03 : 0.004) + (weapon.climb || 0));   // [NY] maskingevær klatrer mer
   player.yaw += (Math.random() - 0.5) * 0.004;
 }
 
@@ -1714,7 +1720,7 @@ function updateWeapon(dt) {
     return;
   }
   if (window.__mobBtns) ['fireBtn', 'nadeBtn', 'reloadBtn', 'swapBtn', 'scopeBtn'].forEach(k => { if (__mobBtns[k]) __mobBtns[k].style.visibility = ''; });
-  const wIcon = akW.id === 'bow' ? (weapon === sniperW ? 'ARMBRØST ' : weapon === bazW ? '⚔️ ' : weapon !== akW ? 'KULE ' : 'BUE ') :   // [NY] Ridderborgen
+  const wIcon = typeof desertWeaponsOn !== 'undefined' && desertWeaponsOn ? desertHudName() : akW.id === 'bow' ? (weapon === sniperW ? 'ARMBRØST ' : weapon === bazW ? '⚔️ ' : weapon !== akW ? 'KULE ' : 'BUE ') :   // [NY] Ridderborgen
     weapon === sniperW ? (myTeam === 'bunny' ? '🥕 ' : '🌰 ') : weapon === bazW ? '🚀 ' : akW.id === 'dart' ? 'PIL ' : 'AK ';   // [NY] pilgevær   // [NY] gulrot / nøtt / bazooka
   const medHud = akW.id === 'bow';   // [NY] Ridderborgen: bunnløst kogger, ildpotter i stedet for granater
   if (typeof hammerW !== 'undefined' && weapon === hammerW) {   // [NY] hammeren: bare antall klosser
@@ -2019,6 +2025,7 @@ socket.on('shot', d => {
     return;
   }
   addTracer(from, new THREE.Vector3(d.to[0], d.to[1], d.to[2]));
+  if (typeof playDesertShot === 'function' && playDesertShot(d.w, Math.max(0.08, 1 - dist * 0.008))) return;   // [NY] ørken-våpen høres på lang avstand
   if (d.w === 'sniper') playShot(Math.max(0.06, 0.5 - dist * 0.006), 650);   // [NY] snikskytter smeller høyere
   else playShot(Math.max(0.03, 0.3 - dist * 0.006));
 });
@@ -2285,6 +2292,7 @@ function animate(now) {
     if (typeof updateMedieval === 'function') updateMedieval(dt);   // [NY] Ridderborgen
     if (typeof updateHammer === 'function') updateHammer(dt);       // [NY] hammeren: byggeklosser
     if (typeof updateWest === 'function') updateWest(dt);           // [NY] Ville Vesten: toget, tumbleweeds
+    if (typeof updateDesert === 'function') updateDesert(dt);       // [NY] Ørkenkrigen: støv og skygger
     if (typeof updateDragons === 'function') updateDragons(dt);     // [NY] Dragetempelet: dragene
     if (typeof updateFarmVehicles === 'function') updateFarmVehicles(dt);   // [NY] doser og A-10
     if (typeof updateEasterEggs === 'function') updateEasterEggs(dt);       // [NY] påskeegget

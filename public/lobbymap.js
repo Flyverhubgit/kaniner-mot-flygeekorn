@@ -18,7 +18,8 @@
     { map: 'sea', name: 'Dyphavsbasen', icon: '🐙', color: 0x3ad8d0, x: 15 },
     { map: 'medieval', name: 'Ridderborgen', icon: '⚔️', color: 0xc0282a, x: 21 },
     { map: 'west', name: 'Ville Vesten', icon: '🤠', color: 0xe08a3a, x: 27 },
-    { map: 'dragon', name: 'Dragetempelet', icon: '🐉', color: 0xd83a5a, x: 33 }
+    { map: 'dragon', name: 'Dragetempelet', icon: '🐉', color: 0xd83a5a, x: 33 },
+    { map: 'desert', name: 'Ørkenkrigen', icon: '🏜️', color: 0xd8a84a, x: 39 }   // [NY] stort slagfelt, 16 mot 16
   ].filter(p => !HIDDEN_MAPS.includes(p.map))
    .map((p, i, all) => Object.assign(p, { x: -17 + i * (34 / Math.max(1, all.length - 1)), z: -12.5, w: 3.4, d: 3 }));   // [NY] portalene jevnt fordelt
   function portalAt(x, z) {

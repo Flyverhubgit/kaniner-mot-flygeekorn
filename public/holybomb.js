@@ -15,7 +15,7 @@ const CLIMB_SPEED = 4.5;
 const HOLY_EVERYWHERE = true;
 const HOLY_SPOTS = {
   temple: new THREE.Vector3(0.5, 0.9, 5), room: new THREE.Vector3(47, 0.9, -21), medieval: new THREE.Vector3(-9.5, 0.9, -0.5),
-  west: new THREE.Vector3(-20.5, 0.9, -10.5), dragon: new THREE.Vector3(1.5, 7.9, 1.5)
+  west: new THREE.Vector3(-20.5, 0.9, -10.5), dragon: new THREE.Vector3(1.5, 7.9, 1.5), desert: new THREE.Vector3(-9.5, 4.9, 15.5)
 };
 function holySpotNow() {
   if (castleOn()) return HOLY_SPOT;

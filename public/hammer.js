@@ -6,7 +6,7 @@
 const hammerW = { id: 'hammer', mag: 1, magSize: 1, reserve: Infinity, fireDelay: 0.22, reloadTime: 1 };
 let myStash = 30;
 socket.on('stash', d => { myStash = d.n; });
-function hammerOn() { return typeof voxelOn === 'function' && voxelOn() && currentMap !== 'lobby'; }
+function hammerOn() { return typeof voxelOn === 'function' && voxelOn() && currentMap !== 'lobby' && currentMap !== 'desert'; }   // [NY] ingen hammer i ørkenen (egne våpen)
 
 const HM_WOOD = new THREE.MeshStandardMaterial({ color: 0x9a6a3a, roughness: 0.85 });
 const HM_IRON = new THREE.MeshStandardMaterial({ color: 0x8a9098, metalness: 0.3, roughness: 0.45 });
