@@ -1090,6 +1090,7 @@ function throwNade() {
   if (currentMap === 'lobby') return;                // [NY] ingen granater i loungen
   if (typeof spaceThrow === 'function' && spaceThrow()) return;   // [NY] torpedo fra jagerflyet
   if (typeof dvAlt === 'function' && dvAlt()) return;             // [NY] missil / rakett fra F-16 og helikopteret
+  if (typeof fruitMine === 'function' && fruitMine()) { fruitBigBall(); return; }   // [NY] Flammefrukten: G = KJEMPE-ildkule
   if (typeof holyThrow === 'function' && holyThrow()) return;   // [NY] har du den hellige ferskenen, kastes den
   const endless = underNow() || (typeof hordeOn === 'function' && hordeOn()) || (typeof dragonOn === 'function' && dragonOn());   // [NY] uendelig i underverdenen, på kyllingfarmen og i dragetempelet
   if (!joined || !alive || (!endless && grenades <= 0) || nadeCooldown > 0) return;

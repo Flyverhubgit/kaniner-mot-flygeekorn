@@ -625,7 +625,7 @@ function updatePirate(dt) {
   else if (pirNearCannon() >= 0) { txt = (isTouch ? 'Trykk KANON' : 'Trykk <b>E</b>') + ' for å bruke kanonen &#128163;'; btn = 'KANON'; }
   else if (pirNearWheel()) { txt = s.helm && s.helm !== socket.id ? '&#9875; Noen på laget styrer skipet' : (isTouch ? 'Trykk STYR' : 'Trykk <b>E</b>') + ' for å styre skipet &#9875;'; btn = s.helm && s.helm !== socket.id ? '' : 'STYR'; }
   else if (fruitMine() && pirSwimming) txt = '&#128561; Du synker! Flammefrukten gjør at du ikke kan svømme – gå opp på land!';
-  else if (fruitMine()) { const cd = Math.max(0, fruitBallReady - performance.now()); txt = '&#128293; Flammefrukten: ' + (isTouch ? 'SKYT = ildskudd, FLAMMER, 🔥' : 'klikk = ildskudd · høyre = flammer · <b>F</b> = kjempe-ildkule') + (cd > 0 ? ' (lader ' + (cd / 1000).toFixed(1) + ' s)' : ' – KLAR!'); }
+  else if (fruitMine()) { const cd = Math.max(0, fruitBallReady - performance.now()); txt = '&#128293; Flammefrukten: ' + (isTouch ? 'SKYT = ildskudd, FLAMMER, 🔥' : 'klikk / <b>F</b> = ildskudd · høyre = flammer · <b>G</b> = kjempe-ildkule') + (cd > 0 ? ' (lader ' + (cd / 1000).toFixed(1) + ' s)' : ' – KLAR!'); }
   else if (pirSwimming) txt = '&#127754; Du svømmer – ' + (isTouch ? 'hopp-knappen = opp' : '<b>mellomrom</b> = opp, <b>Shift</b> = dykk') + ', gå mot skipssiden for å klatre opp';
   pirHud.innerHTML = txt; pirHud.style.display = txt && alive ? 'block' : 'none';
   if (pirBtn) { pirBtn.textContent = btn; pirBtn.style.display = btn && alive ? 'block' : 'none'; }
@@ -635,7 +635,7 @@ socket.on('map', () => { pirAtHelm = false; });
 // ===================================================================
 // [NY] FLAMMEFRUKTEN 🔥 (bare én per runde!)
 // Ligger på toppen av vakttårnet midt på den store øya. Den første som tar den, får ildkrefter resten av runden:
-// ingen våpen, men hånda skyter ild. Klikk = ildskudd, høyre mus = flammer, F = KJEMPE-ildkule (hvert 4. sekund).
+// ingen våpen, men hånda skyter ild. Klikk eller F = ildskudd, høyre mus = flammer, G = KJEMPE-ildkule (hvert 4. sekund).
 // Men du kan ikke svømme lenger: i vannet synker du, og havet tar livet ditt.
 // ===================================================================
 const FRUIT_POS = new THREE.Vector3(-0.5, 12.5, -0.5);
@@ -664,7 +664,7 @@ socket.on('fruit', f => {
   fruitState = f || { taken: false, holder: null, name: '' };
   if (fruitState.holder && fruitState.holder !== before && pirateOn()) {
     const me = fruitState.holder === socket.id;
-    bannerMsg = me ? '&#128293; DU SPISTE FLAMMEFRUKTEN!<br><span style="font-size:17px">' + (isTouch ? 'SKYT = ildskudd, FLAMMER, 🔥 = kjempe-ildkule' : 'Klikk = ildskudd · høyre mus = flammer · <b>F</b> = KJEMPE-ildkule') + '<br>Men du kan ikke svømme!</span>'
+    bannerMsg = me ? '&#128293; DU SPISTE FLAMMEFRUKTEN!<br><span style="font-size:17px">' + (isTouch ? 'SKYT = ildskudd, FLAMMER, 🔥 = kjempe-ildkule' : 'Klikk eller <b>F</b> = ildskudd · høyre mus = flammer · <b>G</b> = KJEMPE-ildkule') + '<br>Men du kan ikke svømme!</span>'
       : '&#128293; ' + fruitState.name + ' spiste Flammefrukten!';
     bannerTime = me ? 5 : 3;
   }
@@ -759,7 +759,7 @@ function fruitFlame(dt) {
 }
 addEventListener('mousedown', e => { if (e.button === 2 && fruitMine()) fruitFlaming = true; });
 addEventListener('mouseup', e => { if (e.button === 2) fruitFlaming = false; });
-// KJEMPE-ildkula (F / 🔥-knappen), hvert 4. sekund
+// KJEMPE-ildkula (G / 🔥-knappen), hvert 4. sekund
 function fruitBigBall() {
   if (!fruitMine() || !alive) return false;
   if (performance.now() < fruitBallReady) { bannerMsg = '&#128293; Ildkula lader – ' + ((fruitBallReady - performance.now()) / 1000).toFixed(1) + ' s'; bannerTime = 1; return true; }
@@ -771,7 +771,7 @@ function fruitBigBall() {
 }
 addEventListener('keydown', e => {
   if (document.activeElement && document.activeElement.tagName === 'INPUT') return;
-  if (e.code === 'KeyF') fruitBigBall();
+  if (e.code === 'KeyF' && fruitMine()) fruitShoot();   // F = vanlig ildskudd (G = kjempe-ildkula, via granat-knappen)
 });
 // Mobil: FLAMMER (hold) og 🔥 (kjempe-ildkule)
 let fruitBtns = null;

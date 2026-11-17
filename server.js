@@ -2724,7 +2724,7 @@ function pirFireCannon(p, k, yaw, pitch) {
 // ===================================================================
 // [NY] FLAMMEFRUKTEN 🔥: én magisk frukt på toppen av vakttårnet midt på den store øya.
 // Den første som tar den, har ildkreftene resten av runden (også etter at du dør). Bare én per runde!
-// Ingen våpen – hånda skyter ild: ildskudd (klikk), flammer (høyre mus) og en KJEMPE-ildkule hvert 4. sekund (F).
+// Ingen våpen – hånda skyter ild: ildskudd (klikk eller F), flammer (høyre mus) og en KJEMPE-ildkule hvert 4. sekund (G).
 // Men du kan ikke svømme: i vannet synker du, og havet tar livet ditt sakte.
 // ===================================================================
 const FRUIT_POS = { x: -0.5, y: 12.5, z: -0.5 };
