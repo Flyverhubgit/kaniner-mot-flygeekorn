@@ -1580,6 +1580,7 @@ function shoot() {
   if (typeof dvShoot === 'function' && dvShoot()) return;   // [NY] stridsvognkanonen
   if (typeof gmlrsShoot === 'function' && gmlrsShoot()) return;   // [NY] GMLRS: klikk = skyt dit du sikter
   if (typeof pirShoot === 'function' && pirShoot()) return;   // [NY] Piratbukta: kanonene (pirate.js)
+  if (typeof fruitShoot === 'function' && fruitShoot()) return;   // [NY] Flammefrukten: hånda skyter ild (pirate.js)
   if (typeof seaRepairing !== 'undefined' && seaRepairing) return;   // [NY] reparerer basen: hendene er opptatt
   if (typeof farmShoot === 'function' && farmShoot()) return;   // [NY] dosertankens kanon / A-10 fra radioen
   if (typeof spaceShoot === 'function' && spaceShoot()) return;   // [NY] laser fra jagerfly / kanontårn
@@ -2080,6 +2081,7 @@ socket.on('shot', d => {
     return;
   }
   if ((d.w === 'sword' || d.w === 'flail') && typeof medRemoteSwing === 'function') { medRemoteSwing(d.id, d.w, dist); return; }   // [NY] hugg og slag
+  if (d.w === 'fire' || d.w === 'flame') return;   // [NY] Flammefrukten: tegnes i pirate.js (ingen kule-lyd)
   if ((d.w === 'bow' || d.w === 'crossbow') && typeof medArrowFx === 'function') {   // [NY] andres piler på Ridderborgen
     medArrowFx(from, new THREE.Vector3(d.to[0], d.to[1], d.to[2]), true, d.w === 'crossbow', true);   // [NY] finner veggen selv
     playTwang(Math.max(0.03, 0.22 - dist * 0.005), d.w === 'crossbow');

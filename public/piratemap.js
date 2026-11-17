@@ -148,7 +148,7 @@
     // ===== Midtøya (bygges i begge halvdeler -> lik for begge lag) =====
     [false, true].forEach(m => {
       MIR = m;
-      island(0, 0, 15, 5);
+      island(0, 0, 21, 5);                            // [NY] større midtøy (Flammefrukten er på tårnet)
       // Fortet: steinmur i ring med åpninger, og et vakttårn med trapp i midten
       for (let a = 0; a < Math.PI; a += 0.04) {
         const x = Math.round(Math.cos(a) * 8), z = Math.round(Math.sin(a) * 8);
@@ -163,8 +163,10 @@
       box(-3, -3, 12, 12, -2, 1, T.POST);
       // trapp opp til plattformen (langs østsiden)
       for (let k = 0; k < 6; k++) box(2, 2, 5 + k, 5 + k, 3 - k, 3 - k, T.STEP);
-      palm(10, 6, 4); palm(-6, 11, 4); palm(12, -1, 4);
-      crates(5, 4, 5);
+      palm(10, 6, 5); palm(-6, 11, 5); palm(12, -1, 5); palm(16, 8, 4); palm(-14, 10, 4); palm(4, 17, 4);
+      crates(5, 4, 5); crates(-12, 3, 5);
+      // fakler rundt tårnet (lyser opp frukten)
+      set(3, 5, 3, T.POST); set(3, 6, 3, T.GOLD); set(-4, 5, -4, T.POST); set(-4, 6, -4, T.GOLD);
     });
     MIR = false;
 

@@ -1204,7 +1204,7 @@ io.on('connection', socket => {
     if (Object.values(players).filter(o => !o.isBot).length === 0 && mapName !== 'lobby' && !process.env.START_MAP) startMap('lobby');   // [NY] tom server: begynn i loungen
     const name = String(data.name || '').replace(/[<>]/g, '').trim().slice(0, 16) || 'Spiller';
     const sp = spawnFor(team);
-    if (mapName === 'pirate') socket.emit('ships', shipPacket());   // [NY] skipene først, så du lander på dekket
+    if (mapName === 'pirate') { socket.emit('ships', shipPacket()); socket.emit('fruit', fruit); }   // [NY] skipene først, så du lander på dekket
     const p = players[socket.id] = {
       id: socket.id, name, team,
       x: sp.x, y: 0, z: sp.z, yaw: sp.yaw, pitch: 0, slide: 0,
@@ -1273,7 +1273,7 @@ io.on('connection', socket => {
     const to = d.to.map(v => num(v, -500, 500));
     if (to.includes(null)) return;
     p.protectedUntil = 0;                 // skyter du, er beskyttelsen over
-    const SHOT_W = ['sniper', 'dart', 'bow', 'crossbow', 'sword', 'flail', 'c7', 'c7s', 'minimi', 'mg42', 'pistol', 'sniper50', 'jeepmg', 'tankmg', 'jetgun', 'heligun'];   // [NY] pilgevær under vann, bue/armbrøst/sverd på Ridderborgen, ørken-våpen (c7s = med lyddemper)
+    const SHOT_W = ['sniper', 'dart', 'bow', 'crossbow', 'sword', 'flail', 'c7', 'c7s', 'minimi', 'mg42', 'pistol', 'sniper50', 'jeepmg', 'tankmg', 'jetgun', 'heligun', 'fire', 'flame'];   // [NY] pilgevær under vann, bue/armbrøst/sverd på Ridderborgen, ørken-våpen (c7s = med lyddemper)
     socket.broadcast.emit('shot', { id: socket.id, to, w: SHOT_W.includes(d.w) ? d.w : 'ak' });
   });
   // [NY] Krigsbrøl (V) på Ridderborgen: alle hører det
@@ -1293,6 +1293,15 @@ io.on('connection', socket => {
     const t = players[d.target];
     if (!t || !t.alive || t.team === p.team) return;
     const now = Date.now();
+    if (d.weapon === 'fire' || d.weapon === 'flame') {               // [NY] Flammefrukten: ildskudd og flammer (bare den som har spist den)
+      if (mapName !== 'pirate' || fruit.holder !== p.id) return;
+      const F = FRUIT_W[d.weapon];
+      if (now - (p['last_' + d.weapon] || 0) < F.ms) return;
+      if (Math.hypot(t.x - p.x, t.z - p.z) > F.reach) return;
+      p['last_' + d.weapon] = now;
+      applyDamage(p, t, head && F.head ? F.head : F.dmg, head && !!F.head, 'fire');
+      return;
+    }
     if (now - p.lastHit < (mapName === 'desert' ? 40 : MIN_HIT_MS)) return;   // [NY] ørkenen: MG42 skyter fortere (egen sjekk per våpen under)
     p.lastHit = now;
 
@@ -1800,6 +1809,28 @@ io.on('connection', socket => {
     pirUsePos(p, d);
     pirFireCannon(p, d.k | 0, num(d.yaw, -50, 50), num(d.pitch, -2, 2));
   });
+  socket.on('fruitGrab', d => {                      // [NY] ta Flammefrukten
+    const p = players[socket.id];
+    if (!p || !p.alive || intermission || mapName !== 'pirate' || fruit.taken || !d) return;
+    const x = num(d.x, -300, 300), y = num(d.y, -10, 40), z = num(d.z, -300, 300);
+    if (x === null || y === null || z === null) return;
+    if (Math.hypot(x - FRUIT_POS.x, z - FRUIT_POS.z) > 2.5 || Math.abs(y - FRUIT_POS.y) > 2.5 || Math.hypot(x - p.x, z - p.z) > 10) return;
+    fruit = { taken: true, holder: p.id, name: p.name };
+    io.emit('fruit', fruit);
+  });
+  socket.on('fruitBall', d => {                      // [NY] KJEMPE-ildkula (hvert 4. sekund)
+    const p = players[socket.id];
+    if (!p || !p.alive || intermission || mapName !== 'pirate' || fruit.holder !== p.id || !d) return;
+    const now = Date.now();
+    if (now - (p.lastFruitBall || 0) < FRUIT_BALL.cd - 150) return;
+    const x = num(d.x, -300, 300), y = num(d.y, -10, 60), z = num(d.z, -300, 300), yaw = num(d.yaw, -50, 50), pitch = num(d.pitch, -2, 2);
+    if ([x, y, z, yaw, pitch].includes(null) || Math.hypot(x - p.x, z - p.z) > 10) return;
+    p.lastFruitBall = now; p.protectedUntil = 0;
+    const v = [-Math.sin(yaw) * Math.cos(pitch) * FRUIT_BALL.speed, Math.sin(pitch) * FRUIT_BALL.speed, -Math.cos(yaw) * Math.cos(pitch) * FRUIT_BALL.speed];
+    const b = { id: 'f' + (++pirBallSeq), team: p.team, owner: p.id, kind: 'fire', p: [x, y, z], v, born: now };
+    pirBalls.push(b);
+    io.emit('pirBall', { id: b.id, team: b.team, k: -1, p: b.p.map(q => +q.toFixed(2)), v: v.map(q => +q.toFixed(2)), fire: 1 });
+  });
   socket.on('shipCtl', d => {
     const p = players[socket.id];
     if (!p || mapName !== 'pirate' || !d) return;
@@ -2093,6 +2124,7 @@ function startMap(name) {
   if (mapName === 'dragon') resetDragons(); else dragonGame = null;   // [NY] dragebølgene
   dvReset();                                                       // [NY] ørken-kjøretøy på plass
   shipReset();                                                     // [NY] piratskipene tilbake til start
+  fruitReset();                                                    // [NY] Flammefrukten tilbake på tårnet (ny runde)
   gmReady = { bunny: 0, squirrel: 0 };                             // [NY] GMLRS klar med en gang
   gmCarrier = { bunny: null, squirrel: null }; gmSendHolders();     // [NY] radioene tilbake i tårnene
   smokes = []; Object.values(players).forEach(p => { p.c4list = []; });   // [NY] røyk og klebeladninger bort
@@ -2689,10 +2721,33 @@ function pirFireCannon(p, k, yaw, pitch) {
   io.emit('pirBall', { id: b.id, team: b.team, k, p: b.p.map(x => +x.toFixed(2)), v: v.map(x => +x.toFixed(2)), bow: k === 8 ? 1 : 0 });
   return true;
 }
+// ===================================================================
+// [NY] FLAMMEFRUKTEN 🔥: én magisk frukt på toppen av vakttårnet midt på den store øya.
+// Den første som tar den, har ildkreftene resten av runden (også etter at du dør). Bare én per runde!
+// Ingen våpen – hånda skyter ild: ildskudd (klikk), flammer (høyre mus) og en KJEMPE-ildkule hvert 4. sekund (F).
+// Men du kan ikke svømme: i vannet synker du, og havet tar livet ditt sakte.
+// ===================================================================
+const FRUIT_POS = { x: -0.5, y: 12.5, z: -0.5 };
+const FRUIT_W = { fire: { dmg: 22, head: 40, ms: 260, reach: 120 }, flame: { dmg: 7, ms: 90, reach: 12 } };
+const FRUIT_BALL = { cd: 4000, speed: 30, dmg: 170, r: 7, ship: 220, blocks: 3 };
+let fruit = { taken: false, holder: null, name: '' };
+function fruitReset() { fruit = { taken: false, holder: null, name: '' }; io.emit('fruit', fruit); }
+setInterval(() => {                                   // havet: den som har spist frukten, synker og mister liv
+  if (mapName !== 'pirate' || !fruit.holder || intermission) return;
+  const p = players[fruit.holder];
+  if (!p || !p.alive) return;
+  if (p.y < PM.WATER - 1.5 && !(p.y > PM.SHIP.DECK - 0.5)) {
+    p.hp = Math.max(0, p.hp - 8);
+    if (p.hp <= 0) killByWorld(p, 'Havet 🌊', 'drown');
+    else io.to(p.id).emit('damaged', { hp: p.hp, fromX: p.x, fromZ: p.z });
+  }
+}, 500);
 function wrapA(a) { return Math.atan2(Math.sin(a), Math.cos(a)); }
 function pirBallStep(b, h) {
-  b.v[1] -= 9.8 * h;
-  const dr = 1 - PIR_DRAG * h; b.v[0] *= dr; b.v[1] *= dr; b.v[2] *= dr;
+  if (b.kind !== 'fire') {                       // ildkula flyr rett fram
+    b.v[1] -= 9.8 * h;
+    const dr = 1 - PIR_DRAG * h; b.v[0] *= dr; b.v[1] *= dr; b.v[2] *= dr;
+  }
   b.p[0] += b.v[0] * h; b.p[1] += b.v[1] * h; b.p[2] += b.v[2] * h;
   const [x, y, z] = b.p;
   for (const t in ships) {                       // treffer et fiendeskip?
@@ -2712,8 +2767,8 @@ function pirBallStep(b, h) {
   return null;
 }
 function pirBallBoom(b, hit) {
-  const K = CANNON[b.kind], pos = b.p.map(v => +v.toFixed(2)), owner = players[b.owner];
-  io.emit('pirBoom', { id: b.id, p: pos, w: hit.w === 'water' ? 'water' : hit.w === 'ship' ? 'ship' : 'hit' });
+  const K = b.kind === 'fire' ? FRUIT_BALL : CANNON[b.kind], pos = b.p.map(v => +v.toFixed(2)), owner = players[b.owner];
+  io.emit('pirBoom', { id: b.id, p: pos, w: hit.w === 'water' ? 'water' : hit.w === 'ship' ? 'ship' : 'hit', fire: b.kind === 'fire' ? 1 : 0 });
   if (hit.w === 'land') { blastOwner = owner || null; blastCells(pos[0], pos[1], pos[2], K.blocks); blastOwner = null; }
   if (intermission) return;
   if (hit.w === 'ship') {
@@ -2726,7 +2781,7 @@ function pirBallBoom(b, hit) {
   Object.values(players).forEach(t => {
     if (!t.alive || t.team === b.team) return;
     const d = Math.hypot(t.x - pos[0], t.y + 0.9 - pos[1], t.z - pos[2]);
-    if (d < r) applyDamage(owner, t, Math.round(K.dmg * (1 - 0.7 * d / r)), false, 'cannon');
+    if (d < r) applyDamage(owner, t, Math.round(K.dmg * (1 - 0.7 * d / r)), false, b.kind === 'fire' ? 'fire' : 'cannon');
   });
 }
 function shipPacket() {
@@ -2795,7 +2850,7 @@ setInterval(() => {
     let hit = null;
     for (let k = 0; k < 5 && !hit; k++) hit = pirBallStep(b, dt / 5);
     if (hit) { pirBalls.splice(i, 1); pirBallBoom(b, hit); }
-    else if (now - b.born > 8000 || Math.abs(b.p[0]) > 300 || Math.abs(b.p[2]) > 300) pirBalls.splice(i, 1);
+    else if (now - b.born > (b.kind === 'fire' ? 3500 : 8000) || Math.abs(b.p[0]) > 300 || Math.abs(b.p[2]) > 300) pirBalls.splice(i, 1);
   }
   if (++shipTick % 2 === 0) io.emit('ships', shipPacket());       // 10 ganger i sekundet
 }, 50);

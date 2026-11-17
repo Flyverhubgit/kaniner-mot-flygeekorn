@@ -249,7 +249,7 @@ function pirAboveDeck() {
 
 // ---------- Rattet: ta det med E, styr med W/S/A/D ----------
 let pirAtHelm = false, pirHelmAsk = 0, pirCtlSent = '', pirCtlAt = 0;
-function pirHideGun() { return pirateOn() && (pirAtHelm || pirMan >= 0); }   // hendene er på rattet / kanonen
+function pirHideGun() { return pirateOn() && (pirAtHelm || pirMan >= 0 || (typeof fruitMine === 'function' && fruitMine())); }   // hendene er på rattet / kanonen / ildhånda
 function pirWheelWorld(s) { return PIR.shipToWorld(s.pose, PS.WHEEL.x, PS.WHEEL.z); }
 function pirNearWheel() {
   const s = pirShips[myTeam];
@@ -415,8 +415,10 @@ socket.on('pirBall', d => {
   const ball = new THREE.Mesh(pirBallGeo, pirBallMat); ball.castShadow = true; m.add(ball);
   const glow = new THREE.Mesh(new THREE.SphereGeometry(0.42, 8, 6), new THREE.MeshBasicMaterial({ color: 0xff7020, transparent: true, opacity: 0.35, depthWrite: false })); m.add(glow);   // varm glød (lett å se)
   m.traverse(o => { o.raycast = () => {}; });
-  m.position.set(d.p[0], d.p[1], d.p[2]); m.scale.setScalar(d.bow ? 1.5 : 1.15); pirateGroup.add(m);
-  pirBalls[d.id] = { m, v: new THREE.Vector3(d.v[0], d.v[1], d.v[2]), age: 0, trail: 0, big: !!d.bow };
+  m.position.set(d.p[0], d.p[1], d.p[2]); m.scale.setScalar(d.fire ? 4.5 : d.bow ? 1.5 : 1.15); pirateGroup.add(m);
+  if (d.fire) { ball.material = new THREE.MeshBasicMaterial({ color: 0xff5010 }); glow.material.color.setHex(0xffc030); glow.material.opacity = 0.55; }
+  pirBalls[d.id] = { m, v: new THREE.Vector3(d.v[0], d.v[1], d.v[2]), age: 0, trail: 0, big: !!d.bow, fire: !!d.fire };
+  if (d.fire) { fruitWhoosh(0.6, 300); pirSparks(m.position, new THREE.Vector3(d.v[0], d.v[1], d.v[2]).normalize(), 20, 10); return; }
   const dir = new THREE.Vector3(d.v[0], d.v[1], d.v[2]).normalize();
   // EPISK smell: flamme, lys, masse røyk og sot, gnister
   pirFlash.visible = true; pirFlash.position.copy(m.position).addScaledVector(dir, 1.2); pirFlash.scale.setScalar(d.bow ? 2.2 : 1.6); pirFlashT = 0.12;
@@ -441,7 +443,8 @@ socket.on('pirBoom', d => {
     pirSplash(d.p[0], d.p[2], 3.2);                    // høy vannsøyle
     pirPuff(new THREE.Vector3(d.p[0], PW + 0.5, d.p[2]), up, 8, { speed: 3, life: 2, size: 0.7, grow: 3, soot: 0, op: 0.5 });   // vanndamp
   } else {
-    explode(d.p, 1.8, true);
+    explode(d.p, d.fire ? 2.6 : 1.8, true);
+    if (d.fire) { pirSparks(P, up, 60, 14); pirPuff(P, up, 20, { speed: 6, life: 3, size: 1.4, grow: 6, soot: 0.8 }); pirFlash.visible = true; pirFlash.position.copy(P); pirFlash.scale.setScalar(5); pirFlashT = 0.25; pirFlashLight.position.copy(P); pirFlashLight.intensity = 10; }
     pirCannonSound(dist * 0.7, true);
     pirPuff(P, up, 22, { speed: 4, life: 3.5, size: 1, grow: 5, soot: 0.6 });
     pirSparks(P, up, 24, 9);
@@ -466,7 +469,7 @@ document.body.appendChild(pirHpEl);
 
 // ---------- Svømming ----------
 let pirSwimming = false, pirClimb = false, pirSplashAt = 0;
-function pirateSwimK() { return pirateOn() && pirSwimming ? 0.55 : 1; }
+function pirateSwimK() { return pirateOn() && pirSwimming ? (fruitMine() ? 0.4 : 0.55) : 1; }
 // Kalles i updatePlayer etter tyngdekraften: flyt i vannet, dykk (Shift), svøm opp (mellomrom), klatre opp skipssiden (W mot skroget)
 function pirateWater(dt, fwd) {
   if (!pirateOn()) { pirSwimming = false; pirClimb = false; return; }
@@ -479,8 +482,9 @@ function pirateWater(dt, fwd) {
   const wall = fwd > 0 && pirateBlocked(ax, az, player.feetY);
   if (pirSwimming && wall) pirClimb = true;
   if (pirClimb && (!wall || player.onGround)) pirClimb = false;
-  if (pirClimb) { player.vy = 4.5; return; }
+  if (pirClimb && !fruitMine()) { player.vy = 4.5; return; }
   if (!pirSwimming) return;
+  if (fruitMine()) { player.vy = Math.max(player.vy, -4); return; }   // Flammefrukten: du kan ikke svømme – du synker!
   const float = PW - 1.35;                           // her flyter du (hodet over vannet)
   if (keys['Space'] || touchJumpHeld) player.vy = player.feetY < float + 0.1 ? 3 : Math.max(player.vy, 0);
   else if (crouching) player.vy = -2.5;            // dykk ned
@@ -569,9 +573,10 @@ document.body.appendChild(pirUnder);
 
 // ---------- Hver frame ----------
 function updatePirate(dt) {
-  if (!pirateOn()) { pirUnder.style.display = 'none'; pirHud.style.display = 'none'; pirHpEl.style.display = 'none'; if (pirBtn) pirBtn.style.display = 'none'; pirStepped = false; return; }
+  if (!pirateOn()) { updateFruit(dt); pirUnder.style.display = 'none'; pirHud.style.display = 'none'; pirHpEl.style.display = 'none'; if (pirBtn) pirBtn.style.display = 'none'; pirStepped = false; return; }
   if (!pirStepped) pirStepShips(dt);
   pirStepped = false;
+  updateFruit(dt);
   const t = performance.now() / 1000;
   pirWaterTex.offset.set(t * 0.01, t * 0.006);
   pirWater.position.y = PW + Math.sin(t * 0.8) * 0.04;
@@ -581,7 +586,9 @@ function updatePirate(dt) {
   // Kulene flyr (samme bue som på serveren)
   for (const id in pirBalls) {
     const b = pirBalls[id]; b.age += dt;
-    b.v.y -= 9.8 * dt; b.v.multiplyScalar(1 - PIR_DRAG * dt); b.m.position.addScaledVector(b.v, dt);
+    if (!b.fire) { b.v.y -= 9.8 * dt; b.v.multiplyScalar(1 - PIR_DRAG * dt); }
+    b.m.position.addScaledVector(b.v, dt);
+    if (b.fire) { b.m.rotation.y += dt * 8; pirSparks(b.m.position, b.v.clone().normalize().negate(), 2, 6); }
     b.trail -= dt;
     if (b.trail <= 0) { b.trail = 0.035; pirPuff(b.m.position, new THREE.Vector3(), 1, { speed: 0.3, life: 0.9, size: b.big ? 0.4 : 0.3, grow: 2, soot: 0.3, up: 0.2, op: 0.55 }); }   // røykstripe bak kula
     if (b.age > 9) { pirateGroup.remove(b.m); delete pirBalls[id]; }
@@ -617,8 +624,215 @@ function updatePirate(dt) {
   else if (pirMan >= 0) { const cd = Math.max(0, pirReady[pirMan] - performance.now()); txt = '&#128163; Kanon: sikt og ' + (isTouch ? 'trykk SKYT' : 'klikk') + (cd > 0 ? ' (lader ' + (cd / 1000).toFixed(1) + ' s)' : ' – KLAR!') + '<br><span style="font-size:13px">' + (isTouch ? 'Trykk GÅ for å gå' : '<b>E</b> = gå fra kanonen') + '</span>'; btn = 'GÅ'; }
   else if (pirNearCannon() >= 0) { txt = (isTouch ? 'Trykk KANON' : 'Trykk <b>E</b>') + ' for å bruke kanonen &#128163;'; btn = 'KANON'; }
   else if (pirNearWheel()) { txt = s.helm && s.helm !== socket.id ? '&#9875; Noen på laget styrer skipet' : (isTouch ? 'Trykk STYR' : 'Trykk <b>E</b>') + ' for å styre skipet &#9875;'; btn = s.helm && s.helm !== socket.id ? '' : 'STYR'; }
+  else if (fruitMine() && pirSwimming) txt = '&#128561; Du synker! Flammefrukten gjør at du ikke kan svømme – gå opp på land!';
+  else if (fruitMine()) { const cd = Math.max(0, fruitBallReady - performance.now()); txt = '&#128293; Flammefrukten: ' + (isTouch ? 'SKYT = ildskudd, FLAMMER, 🔥' : 'klikk = ildskudd · høyre = flammer · <b>F</b> = kjempe-ildkule') + (cd > 0 ? ' (lader ' + (cd / 1000).toFixed(1) + ' s)' : ' – KLAR!'); }
   else if (pirSwimming) txt = '&#127754; Du svømmer – ' + (isTouch ? 'hopp-knappen = opp' : '<b>mellomrom</b> = opp, <b>Shift</b> = dykk') + ', gå mot skipssiden for å klatre opp';
   pirHud.innerHTML = txt; pirHud.style.display = txt && alive ? 'block' : 'none';
   if (pirBtn) { pirBtn.textContent = btn; pirBtn.style.display = btn && alive ? 'block' : 'none'; }
 }
 socket.on('map', () => { pirAtHelm = false; });
+
+// ===================================================================
+// [NY] FLAMMEFRUKTEN 🔥 (bare én per runde!)
+// Ligger på toppen av vakttårnet midt på den store øya. Den første som tar den, får ildkrefter resten av runden:
+// ingen våpen, men hånda skyter ild. Klikk = ildskudd, høyre mus = flammer, F = KJEMPE-ildkule (hvert 4. sekund).
+// Men du kan ikke svømme lenger: i vannet synker du, og havet tar livet ditt.
+// ===================================================================
+const FRUIT_POS = new THREE.Vector3(-0.5, 12.5, -0.5);
+let fruitState = { taken: false, holder: null, name: '' };
+function fruitMine() { return pirateOn() && fruitState.holder === socket.id; }
+// Frukten: en glødende oransje frukt med flamme-blader, svever og snurrer, med en lysstråle opp i lufta
+const fruitObj = new THREE.Group();
+(function buildFruit() {
+  const body = new THREE.Mesh(new THREE.SphereGeometry(0.42, 14, 10), new THREE.MeshStandardMaterial({ color: 0xff6a1a, emissive: 0xc03000, emissiveIntensity: 0.6, roughness: 0.4 }));
+  body.scale.set(1, 1.15, 1); fruitObj.add(body);
+  for (let k = 0; k < 8; k++) {                      // små "flammer" rundt frukten (gule/røde)
+    const f = new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.35, 6), new THREE.MeshBasicMaterial({ color: k % 2 ? 0xffd040 : 0xff3a10 }));
+    const a = k / 8 * Math.PI * 2; f.position.set(Math.cos(a) * 0.36, 0.1 + (k % 2) * 0.15, Math.sin(a) * 0.36); f.rotation.z = -Math.cos(a) * 0.6; f.rotation.x = Math.sin(a) * 0.6;
+    fruitObj.add(f);
+  }
+  const leaf = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.45, 5), new THREE.MeshBasicMaterial({ color: 0xffe060 })); leaf.position.y = 0.6; fruitObj.add(leaf);
+  const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.6, 60, 10, 1, true), new THREE.MeshBasicMaterial({ color: 0xff8030, transparent: true, opacity: 0.22, depthWrite: false, side: THREE.DoubleSide }));
+  beam.position.y = 30; fruitObj.add(beam); fruitObj.userData.beam = beam;
+  const light = new THREE.PointLight(0xff7020, 1.5, 14, 2); fruitObj.add(light);
+  fruitObj.traverse(o => { o.raycast = () => {}; });
+  fruitObj.position.copy(FRUIT_POS);
+  pirateGroup.add(fruitObj);
+})();
+socket.on('fruit', f => {
+  const before = fruitState.holder;
+  fruitState = f || { taken: false, holder: null, name: '' };
+  if (fruitState.holder && fruitState.holder !== before && pirateOn()) {
+    const me = fruitState.holder === socket.id;
+    bannerMsg = me ? '&#128293; DU SPISTE FLAMMEFRUKTEN!<br><span style="font-size:17px">' + (isTouch ? 'SKYT = ildskudd, FLAMMER, 🔥 = kjempe-ildkule' : 'Klikk = ildskudd · høyre mus = flammer · <b>F</b> = KJEMPE-ildkule') + '<br>Men du kan ikke svømme!</span>'
+      : '&#128293; ' + fruitState.name + ' spiste Flammefrukten!';
+    bannerTime = me ? 5 : 3;
+  }
+  if (typeof showWeaponModel === 'function') showWeaponModel();
+});
+// Ta frukten: gå inn i den
+let fruitAsk = 0;
+function fruitCheckGrab() {
+  if (fruitState.taken || !alive || performance.now() - fruitAsk < 800) return;
+  if (Math.hypot(player.x - FRUIT_POS.x, player.z - FRUIT_POS.z) < 1.6 && Math.abs(player.feetY + 0.9 - FRUIT_POS.y) < 1.8) {
+    fruitAsk = performance.now();
+    socket.emit('fruitGrab', { x: +player.x.toFixed(2), y: +player.feetY.toFixed(2), z: +player.z.toFixed(2) });
+  }
+}
+// Ildhånda (første person): en glødende pote med flammer
+const fireHand = new THREE.Group();
+(function buildHand() {
+  const paw = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.13, 0.22), new THREE.MeshStandardMaterial({ color: 0xffb070, emissive: 0xff4010, emissiveIntensity: 0.6 }));
+  fireHand.add(paw);
+  fireHand.userData.flames = [];
+  for (let k = 0; k < 7; k++) {
+    const f = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.18, 5), new THREE.MeshBasicMaterial({ color: [0xffd040, 0xff7020, 0xff3010][k % 3], transparent: true, opacity: 0.9 }));
+    f.position.set((Math.random() - 0.5) * 0.12, 0.08, (Math.random() - 0.5) * 0.2); fireHand.add(f); fireHand.userData.flames.push(f);
+  }
+  fireHand.position.set(0.3, -0.26, -0.6); fireHand.rotation.x = -0.2; fireHand.scale.setScalar(0.75);
+  fireHand.traverse(o => { o.layers.set(2); o.raycast = () => {}; });
+  fireHand.visible = false; camera.add(fireHand);
+})();
+function fruitHandPos() { return fireHand.getWorldPosition(new THREE.Vector3()).add(camera.getWorldDirection(new THREE.Vector3()).multiplyScalar(0.3)); }
+// Ildskudd: rett fram som en kule, men synlig som en liten ildkule
+let fruitShotCd = 0, fruitBallReady = 0;
+const fireShots = [];
+function fireStreak(from, to) {
+  const m = new THREE.Mesh(new THREE.SphereGeometry(0.16, 8, 6), new THREE.MeshBasicMaterial({ color: 0xffa030 }));
+  m.raycast = () => {}; m.position.copy(from); pirateGroup.add(m);
+  fireShots.push({ m, from: from.clone(), to: to.clone(), t: 0, dur: Math.max(0.05, from.distanceTo(to) / 90) });
+}
+function fruitShoot() {                           // kalles fra shoot() (klikk / SKYT)
+  if (!fruitMine()) return false;
+  if (fruitShotCd > 0 || !alive) return true;
+  fruitShotCd = 0.28;
+  camera.updateMatrixWorld(true);
+  raycaster.setFromCamera({ x: 0, y: 0 }, camera);
+  const o = raycaster.ray.origin, d = raycaster.ray.direction;
+  const hits = raycaster.intersectObject(activeWorldGroup(), true);
+  const vox = voxelOn() ? castleRay(o, d, 120) : null;
+  let bestT = Math.min(hits.length ? hits[0].distance : 120, vox ? vox.dist : 120), target = null, head = false;
+  for (const id in others) {
+    const r = others[id];
+    if (!r.alive || r.team === myTeam) continue;
+    const p = r.cur, top = r.crouch ? 0.78 : 1.5, h0 = r.crouch ? 0.56 : 1.12, h1 = r.crouch ? 0.74 : 1.45;
+    const tb = rayBox(o, d, p.x - 0.4, p.y, p.z - 0.4, p.x + 0.4, p.y + top, p.z + 0.4);   // litt større enn en kule (det er ild!)
+    const th = rayBox(o, d, p.x - 0.2, p.y + h0, p.z - 0.2, p.x + 0.2, p.y + h1, p.z + 0.2);
+    if (th !== null && th < bestT) { bestT = th; target = id; head = true; }
+    else if (tb !== null && tb < bestT) { bestT = tb; target = id; head = false; }
+  }
+  const end = o.clone().addScaledVector(d, bestT);
+  if (target) { socket.emit('hit', { target, head, weapon: 'fire' }); hitmarkTime = 0.08; }
+  fireStreak(fruitHandPos(), end);
+  pirSparks(end, new THREE.Vector3(0, 1, 0), 6, 4);
+  socket.emit('shot', { to: [+end.x.toFixed(2), +end.y.toFixed(2), +end.z.toFixed(2)], w: 'fire' });
+  fruitWhoosh(0.25, 900);
+  return true;
+}
+// Flammer (hold høyre mus / FLAMMER-knappen): 10 m, brenner alle fiender foran deg
+let fruitFlaming = false, fruitFlameT = 0, fruitFlameSnd = 0;
+function fruitFlame(dt) {
+  if (!fruitFlaming || !alive) return;
+  const dir = camera.getWorldDirection(new THREE.Vector3()), hand = fruitHandPos();
+  for (let k = 0; k < 3; k++) {                   // flammestrømmen
+    const e = pirEmbers[pirEmberI]; pirEmberI = (pirEmberI + 1) % pirEmbers.length;
+    e.life = 0.35 + Math.random() * 0.2; e.m.visible = true; e.m.position.copy(hand); e.m.scale.setScalar(2.5);
+    e.m.material.color.setHex([0xffd040, 0xff7020, 0xff3010][k]);
+    e.v.copy(dir).multiplyScalar(22 + Math.random() * 6).add(new THREE.Vector3((Math.random() - 0.5) * 3, 2 + Math.random() * 2, (Math.random() - 0.5) * 3));
+  }
+  if (Math.random() < 0.3) pirPuff(hand.clone().addScaledVector(dir, 6), dir, 1, { speed: 4, life: 1.2, size: 0.4, grow: 2, soot: 0.5, op: 0.4 });
+  fruitFlameT -= dt; fruitFlameSnd -= dt;
+  if (fruitFlameSnd <= 0) { fruitFlameSnd = 0.18; fruitWhoosh(0.12, 500); }
+  if (fruitFlameT > 0) return;
+  fruitFlameT = 0.1;
+  const o = camera.position;
+  for (const id in others) {
+    const r = others[id];
+    if (!r.alive || r.team === myTeam) continue;
+    const to = new THREE.Vector3(r.cur.x - o.x, r.cur.y + 0.9 - o.y, r.cur.z - o.z), dist = to.length();
+    if (dist > 10.5 || to.normalize().dot(dir) < 0.94) continue;
+    if (voxelOn()) { const v = castleRay(o, to, dist); if (v && v.dist < dist - 0.5) continue; }
+    socket.emit('hit', { target: id, head: false, weapon: 'flame' });
+  }
+  const end = o.clone().addScaledVector(dir, 10);
+  socket.emit('shot', { to: [+end.x.toFixed(2), +end.y.toFixed(2), +end.z.toFixed(2)], w: 'flame' });
+}
+addEventListener('mousedown', e => { if (e.button === 2 && fruitMine()) fruitFlaming = true; });
+addEventListener('mouseup', e => { if (e.button === 2) fruitFlaming = false; });
+// KJEMPE-ildkula (F / 🔥-knappen), hvert 4. sekund
+function fruitBigBall() {
+  if (!fruitMine() || !alive) return false;
+  if (performance.now() < fruitBallReady) { bannerMsg = '&#128293; Ildkula lader – ' + ((fruitBallReady - performance.now()) / 1000).toFixed(1) + ' s'; bannerTime = 1; return true; }
+  fruitBallReady = performance.now() + 4000;
+  const h = fruitHandPos();
+  socket.emit('fruitBall', { x: +h.x.toFixed(2), y: +h.y.toFixed(2), z: +h.z.toFixed(2), yaw: +player.yaw.toFixed(4), pitch: +player.pitch.toFixed(4) });
+  shake = Math.max(shake, 0.4);
+  return true;
+}
+addEventListener('keydown', e => {
+  if (document.activeElement && document.activeElement.tagName === 'INPUT') return;
+  if (e.code === 'KeyF') fruitBigBall();
+});
+// Mobil: FLAMMER (hold) og 🔥 (kjempe-ildkule)
+let fruitBtns = null;
+if (isTouch) {
+  fruitBtns = document.createElement('div');
+  fruitBtns.style.cssText = 'position:fixed;right:20px;bottom:240px;display:none;flex-direction:column;gap:10px;z-index:6;user-select:none';
+  const mk = (txt) => { const b = document.createElement('div'); b.textContent = txt; b.style.cssText = 'padding:12px 16px;border-radius:30px;background:rgba(200,60,10,0.85);border:2px solid #fff;color:#fff;font:bold 16px sans-serif;text-align:center'; fruitBtns.appendChild(b); return b; };
+  const fl = mk('FLAMMER'), big = mk('🔥');
+  fl.addEventListener('touchstart', e => { e.preventDefault(); fruitFlaming = true; }, { passive: false });
+  fl.addEventListener('touchend', e => { e.preventDefault(); fruitFlaming = false; }, { passive: false });
+  big.addEventListener('touchstart', e => { e.preventDefault(); fruitBigBall(); }, { passive: false });
+  document.body.appendChild(fruitBtns);
+}
+function fruitWhoosh(vol, freq) {
+  if (typeof audioCtx === 'undefined' || !audioCtx) return;
+  const sr = audioCtx.sampleRate, len = Math.floor(0.3 * sr), buf = audioCtx.createBuffer(1, len, sr), d = buf.getChannelData(0);
+  for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.sin(Math.PI * i / len);
+  const src = audioCtx.createBufferSource(); src.buffer = buf;
+  const f = audioCtx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = freq; f.Q.value = 0.8;
+  const g = audioCtx.createGain(); g.gain.value = vol;
+  src.connect(f); f.connect(g); g.connect(audioCtx.destination); src.start();
+}
+// Andre ser ildskudd og flammer fra den som har frukten
+socket.on('shot', d => {
+  if (!pirateOn() || (d.w !== 'fire' && d.w !== 'flame')) return;
+  const r = others[d.id]; if (!r) return;
+  const from = new THREE.Vector3(r.cur.x, r.cur.y + 1.3, r.cur.z), to = new THREE.Vector3(d.to[0], d.to[1], d.to[2]);
+  if (d.w === 'fire') { fireStreak(from, to); fruitWhoosh(0.15, 900); }
+  else { const dir = to.clone().sub(from).normalize(); pirSparks(from, dir, 6, 22); }
+});
+// Den som har frukten, brenner (alle ser flammer rundt figuren)
+const fruitAura = [];
+for (let k = 0; k < 10; k++) { const m = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.45, 5), new THREE.MeshBasicMaterial({ color: [0xffd040, 0xff7020, 0xff3010][k % 3], transparent: true, opacity: 0.85 })); m.visible = false; m.raycast = () => {}; pirateGroup.add(m); fruitAura.push(m); }
+
+function updateFruit(dt) {
+  const on = pirateOn();
+  fruitObj.visible = on && !fruitState.taken;
+  if (!on) { fireHand.visible = false; if (fruitBtns) fruitBtns.style.display = 'none'; fruitAura.forEach(m => { m.visible = false; }); return; }
+  const t = performance.now() / 1000;
+  fruitObj.position.y = FRUIT_POS.y + Math.sin(t * 2) * 0.15; fruitObj.rotation.y += dt * 1.5;
+  fruitObj.userData.beam.material.opacity = 0.15 + Math.sin(t * 3) * 0.07;
+  if (!fruitState.taken) fruitCheckGrab();
+  const mine = fruitMine();
+  fireHand.visible = mine && alive && !pirAtHelm && pirMan < 0;
+  if (mine) fireHand.userData.flames.forEach((f, i) => { f.scale.y = 0.7 + Math.abs(Math.sin(t * 9 + i)) * 0.8; f.material.opacity = 0.6 + Math.random() * 0.4; });
+  if (fruitBtns) fruitBtns.style.display = mine && alive ? 'flex' : 'none';
+  fruitShotCd -= dt;
+  if (mine) fruitFlame(dt); else fruitFlaming = false;
+  for (let i = fireShots.length - 1; i >= 0; i--) {
+    const s = fireShots[i]; s.t += dt;
+    const k = Math.min(1, s.t / s.dur); s.m.position.lerpVectors(s.from, s.to, k);
+    if (k >= 1) { pirateGroup.remove(s.m); fireShots.splice(i, 1); }
+  }
+  // flammer rundt den som har frukten (andre spillere)
+  const h = fruitState.holder && fruitState.holder !== socket.id ? others[fruitState.holder] : null;
+  fruitAura.forEach((m, i) => {
+    m.visible = !!(h && h.alive);
+    if (!m.visible) return;
+    const a = i / fruitAura.length * Math.PI * 2 + t * 2;
+    m.position.set(h.cur.x + Math.cos(a) * 0.45, h.cur.y + 0.3 + (i % 3) * 0.5 + Math.abs(Math.sin(t * 6 + i)) * 0.3, h.cur.z + Math.sin(a) * 0.45);
+    m.scale.y = 0.8 + Math.abs(Math.sin(t * 8 + i)) * 0.8;
+  });
+}
+socket.on('map', () => { fruitState = { taken: false, holder: null, name: '' }; fruitFlaming = false; });
