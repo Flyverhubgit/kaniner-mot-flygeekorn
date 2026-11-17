@@ -294,3 +294,56 @@ function gfxDecor(W) {
     addInst(stemGeo, grassMat, list, 1);
   });
 }
+
+// ---------- [NY] Steg 6: effekter (bare Høy) ----------
+// Gnister og støv når kulene treffer, munningsflammen lyser opp rundt deg, og flammen ser litt ulik ut hver gang.
+let gfxFrame = () => {};
+if (GFX_HIGH) {
+  const N = 160, bits = [];
+  const bitMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(0.04, 0.04, 0.04), new THREE.MeshBasicMaterial({ color: 0xffffff }), N);
+  bitMesh.frustumCulled = false; bitMesh.raycast = () => {}; bitMesh.layers.set(1);
+  const hid = new THREE.Object3D(); hid.scale.setScalar(0.0001); hid.updateMatrix();
+  for (let i = 0; i < N; i++) { bits.push({ p: new THREE.Vector3(), v: new THREE.Vector3(), life: 0, max: 1 }); bitMesh.setMatrixAt(i, hid.matrix); bitMesh.setColorAt(i, new THREE.Color(1, 1, 1)); }
+  scene.add(bitMesh);
+  let bi = 0;
+  const col = new THREE.Color();
+  const oldImpact = addImpact;
+  addImpact = function (point, normal) {
+    oldImpact(point, normal);
+    const im = impacts[(impactIndex + impacts.length - 1) % impacts.length];
+    im.mesh.rotateZ(Math.random() * Math.PI);                    // hullene står ikke likt
+    for (let k = 0; k < 7; k++) {
+      const b = bits[bi], i = bi; bi = (bi + 1) % N;
+      const spark = k < 3;
+      b.p.copy(point).addScaledVector(normal, 0.03);
+      b.v.copy(normal).multiplyScalar(spark ? 3 + Math.random() * 3 : 1 + Math.random() * 1.5);
+      b.v.x += (Math.random() - 0.5) * 2.5; b.v.y += Math.random() * 2; b.v.z += (Math.random() - 0.5) * 2.5;
+      b.life = b.max = spark ? 0.25 : 0.6;
+      b.spark = spark;
+      bitMesh.setColorAt(i, col.setHex(spark ? 0xffd27a : 0x9a8c78));
+    }
+    bitMesh.instanceColor.needsUpdate = true;
+  };
+  // Munningslys: et kort, varmt lys ved våpenet når du skyter
+  const muzzleLight = new THREE.PointLight(0xffc070, 0, 7, 2);
+  muzzleLight.position.set(0, 0.05, -0.7);
+  gun.add(muzzleLight);
+  const d = new THREE.Object3D();
+  let lastFlash = false;
+  gfxFrame = dt => {
+    let any = false;
+    for (let i = 0; i < N; i++) {
+      const b = bits[i];
+      if (b.life <= 0) continue;
+      b.life -= dt; any = true;
+      b.v.y -= 9 * dt; b.p.addScaledVector(b.v, dt);
+      d.position.copy(b.p); d.scale.setScalar(b.life <= 0 ? 0.0001 : (b.spark ? 0.8 : 1.6) * (0.4 + b.life / b.max)); d.updateMatrix();
+      bitMesh.setMatrixAt(i, d.matrix);
+    }
+    if (any) bitMesh.instanceMatrix.needsUpdate = true;
+    const f = flash.visible;
+    muzzleLight.intensity = f ? 1.6 : 0;
+    if (f && !lastFlash) flash.scale.setScalar(0.8 + Math.random() * 0.5);   // (vinkelen blir allerede tilfeldig i game.js)
+    lastFlash = f;
+  };
+}

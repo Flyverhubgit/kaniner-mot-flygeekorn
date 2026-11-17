@@ -1696,6 +1696,7 @@ function updateWeapon(dt) {
   recoil = Math.max(0, recoil - dt * 8);
   const dip = reloading > 0 ? Math.sin((1 - reloading / weapon.reloadTime) * Math.PI) : 0;
   if (typeof RELOAD_ANIM !== 'undefined' && RELOAD_ANIM) reloadPose(reloading > 0 ? 1 - reloading / weapon.reloadTime : -1);   // [NY] ekte omlading (gfx.js)
+  if (typeof gfxFrame === 'function') gfxFrame(dt);   // [NY] Grafikk Høy: gnister, støv og munningslys (gfx.js)
   else {
   gun.position.set(GUN_BASE.x, GUN_BASE.y - dip * 0.15, GUN_BASE.z + recoil * 0.05);
   gun.rotation.x = recoil * 0.06 - dip * 0.4;
