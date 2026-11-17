@@ -686,7 +686,10 @@ let weapon = akW;          // våpenet du holder nå
 let scoped = false;        // ser gjennom kikkertsiktet
 // [NY] Kikkert: snikskytteren, og C7-en i ørkenen (3x zoom). C7_SCOPE = false: bare snikskytteren.
 const C7_SCOPE = true, C7_ZOOM_FOV = 28;   // 75° / 3x zoom ≈ 28°
-function canScope() { return weapon === sniperW || (typeof dvCanZoom === 'function' && dvCanZoom()) || (C7_SCOPE && typeof desertWeaponsOn !== 'undefined' && desertWeaponsOn && weapon === akW && !(typeof dvBusy === 'function' && dvBusy())); }   // [NY] + zoom i stridsvognen
+// [NY] Sikte på bazooka/RPG: høyre mus = 2x zoom med siktekors og avstandsmåler. ANGRE: BAZ_SCOPE = false
+const BAZ_SCOPE = true, BAZ_ZOOM_FOV = 38;
+function bazScopeOk() { return BAZ_SCOPE && weapon === bazW && (bazW.id === 'bazooka' || bazW.id === 'rpg') && !(typeof dvBusy === 'function' && dvBusy()); }
+function canScope() { return bazScopeOk() || weapon === sniperW || (typeof dvCanZoom === 'function' && dvCanZoom()) || (C7_SCOPE && typeof desertWeaponsOn !== 'undefined' && desertWeaponsOn && weapon === akW && !(typeof dvBusy === 'function' && dvBusy())); }   // [NY] + zoom i stridsvognen
 let fireHeld = false, touchFire = false, fireCooldown = 0, reloading = 0, recoil = 0, flashTime = 0;
 
 // Modellen ligger "fast" på kameraet, så den følger med når du ser deg rundt
@@ -903,6 +906,28 @@ function playHit(kill) {
 }
 
 const scopeEl = document.getElementById('scope');        // [NY] kikkert-ring
+// [NY] Bazooka-sikte: firkantet ramme, siktekors med avstandsstreker og avstand til det du sikter på
+const bazScopeEl = document.createElement('div');
+bazScopeEl.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:3;display:none;background:radial-gradient(ellipse 46vmin 40vmin at center, transparent 0, transparent 98%, rgba(10,14,10,0.9) 100%)';
+bazScopeEl.innerHTML = '<svg viewBox="-100 -100 200 200" style="position:absolute;left:50%;top:50%;width:70vmin;height:70vmin;transform:translate(-50%,-50%)" fill="none" stroke="#ff5a3a" stroke-width="1.2">' +
+  '<path d="M-6 6 L0 0 L6 6"/>' +                                      // pil midt i (der raketten treffer)
+  '<line x1="-60" y1="0" x2="-14" y2="0"/><line x1="14" y1="0" x2="60" y2="0"/>' +
+  '<line x1="0" y1="14" x2="0" y2="60"/>' +
+  [20, 35, 50].map((y, i) => '<line x1="-' + (8 - i * 2) + '" y1="' + y + '" x2="' + (8 - i * 2) + '" y2="' + y + '"/>').join('') +
+  [-45, -30, 30, 45].map(x => '<line x1="' + x + '" y1="-3" x2="' + x + '" y2="3"/>').join('') +
+  '</svg><div id="bazRange" style="position:absolute;left:50%;top:calc(50% + 24vmin);transform:translateX(-50%);color:#ff7a5a;font:bold 18px monospace;text-shadow:0 0 3px #000"></div>';
+document.body.appendChild(bazScopeEl);
+let bazRangeT = 0;
+function updateBazScope(on) {
+  bazScopeEl.style.display = on ? 'block' : 'none';
+  if (!on || (bazRangeT -= 1) > 0) return;
+  bazRangeT = 6;                                         // avstanden regnes ut hver 6. bilde
+  const dir = camera.getWorldDirection(new THREE.Vector3()), o = camera.getWorldPosition(new THREE.Vector3());
+  let d = Infinity;
+  if (typeof voxelOn === 'function' && voxelOn()) { const h = castleRay(o, dir, 400); if (h) d = h.dist; }   // bare på kloss-banene
+  if (dir.y < -0.001) d = Math.min(d, -o.y / dir.y);
+  document.getElementById('bazRange').textContent = d < 400 ? Math.round(d) + ' m' : '--- m';
+}
 const crosshairEl = document.getElementById('crosshair');
 // ---------- Ammo-visning ----------
 const hud = document.createElement('div');
@@ -1704,19 +1729,20 @@ function updateWeapon(dt) {
   }
   // [NY] Kikkertsikte: zoom inn, skjul våpenet, vis sikte-ringen
   if (scoped && (!canScope() || !alive || reloading > 0)) scoped = false;
-  const fovTarget = scoped ? (weapon === sniperW ? 22 : C7_ZOOM_FOV) : 75;   // [NY] C7: 3x zoom
+  const fovTarget = scoped ? (weapon === sniperW ? 22 : bazScopeOk() ? BAZ_ZOOM_FOV : C7_ZOOM_FOV) : 75;   // [NY] C7: 3x zoom
   if (Math.abs(camera.fov - fovTarget) > 0.05) {
     camera.fov += (fovTarget - camera.fov) * Math.min(1, dt * 18);
     camera.updateProjectionMatrix();
   }
-  scopeEl.style.display = scoped ? 'block' : 'none';
+  scopeEl.style.display = scoped && !bazScopeOk() ? 'block' : 'none';
+  updateBazScope(scoped && bazScopeOk());   // [NY] bazooka-siktet
   crosshairEl.style.display = scoped ? 'none' : 'block';
   crosshairEl.style.background = lookFire || touchFire ? '#ff3b30' : '#fff';   // [NY] rødt sikte = du skyter
   if (window.__scopeBtn) {
     window.__scopeBtn.style.display = canScope() && joined ? 'flex' : 'none';
     window.__scopeBtn.style.background = scoped ? 'rgba(255,150,205,0.6)' : 'rgba(255,255,255,0.3)';
   }
-  gun.visible = alive && joined && !noWeapons() && !scoped && !(typeof inMortar !== 'undefined' && inMortar) && !(typeof spaceHideGun === 'function' && spaceHideGun()) && !(typeof farmHideGun === 'function' && farmHideGun()) && !(typeof dvHideGun === 'function' && dvHideGun());  // [NY] skjul våpenet i menyen, når du er død, i kikkerten og i morteren
+  gun.visible = alive && joined && !noWeapons() && !scoped && !(typeof inMortar !== 'undefined' && inMortar) && !(typeof spaceHideGun === 'function' && spaceHideGun()) && !(typeof farmHideGun === 'function' && farmHideGun()) && !(typeof dvHideGun === 'function' && dvHideGun()) && !(typeof gmHideGun === 'function' && gmHideGun());  // [NY] skjul våpenet i menyen, når du er død, i kikkerten og i morteren
 
   flashTime -= dt;
   flash.visible = flashTime > 0;

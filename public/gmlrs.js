@@ -68,7 +68,43 @@ function gmNearRadio() {
   return Math.hypot(player.x - r.x, player.z - r.z) < 4.5;
 }
 function gmCooldown() { return Math.max(0, (gmReadyAt[myTeam] || 0) - performance.now()); }
+// [NY] Bærbar radio: E i tårnet = plukk opp, 8 = velg radioen (sikt), klikk = skyt. Etterpå går radioen tilbake til tårnet.
+// ANGRE: GM_CARRY = false (også i server.js) -> stå ved radioen som før.
+const GM_CARRY = true;
+let gmHolder = { bunny: null, squirrel: null };
+function gmIHave() { return GM_CARRY && desertOn() && gmHolder[myTeam] === socket.id; }
+function gmHideGun() { return GM_CARRY && gmAim; }
+socket.on('gmlrsHolder', h => {
+  const had = gmIHave();
+  gmHolder = h || { bunny: null, squirrel: null };
+  if (!gmIHave()) gmAim = false;
+  if (!had && gmIHave()) { bannerMsg = '&#128251; Du har GMLRS-radioen!<br><span style="font-size:18px">' + (isTouch ? 'Trykk RADIO' : 'Trykk <b>8</b>') + ', sikt og ' + (isTouch ? 'trykk SKYT' : 'klikk') + '</span>'; bannerTime = 3; }
+});
+function gmToggleAim() {                              // 8 / RADIO-knappen: velg radioen eller legg den bort
+  if (!gmIHave()) return false;
+  if (gmAim) { gmAim = false; return true; }
+  if (gmCooldown() > 0) { bannerMsg = '&#128640; GMLRS lader – ' + Math.ceil(gmCooldown() / 1000) + ' sek'; bannerTime = 2; return true; }
+  if (typeof dvBusy === 'function' && dvBusy()) return true;
+  gmAim = true; reloading = 0; return true;
+}
+// Radioen i hånden (første person)
+const gmHandRadio = new THREE.Group();
+gmB(gmHandRadio, 0.11, 0.17, 0.06, 0, 0, 0, GMM.dark);
+gmB(gmHandRadio, 0.012, 0.16, 0.012, 0.035, 0.16, 0, GMM.dark);
+const gmHandLed = new THREE.Mesh(new THREE.SphereGeometry(0.012, 6, 4), new THREE.MeshBasicMaterial({ color: 0x33ff33 })); gmHandLed.position.set(-0.03, 0.06, 0.032); gmHandRadio.add(gmHandLed);
+gmB(gmHandRadio, 0.08, 0.05, 0.005, 0, 0.0, 0.032, GMM.tan);   // lite skjermvindu
+gmHandRadio.position.set(0.22, -0.2, -0.45); gmHandRadio.rotation.set(0.25, -0.3, 0.1);
+gmHandRadio.traverse(o => { o.layers.set(2); o.castShadow = false; o.raycast = () => {}; });
+gmHandRadio.visible = false;
+camera.add(gmHandRadio);
 function gmAction() {
+  if (GM_CARRY) {                                     // E i tårnet: plukk opp radioen
+    if (!gmNearRadio() || gmIHave()) return false;
+    if (!profile.gmlrs) { bannerMsg = '&#128251; Du trenger GMLRS-radioen!<br><span style="font-size:18px">Oppdrag hos kylling-treneren i loungen: 100 drap</span>'; bannerTime = 3; return true; }
+    if (gmHolder[myTeam]) { bannerMsg = '&#128251; Noen på laget ditt har radioen'; bannerTime = 2; return true; }
+    socket.emit('gmlrsTake', { ok: !!profile.gmlrs });
+    return true;
+  }
   if (!gmNearRadio()) return false;
   if (gmAim) { gmAim = false; return true; }
   if (!profile.gmlrs) { bannerMsg = '&#128251; Du trenger GMLRS-radioen!<br><span style="font-size:18px">Oppdrag hos kylling-treneren i loungen: 100 drap</span>'; bannerTime = 3; return true; }
@@ -87,11 +123,21 @@ function gmAimUpdate() {                              // hvor peker du på bakke
 function gmlrsShoot() {                               // kalles først i shoot()
   if (!gmAim) return false;
   fireCooldown = 0.5;
-  if (gmNearRadio() && gmCooldown() <= 0) socket.emit('gmlrsCall', { x: +gmAimPt.x.toFixed(1), z: +gmAimPt.z.toFixed(1), ok: !!profile.gmlrs });
+  const can = GM_CARRY ? gmIHave() : gmNearRadio();
+  if (can && gmCooldown() <= 0) socket.emit('gmlrsCall', { x: +gmAimPt.x.toFixed(1), z: +gmAimPt.z.toFixed(1), ok: !!profile.gmlrs });
+  else if (can) { bannerMsg = '&#128640; GMLRS lader – ' + Math.ceil(gmCooldown() / 1000) + ' sek'; bannerTime = 2; }
   gmAim = false;
   return true;
 }
-addEventListener('keydown', e => { if (e.code === 'KeyE' && !(document.activeElement && document.activeElement.tagName === 'INPUT')) gmAction(); });
+addEventListener('keydown', e => {
+  if (document.activeElement && document.activeElement.tagName === 'INPUT') return;
+  if (e.code === 'KeyE') gmAction();
+  if (e.code === 'Digit8') gmToggleAim();                          // [NY] radioen som "våpen 8"
+  else if (GM_CARRY && gmAim && /^Digit[1-7]$/.test(e.code)) gmAim = false;   // byttet til et vanlig våpen
+});
+addEventListener('mousedown', e => {                               // [NY] klikk skyter alltid GMLRS når du sikter (også uten ammo i våpenet)
+  if (e.button === 0 && GM_CARRY && gmAim && document.pointerLockElement === renderer.domElement) gmlrsShoot();
+});
 socket.on('gmlrsWait', d => { gmReadyAt[myTeam] = performance.now() + d.ms; bannerMsg = '&#128640; GMLRS lader – ' + Math.ceil(d.ms / 1000) + ' sek'; bannerTime = 2; });
 
 // ---------- Lyder ----------
@@ -197,7 +243,7 @@ let gmBtn = null;
 if (isTouch) {
   gmBtn = document.createElement('div');
   gmBtn.style.cssText = 'position:fixed;left:50%;top:84px;transform:translateX(-50%);padding:12px 22px;border-radius:30px;background:rgba(150,40,30,0.85);border:2px solid #fff;color:#fff;font:bold 17px sans-serif;z-index:6;display:none;user-select:none;';
-  gmBtn.addEventListener('touchstart', e => { e.preventDefault(); gmAction(); }, { passive: false });
+  gmBtn.addEventListener('touchstart', e => { e.preventDefault(); if (!gmToggleAim()) gmAction(); }, { passive: false });
   document.body.appendChild(gmBtn);
 }
 const gmHud = document.createElement('div');
@@ -212,7 +258,11 @@ function updateGmlrs(dt) {
   const now = performance.now();
   if (typeof updateFx === 'function') updateFx(dt);   // ildkulene (lånt fra verdensrommet) må oppdateres her også
   // sikting
-  if (gmAim && (!gmNearRadio() || keys['KeyW'] || keys['KeyA'] || keys['KeyS'] || keys['KeyD'])) gmAim = false;
+  if (gmAim && !GM_CARRY && (!gmNearRadio() || keys['KeyW'] || keys['KeyA'] || keys['KeyS'] || keys['KeyD'])) gmAim = false;
+  if (gmAim && GM_CARRY && (!gmIHave() || !alive || (typeof dvBusy === 'function' && dvBusy()))) gmAim = false;
+  if (GM_CARRY) ['bunny', 'squirrel'].forEach(t => { gmRadios[t].visible = !gmHolder[t]; });   // radioen er borte fra tårnet når noen bærer den
+  gmHandRadio.visible = GM_CARRY && gmAim;
+  gmHandLed.material.color.setHex(gmCooldown() > 0 ? 0x401010 : (Math.sin(now / 200) > 0 ? 0x33ff33 : 0x0a400a));
   if (gmAim) { gmAimUpdate(); gmAimRing.position.set(gmAimPt.x, 0.2, gmAimPt.z); }
   gmAimRing.visible = gmAim;
   // radio-lampa: grønn = klar
@@ -253,7 +303,17 @@ function updateGmlrs(dt) {
   }
   // tekst
   let txt = '', btn = '';
-  if (gmAim) { txt = '&#128640; Sikt der GMLRS skal treffe – ' + (isTouch ? 'trykk SKYT' : 'klikk') + '! (E = avbryt)'; btn = 'AVBRYT'; }
+  if (gmAim) { txt = '&#128640; Sikt der GMLRS skal treffe – ' + (isTouch ? 'trykk SKYT' : 'klikk') + '! (' + (GM_CARRY ? '8' : 'E') + ' = avbryt)'; btn = 'AVBRYT'; }
+  else if (gmIHave()) {
+    const cd = gmCooldown();
+    txt = '&#128251; Du har GMLRS-radioen – ' + (cd > 0 ? 'lader ' + Math.ceil(cd / 1000) + ' sek' : (isTouch ? 'trykk RADIO' : 'trykk <b>8</b>'));
+    btn = 'RADIO';
+  }
+  else if (GM_CARRY && gmNearRadio()) {
+    const cd = gmCooldown();
+    txt = !profile.gmlrs ? '&#128251; GMLRS-radio – du trenger oppdraget fra treneren (100 drap)' : gmHolder[myTeam] ? '&#128251; Noen på laget ditt har radioen' : (isTouch ? 'Trykk TA RADIO' : 'Trykk <b>E</b>') + ' for å ta GMLRS-radioen &#128251;' + (cd > 0 ? ' (lader ' + Math.ceil(cd / 1000) + ' sek)' : '');
+    btn = profile.gmlrs && !gmHolder[myTeam] ? 'TA RADIO' : '';
+  }
   else if (gmNearRadio()) {
     const cd = gmCooldown();
     txt = !profile.gmlrs ? '&#128251; GMLRS-radio – du trenger oppdraget fra treneren (100 drap)' : cd > 0 ? '&#128640; GMLRS lader – ' + Math.ceil(cd / 1000) + ' sek' : (isTouch ? 'Trykk GMLRS' : 'Trykk <b>E</b>') + ' for GMLRS-angrep &#128640;';

@@ -1211,6 +1211,7 @@ io.on('connection', socket => {
     };
     const others = {};
     Object.values(players).forEach(o => { if (o.id !== socket.id) others[o.id] = publicPlayer(o); });
+    if (typeof gmCarrier !== 'undefined') socket.emit('gmlrsHolder', gmCarrier);   // [NY] hvem bærer GMLRS-radioene
     socket.emit('welcome', {
       id: socket.id, spawn: sp, players: others, score,
       foam: { on: foamOn, holes: foamHoles },
@@ -1776,16 +1777,26 @@ io.on('connection', socket => {
     }, k * 120));
   });
 
+  socket.on('gmlrsTake', d => {                      // [NY] plukk opp GMLRS-radioen i tårnet
+    const p = players[socket.id];
+    if (!GM_ON || !GM_CARRY || !p || !p.alive || intermission || mapName !== 'desert' || p.vehicle || !d || !d.ok) return;
+    const R = gmSide(p.team, { x: DM.RADIO.x + 0.5, z: DM.RADIO.z + 0.5 });
+    if (Math.hypot(p.x - R.x, p.z - R.z) > 5 || p.y < 10) return;
+    if (gmCarrier[p.team]) return;                                     // noen på laget har den allerede
+    gmCarrier[p.team] = p.id; gmSendHolders();
+  });
   socket.on('gmlrsCall', d => {                      // [NY] GMLRS fra radiotårnet
     const p = players[socket.id], now = Date.now();
     if (!GM_ON || !p || !p.alive || intermission || mapName !== 'desert' || p.vehicle || !d || !d.ok) return;
     if (process.env.GM_DEBUG) console.log('gmlrsCall', p.x, p.y, p.z, JSON.stringify(d));
     const R = gmSide(p.team, { x: DM.RADIO.x + 0.5, z: DM.RADIO.z + 0.5 });
-    if (Math.hypot(p.x - R.x, p.z - R.z) > 5 || p.y < 10) return;       // må stå ved radioen
+    if (GM_CARRY) { if (gmCarrier[p.team] !== p.id) return; }          // [NY] må bære radioen
+    else if (Math.hypot(p.x - R.x, p.z - R.z) > 5 || p.y < 10) return;  // må stå ved radioen
     if (now < gmReady[p.team]) { socket.emit('gmlrsWait', { ms: gmReady[p.team] - now }); return; }
     const x = num(d.x, -236, 236), z = num(d.z, -236, 236);
     if (x === null || z === null) return;
     gmReady[p.team] = now + GM.cooldownMs;
+    if (GM_CARRY) gmDrop(p.team);                                       // radioen går tilbake til tårnet
     const T = gmSide(p.team, GM_TRUCK), team = p.team, shooter = p.id;
     io.emit('gmlrs', { team, by: p.name, from: [T.x, T.z], x, z, flight: GM.flightMs, cd: GM.cooldownMs });
     setTimeout(() => {
@@ -2050,6 +2061,7 @@ function startMap(name) {
   if (mapName === 'dragon') resetDragons(); else dragonGame = null;   // [NY] dragebølgene
   dvReset();                                                       // [NY] ørken-kjøretøy på plass
   gmReady = { bunny: 0, squirrel: 0 };                             // [NY] GMLRS klar med en gang
+  gmCarrier = { bunny: null, squirrel: null }; gmSendHolders();     // [NY] radioene tilbake i tårnene
   smokes = []; Object.values(players).forEach(p => { p.c4list = []; });   // [NY] røyk og klebeladninger bort
   intermission = false;
   if (hordeMap()) resetFarm(); else farm = null;
@@ -2571,6 +2583,16 @@ const GM = { cooldownMs: 60000, flightMs: 7000, r: 18, dmg: 450, blocks: 7, vr: 
 const GM_TRUCK = { x: 29.5, z: 214.5 };             // kaninenes lastebil (speilet for flygeekornene)
 let gmReady = { bunny: 0, squirrel: 0 };
 function gmSide(team, pt) { return team === 'squirrel' ? { x: -pt.x, z: -pt.z } : { x: pt.x, z: pt.z }; }
+// [NY] Radioen kan bæres: plukk den opp i tårnet (E), velg den (8), sikt og skyt hvor som helst.
+// Etter angrepet går radioen tilbake til tårnet og må hentes igjen. Dør du, går den også tilbake.
+// ANGRE: GM_CARRY = false -> du må stå ved radioen i tårnet som før.
+const GM_CARRY = true;
+let gmCarrier = { bunny: null, squirrel: null };
+function gmSendHolders() { io.emit('gmlrsHolder', gmCarrier); }
+function gmDrop(team) { if (gmCarrier[team]) { gmCarrier[team] = null; gmSendHolders(); } }
+setInterval(() => {                                  // bæreren døde, gikk ut eller byttet lag -> radioen tilbake i tårnet
+  ['bunny', 'squirrel'].forEach(t => { const id = gmCarrier[t], p = id && players[id]; if (id && (!p || !p.alive || p.team !== t || mapName !== 'desert')) gmDrop(t); });
+}, 300);
 
 // ===================================================================
 // [NY] ROBOTER: fyller opp det minste laget så lagene alltid er like store.
