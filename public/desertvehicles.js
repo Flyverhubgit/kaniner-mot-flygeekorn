@@ -107,7 +107,7 @@ function dvEnterLocal(v, seat) {
   if (v.kind === 'heli') { weapon = heliW; heliW.mag = heliW.magSize; }
   if (dvIsAir(v.kind)) { dvl.tp = 0; dvl.ty = 0; dvl.vx = dvl.vy = dvl.vz = 0; }
   if (typeof showWeaponModel === 'function') showWeaponModel();
-  bannerMsg = v.kind === 'jet' ? '&#9992;&#65039; F-16 – W = gass, nesa opp for å lette. Klikk = kanon, G = missil' : v.kind === 'heli' ? '&#128641; HELIKOPTER – Mellomrom/C = opp/ned. Klikk = kanon, G = rakett' : myDvSeat === 'gun' ? '&#128737;&#65039; SKYTTER – klikk = maskingevær på taket' : v.kind === 'tank' ? '&#128737;&#65039; STRIDSVOGN – klikk = kanon, høyre knapp = zoom' : '&#128665; JEEP – klikk = maskingevær'; bannerTime = 2;
+  bannerMsg = v.kind === 'jet' ? '&#9992;&#65039; F-16 – W = gass, nesa opp for å lette. Klikk = kanon, G = missil' : v.kind === 'heli' ? '&#128641; HELIKOPTER – Mellomrom = opp, Ctrl = ned. Klikk = kanon, G = rakett' : myDvSeat === 'gun' ? '&#128737;&#65039; SKYTTER – klikk = maskingevær på taket' : v.kind === 'tank' ? '&#128737;&#65039; STRIDSVOGN – klikk = kanon, høyre knapp = zoom' : '&#128665; JEEP – klikk = maskingevær'; bannerTime = 2;
   if (myDvSeat === 'drive') dvEngineStart(v.kind);
 }
 function dvExitLocal() {
