@@ -2274,6 +2274,7 @@ function renderFrame() {
   renderer.clear();
   renderer.shadowMap.needsUpdate = true;
   camera.layers.set(0); camera.layers.enable(1);
+  if (typeof gfxSunFollow === 'function') gfxSunFollow();   // [NY] Grafikk Høy: skyggene følger spilleren (gfx.js)
   renderer.render(scene, camera);
   renderer.clearDepth();
   camera.layers.set(2);

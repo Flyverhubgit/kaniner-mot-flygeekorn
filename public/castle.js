@@ -79,6 +79,21 @@ function makeVoxelWorld(LIB, group) {
     const t = W.pristine[i];
     if (t && !hidden[i]) W.instIndex[i] = W.typeMeshes[t].userData.next++;
   }
+  // [NY] Grafikk Høy: hver kloss får litt ulik lysstyrke, og klosser med noe over seg er litt mørkere
+  // (som skygge under tak og inni hjørner). Gjør at vegger og bakker ser mindre "flate" ut.
+  if (typeof GFX_HIGH !== 'undefined' && GFX_HIGH) {
+    const col = new THREE.Color();
+    for (let i = 0; i < P.length; i++) {
+      const t = P[i];
+      if (!t || W.instIndex[i] < 0 || LIB.INFO[t].emissive) continue;
+      const x = i % LIB.NX, rest = (i - x) / LIB.NX, z = rest % LIB.NZ, y = (rest - z) / LIB.NZ;
+      let v = 0.93 + (((x * 73856093) ^ (y * 19349663) ^ (z * 83492791)) >>> 0) % 1000 / 1000 * 0.12;
+      if (y + 1 < LIB.NY && P[i + LIB.NX * LIB.NZ]) v *= 0.9;
+      col.setRGB(v, v, v);
+      W.typeMeshes[t].setColorAt(W.instIndex[i], col);
+    }
+    for (const t in W.typeMeshes) if (W.typeMeshes[t].instanceColor) W.typeMeshes[t].instanceColor.needsUpdate = true;
+  }
   W.cellPos = i => {
     const x = i % LIB.NX, rest = (i - x) / LIB.NX, z = rest % LIB.NZ, y = (rest - z) / LIB.NZ;
     return [x + LIB.X0, y, z + LIB.Z0];

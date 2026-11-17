@@ -83,11 +83,10 @@ function gfxBlockTex(pattern) {
       noise(236, 18, 1);
       for (let k = 0; k < 4; k++) { const b = 4 + k * 8 + (gfxRnd() * 3 | 0); px(0, b, 222, S, 1); }      // små ribber i sanden
       break;
-    case 'plaster':                                // leire/puss: myk flekkete + noen sprekker
+    case 'plaster':                                // leire/puss: myk flekkete + noen små hakk
       noise(232, 22, 4);
       for (let j = 0; j < S; j += 2) for (let i = 0; i < S; i += 2) if (gfxRnd() < 0.15) px(i, j, 220 + gfxRnd() * 30, 2, 2);
-      { let a = 6, b = 4; for (let k = 0; k < 9; k++) { px(a, b, 175); a += gfxRnd() < 0.5 ? 1 : 0; b += 1; } }
-      { let a = 24, b = 18; for (let k = 0; k < 7; k++) { px(a, b, 180); a -= gfxRnd() < 0.5 ? 1 : 0; b += 1; } }
+      for (let k = 0; k < 3; k++) px(gfxRnd() * 30 | 0, gfxRnd() * 30 | 0, 200, 2, 1);   // små hakk (før: sprekker – så for like ut på hver kloss)
       break;
     case 'sandbag':
       noise(228, 16, 1);
@@ -167,4 +166,25 @@ function gfxPatternFor(LIB, t) {
   else if (typeof SMAP !== 'undefined' && LIB === SMAP) tbl = { 1: 'metal', 2: 'glass', 3: 'metal', 4: 'flat', 5: 'container', 6: 'metal', 7: 'stone', 8: 'leaf', 9: 'speckle', 10: 'speckle', 11: 'plank', 12: 'log', 13: 'metal', 14: 'flat' };
   else if (typeof DESERT !== 'undefined' && LIB === DESERT) tbl = { 1: 'plaster', 2: 'plaster', 3: 'plaster', 4: 'stone', 5: 'sandbag', 6: 'hesco', 7: 'speckle', 8: 'sand', 9: 'log', 10: 'leaf', 11: 'cloth', 12: 'cloth', 13: 'metal', 14: 'container', 15: 'container', 16: 'plank', 17: 'cloth', 18: 'stone', 19: 'cloth', 20: 'cloth' };
   return tbl[t] || 'speckle';
+}
+
+// ---------- [NY] Steg 2: lys og skygger (bare Høy) ----------
+// Mykere og skarpere skygger, og skygge-området følger spilleren på alle baner (før: bare midt på banen).
+// (PCFSoftShadowMap ble prøvd: da forsvant skyggene på noen baner, så vi beholder vanlig PCF.)
+if (GFX_HIGH) {
+  sun.shadow.mapSize.set(2048, 2048);
+  sun.shadow.camera.far = 220;
+  sun.shadow.camera.updateProjectionMatrix();
+  scene.add(sun.target);
+}
+function gfxSunFollow() {
+  if (!GFX_HIGH || typeof joined === 'undefined' || !joined) return;
+  if (typeof currentMap !== 'undefined' && currentMap === 'desert') return;   // ørkenen styrer sola selv (desert.js)
+  const px = Math.round(camera.position.x), pz = Math.round(camera.position.z);  // hele meter = mindre "flimring"
+  sun.position.set(px + 40, 60, pz + 20);           // samme retning som før (20, 30, 10)
+  sun.target.position.set(px, 0, pz);
+  sun.target.updateMatrixWorld();
+  // Store kart hadde skygge over hele banen (±95 m). Nå som skyggen følger spilleren holder ±60 m – skarpere skygger.
+  const c = sun.shadow.camera;
+  if (c.right > 60) { c.left = c.bottom = -60; c.right = c.top = 60; c.updateProjectionMatrix(); }
 }
