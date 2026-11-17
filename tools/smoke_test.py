@@ -18,7 +18,7 @@ import os, re, subprocess, sys, time, glob, socket
 from collections import Counter
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-MAPS = ['lobby', 'temple', 'room', 'castle', 'space', 'farm', 'sea', 'medieval', 'west', 'dragon', 'desert']
+MAPS = ['lobby', 'temple', 'room', 'castle', 'space', 'farm', 'sea', 'medieval', 'west', 'dragon', 'desert', 'pirate']
 CHROME = '/usr/bin/google-chrome'
 IGNORE = [r'favicon', r'Failed to load resource.*404']          # ufarlige meldinger
 problems = []

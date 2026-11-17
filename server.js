@@ -11,7 +11,8 @@ const FM = require('./public/farmmap.js');     // [NY] zombie-kyllingfarmen (sam
 const SM = require('./public/seamap.js');      // [NY] dyphavsbasen (samme klosse-system)
 const LM = require('./public/lobbymap.js');    // [NY] loungen der alle møtes mellom rundene
 const MM = require('./public/medievalmap.js'); // [NY] Ridderborgen (middelalder-borgene)
-const WM = require('./public/westmap.js');     // [NY] Ville Vesten (cowboybyen)
+const WM = require('./public/westmap.js');
+const PM = require('./public/piratemap.js');   // [NY] Piratbukta (øyer og piratskip)     // [NY] Ville Vesten (cowboybyen)
 const JM = require('./public/japanmap.js');    // [NY] Dragetempelet (japansk tempel, drager)
 const DM = require('./public/desertmap.js');   // [NY] Ørkenkrigen (stort slagfelt, 16 mot 16)
 
@@ -89,7 +90,7 @@ let foamHoles = [];            // [x, z] for hvert granat-hull (til nye spillere
 // Underverdenen: et skjult håndtak sender alle ned til lava-arenaen til neste runde
 let worldName = 'main';        // 'main' eller 'underworld'
 // Baner byttes hver runde: tempelet og det kjempestore barnerommet (snikskytterbane)
-const MAPS = ['temple', 'room', 'castle', 'space', 'farm', 'sea', 'medieval', 'west', 'dragon', 'desert']       // rekkefølgen banene byttes i
+const MAPS = ['temple', 'room', 'castle', 'space', 'farm', 'sea', 'medieval', 'west', 'dragon', 'desert', 'pirate']       // rekkefølgen banene byttes i
   .filter(m => !LM.HIDDEN_MAPS.includes(m) || process.env.START_MAP === m);   // [NY] zombie-kyllinger og dyphavet er tatt bort (se lobbymap.js)
 // [NY] Alle starter i LOUNGEN ('lobby'). Der stemmer man ved å stå i en portal. (START_MAP er for testing)
 let mapName = MAPS.includes(process.env.START_MAP) || process.env.START_MAP === 'lobby' ? process.env.START_MAP : 'lobby';
@@ -117,7 +118,7 @@ function makeVox(LIB) {
   const pristine = LIB.build();
   return { LIB, pristine, grid: pristine.slice(), hp: new Uint8Array(pristine.length), gone: [], built: [] };
 }
-const VOX = { castle: makeVox(CM), farm: makeVox(FM), sea: makeVox(SM), medieval: makeVox(MM), west: makeVox(WM), dragon: makeVox(JM), desert: makeVox(DM) };
+const VOX = { castle: makeVox(CM), farm: makeVox(FM), sea: makeVox(SM), medieval: makeVox(MM), west: makeVox(WM), dragon: makeVox(JM), desert: makeVox(DM), pirate: makeVox(PM) };
 function resetVox(name) {
   const V = VOX[name];
   if (!V) return;
@@ -126,7 +127,7 @@ function resetVox(name) {
   V.gone = [];
   V.built = [];                                     // [NY] byggeklosser forsvinner ved ny runde
 }
-resetVox('castle'); resetVox('farm'); resetVox('sea'); resetVox('medieval'); resetVox('west'); resetVox('dragon'); resetVox('desert');
+resetVox('castle'); resetVox('farm'); resetVox('sea'); resetVox('medieval'); resetVox('west'); resetVox('dragon'); resetVox('desert'); resetVox('pirate');
 // [NY] "Horde"-baner: alle spillerne sammen mot monstre (kyllingfarmen og dyphavsbasen)
 function hordeMap() { return mapName === 'farm' || mapName === 'sea'; }
 function HL() { return mapName === 'sea' ? SM : FM; }          // kartet til horde-banen
@@ -1046,6 +1047,7 @@ function spawnFor(team) {
     }
     return { x: 0, y: 0, z: sq ? -215 : 215, yaw: sq ? Math.PI : 0 };
   }
+  if (mapName === 'pirate') return pirateSpawn(team);      // [NY] Piratbukta: på dekket av eget skip
   if (mapName === 'west') {                                 // [NY] Ville Vesten: i innhegningen i egen ende av byen
     const S = WM.SPAWNS.bunny, G = VOX.west.grid, sq = team === 'squirrel';
     for (let k = 0; k < 60; k++) {
@@ -1179,6 +1181,7 @@ function killByWorld(t, who, weapon) {
 function respawn(p) {
   leaveVehicle(p);                                   // [NY]
   const sp = spawnFor(p.team);
+  if (mapName === 'pirate' && !p.isBot) io.to(p.id).emit('ships', shipPacket());   // [NY] skipenes plass akkurat nå
   p.nades = hordeMap() ? FARM_NADES : NADES_PER_LIFE;      // [NY] 10 granater på kyllingfarmen
   p.rockets = hordeMap() ? FARM_ROCKETS : mapName === 'desert' ? DESERT_ROCKETS : ROCKETS_PER_LIFE;   // [NY] ørkenen: 3 (RPG + bazooka til sammen)
   p.smokes = DESERT_SMOKES; p.c4n = DESERT_C4;               // [NY] ørkenen: røykgranater og klebeladninger per liv
@@ -1201,6 +1204,7 @@ io.on('connection', socket => {
     if (Object.values(players).filter(o => !o.isBot).length === 0 && mapName !== 'lobby' && !process.env.START_MAP) startMap('lobby');   // [NY] tom server: begynn i loungen
     const name = String(data.name || '').replace(/[<>]/g, '').trim().slice(0, 16) || 'Spiller';
     const sp = spawnFor(team);
+    if (mapName === 'pirate') socket.emit('ships', shipPacket());   // [NY] skipene først, så du lander på dekket
     const p = players[socket.id] = {
       id: socket.id, name, team,
       x: sp.x, y: 0, z: sp.z, yaw: sp.yaw, pitch: 0, slide: 0,
@@ -1777,6 +1781,27 @@ io.on('connection', socket => {
     }, k * 120));
   });
 
+  // [NY] Piratbukta: ta rattet (E) / slipp det, og styr (W/S = seil, A/D = sving)
+  socket.on('shipHelm', d => {
+    const p = players[socket.id];
+    if (!p || !p.alive || intermission || mapName !== 'pirate' || !d) return;
+    const s = ships[p.team];
+    if (!s || !s.alive) return;
+    if (!d.on) { if (s.helm === p.id) { s.helm = null; s.ctl = { t: 0, r: 0 }; } return; }
+    if (s.helm && s.helm !== p.id && players[s.helm] && players[s.helm].alive) return;   // noen andre styrer
+    const w = PM.shipToWorld(s, PM.SHIP.WHEEL.x, PM.SHIP.WHEEL.z);
+    if (Math.hypot(p.x - w.x, p.z - w.z) > 4) return;
+    s.helm = p.id; s.ctl = { t: 0, r: 0 };
+  });
+  socket.on('shipCtl', d => {
+    const p = players[socket.id];
+    if (!p || mapName !== 'pirate' || !d) return;
+    const s = ships[p.team];
+    if (!s || s.helm !== p.id) return;
+    const t = num(d.t, -1, 1), r = num(d.r, -1, 1);
+    if (t === null || r === null) return;
+    s.ctl = { t, r };
+  });
   socket.on('gmlrsTake', d => {                      // [NY] plukk opp GMLRS-radioen i tårnet
     const p = players[socket.id];
     if (!GM_ON || !GM_CARRY || !p || !p.alive || intermission || mapName !== 'desert' || p.vehicle || !d || !d.ok) return;
@@ -2060,6 +2085,7 @@ function startMap(name) {
   roundEndsAt = mapName === 'lobby' ? Infinity : Date.now() + (hordeMap() ? FARM_SECONDS : mapName === 'dragon' ? DRAGON_SECONDS : mapName === 'desert' ? DESERT_SECONDS : ROUND_SECONDS) * 1000;
   if (mapName === 'dragon') resetDragons(); else dragonGame = null;   // [NY] dragebølgene
   dvReset();                                                       // [NY] ørken-kjøretøy på plass
+  shipReset();                                                     // [NY] piratskipene tilbake til start
   gmReady = { bunny: 0, squirrel: 0 };                             // [NY] GMLRS klar med en gang
   gmCarrier = { bunny: null, squirrel: null }; gmSendHolders();     // [NY] radioene tilbake i tårnene
   smokes = []; Object.values(players).forEach(p => { p.c4list = []; });   // [NY] røyk og klebeladninger bort
@@ -2593,6 +2619,78 @@ function gmDrop(team) { if (gmCarrier[team]) { gmCarrier[team] = null; gmSendHol
 setInterval(() => {                                  // bæreren døde, gikk ut eller byttet lag -> radioen tilbake i tårnet
   ['bunny', 'squirrel'].forEach(t => { const id = gmCarrier[t], p = id && players[id]; if (id && (!p || !p.alive || p.team !== t || mapName !== 'desert')) gmDrop(t); });
 }, 300);
+
+// ===================================================================
+// [NY] PIRATBUKTA 🏴‍☠️: to piratskip som seiler rundt. Serveren bestemmer hvor skipene er.
+// Den som står ved rattet styrer: W = fram, S = bakover/brems, A/D = sving. Skipet stopper mot øyene.
+// ===================================================================
+const SHIP_SPEC = { max: 7, rev: 2, acc: 1.4, turn: 0.38 };
+let ships = {};
+function shipReset() {
+  ships = {};
+  ['bunny', 'squirrel'].forEach(t => {
+    const st = PM.SHIP_START[t];
+    ships[t] = { team: t, x: st.x, z: st.z, yaw: st.yaw, spd: 0, yawRate: 0, hp: PM.SHIP.MAXHP, helm: null, ctl: { t: 0, r: 0 }, alive: true, sinkAt: 0, backAt: 0 };
+  });
+}
+shipReset();
+function shipPacket() {
+  return ['bunny', 'squirrel'].map(t => { const s = ships[t]; return [+s.x.toFixed(2), +s.z.toFixed(2), +s.yaw.toFixed(4), +s.spd.toFixed(2), +s.yawRate.toFixed(4), Math.round(s.hp), s.helm || '', s.alive ? (s.sinkAt ? 2 : 1) : 0]; });
+}
+// Treffer skipet land, kanten eller det andre skipet?
+function shipHits(s, pose) {
+  const G = VOX.pirate.grid;
+  for (const [lx, lz] of PM.SHIP.HULL) {
+    const w = PM.shipToWorld(pose, lx, lz);
+    if (Math.abs(w.x) > PM.BOUND.x || Math.abs(w.z) > PM.BOUND.z) return true;
+    const ix = Math.floor(w.x), iz = Math.floor(w.z);
+    for (let y = 1; y < 4; y++) if (G[PM.idx(ix, y, iz)]) return true;
+    for (const t in ships) {
+      const o = ships[t];
+      if (o === s || !o.alive) continue;
+      const l = PM.worldToShip(o, w.x, w.z);
+      if (Math.abs(l.x) < 4.4 && l.z > -11.4 && l.z < 12.9) return true;
+    }
+  }
+  return false;
+}
+function pirateSpawn(team) {
+  const s = ships[team];
+  if (s && s.alive && !s.sinkAt) {
+    const sp = PM.SHIP.SPAWN[Math.floor(Math.random() * PM.SHIP.SPAWN.length)];
+    const w = PM.shipToWorld(s, sp[0], sp[1]);
+    return { x: w.x, y: PM.SHIP.DECK, z: w.z, yaw: s.yaw + Math.PI };   // se mot baugen
+  }
+  const h = PM.HOME.bunny, sq = team === 'squirrel';
+  const x = (sq ? -1 : 1) * (h.x + (Math.random() - 0.5) * 6), z = (sq ? -1 : 1) * (h.z + (Math.random() - 0.5) * 3);
+  return { x, y: 4, z, yaw: sq ? 0 : Math.PI };
+}
+let shipTick = 0;
+setInterval(() => {
+  if (mapName !== 'pirate' || worldName !== 'main') return;
+  const dt = 0.05, now = Date.now();
+  for (const t in ships) {
+    const s = ships[t];
+    if (!s.alive) continue;
+    const hp = s.helm && players[s.helm];
+    if (s.helm) {                                  // rattet slippes hvis styreren dør, går eller er for langt unna
+      const w = PM.shipToWorld(s, PM.SHIP.WHEEL.x, PM.SHIP.WHEEL.z);
+      if (!hp || !hp.alive || hp.team !== t || Math.hypot(hp.x - w.x, hp.z - w.z) > 9) { s.helm = null; s.ctl = { t: 0, r: 0 }; }   // (9 m: litt slakk for forsinkelse)
+    }
+    const c = s.helm && !intermission ? s.ctl : { t: 0, r: 0 };
+    const want = c.t > 0 ? SHIP_SPEC.max * c.t : c.t < 0 ? -SHIP_SPEC.rev : 0;
+    s.spd += Math.max(-SHIP_SPEC.acc * dt, Math.min(SHIP_SPEC.acc * dt, want - s.spd));
+    s.yawRate = -c.r * SHIP_SPEC.turn * (0.35 + 0.65 * Math.min(1, Math.abs(s.spd) / SHIP_SPEC.max)) * (s.spd < -0.2 ? -1 : 1);
+    const pose = { x: s.x + Math.sin(s.yaw) * s.spd * dt, z: s.z + Math.cos(s.yaw) * s.spd * dt, yaw: s.yaw + s.yawRate * dt };
+    if (shipHits(s, pose)) {
+      const turnOnly = { x: s.x, z: s.z, yaw: pose.yaw };          // prøv bare å snu på stedet
+      if (!shipHits(s, turnOnly)) { s.yaw = turnOnly.yaw; }
+      else s.yawRate = 0;
+      s.spd = -s.spd * 0.25;                                       // dunk – litt tilbake
+    } else { s.x = pose.x; s.z = pose.z; s.yaw = pose.yaw; }
+  }
+  if (++shipTick % 2 === 0) io.emit('ships', shipPacket());       // 10 ganger i sekundet
+}, 50);
 
 // ===================================================================
 // [NY] ROBOTER: fyller opp det minste laget så lagene alltid er like store.

@@ -145,6 +145,7 @@ let medWorld = null;                     // [NY] lages av medieval.js (Ridderbor
 let westWorld = null;                    // [NY] lages av west.js (Ville Vesten)
 let dragonWorld = null;                  // [NY] lages av dragon.js (Dragetempelet)
 let desertWorld = null;                  // [NY] lages av desert.js (Ørkenkrigen)
+let pirateWorld = null;                  // [NY] lages av pirate.js (Piratbukta)
 // Hvilken klosse-verden gjelder nå?
 function voxWorld() {
   if (typeof currentMap !== 'undefined' && currentMap === 'farm' && farmWorld) return farmWorld;
@@ -153,6 +154,7 @@ function voxWorld() {
   if (typeof currentMap !== 'undefined' && currentMap === 'west' && westWorld) return westWorld;     // [NY] Ville Vesten
   if (typeof currentMap !== 'undefined' && currentMap === 'dragon' && dragonWorld) return dragonWorld;   // [NY] Dragetempelet
   if (typeof currentMap !== 'undefined' && currentMap === 'desert' && desertWorld) return desertWorld;   // [NY] Ørkenkrigen
+  if (typeof currentMap !== 'undefined' && currentMap === 'pirate' && pirateWorld) return pirateWorld;   // [NY] Piratbukta
   return castleWorld;
 }
 // Gamle navn (brukes av morteren og testene): klosseslottets rutenett
@@ -277,7 +279,7 @@ function updateCastle(dt) {
 // ---------- Meldinger fra serveren ----------
 socket.on('blocks', d => removeCells(d.gone));
 socket.on('built', d => { const W = voxWorld(); W.addBuilt(d.i); if (typeof onBlockBuilt === 'function') onBlockBuilt(d.i); });   // [NY] hammeren
-function worldFor(name) { return name === 'castle' ? castleWorld : name === 'farm' ? farmWorld : name === 'sea' ? seaWorld : name === 'medieval' ? medWorld : name === 'west' ? westWorld : name === 'dragon' ? dragonWorld : name === 'desert' ? desertWorld : null; }
+function worldFor(name) { return name === 'castle' ? castleWorld : name === 'farm' ? farmWorld : name === 'sea' ? seaWorld : name === 'medieval' ? medWorld : name === 'west' ? westWorld : name === 'dragon' ? dragonWorld : name === 'desert' ? desertWorld : name === 'pirate' ? pirateWorld : null; }
 socket.on('map', d => { const W = worldFor(d.name); if (W) W.reset(); });
 socket.on('welcome', d => {
   const W = worldFor(d.map);

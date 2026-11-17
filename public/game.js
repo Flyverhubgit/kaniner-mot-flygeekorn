@@ -293,6 +293,7 @@ function blocked(px, pz, fy) {
         pz + RADIUS > b.minZ && pz - RADIUS < b.maxZ) return true;
   }
   if (voxelOn() && castleBlocked(px, pz, fy)) return true;   // [NY] klossene i klosseslottet
+  if (typeof pirateBlocked === 'function' && pirateBlocked(px, pz, fy)) return true;   // [NY] piratskipene (pirate.js)
   return false;
 }
 
@@ -307,7 +308,8 @@ function voxelOn() {
     (currentMap === 'medieval' && typeof medWorld !== 'undefined' && medWorld) ||
     (currentMap === 'west' && typeof westWorld !== 'undefined' && westWorld) ||
     (currentMap === 'dragon' && typeof dragonWorld !== 'undefined' && dragonWorld) ||
-    (currentMap === 'desert' && typeof desertWorld !== 'undefined' && desertWorld)) && !underNow() && typeof castleBlocked === 'function';   // [NY] + dyphavet + Ridderborgen
+    (currentMap === 'desert' && typeof desertWorld !== 'undefined' && desertWorld) ||
+    (currentMap === 'pirate' && typeof pirateWorld !== 'undefined' && pirateWorld)) && !underNow() && typeof castleBlocked === 'function';   // [NY] + dyphavet + Ridderborgen
 }
 
 // Høyden på bakken (eller trinnet) under spilleren
@@ -319,6 +321,7 @@ function groundAt(px, pz, fy) {
         pz + RADIUS > b.minZ && pz - RADIUS < b.maxZ && b.maxY > g) g = b.maxY;
   }
   if (voxelOn()) g = Math.max(g, castleGround(px, pz, fy));   // [NY] stå på klosser
+  if (typeof pirateGround === 'function') g = Math.max(g, pirateGround(px, pz, fy));   // [NY] dekket på piratskipene
   return g;
 }
 
@@ -571,6 +574,7 @@ function updatePlayer(dt) {
   if (typeof farmVehicleUpdate === 'function' && farmVehicleUpdate(dt)) return;   // [NY] sitter i doseren (farmvehicles.js)
   if (typeof dvDrive === 'function' && dvDrive(dt)) return;   // [NY] kjører stridsvogn / jeep i ørkenen (desertvehicles.js)
   if (typeof spaceFlyUpdate === 'function' && spaceFlyUpdate(dt)) return;   // [NY] sitter i et jagerfly (space.js)
+  if (typeof piratePlayer === 'function' && piratePlayer(dt)) return;   // [NY] følger skipet / står ved rattet (pirate.js)
   // Hvilken vei vil spilleren gå? (fremover/sidelengs, -1 til 1)
   let fwd = touchMove.y, strafe = touchMove.x;
   if (keys['KeyW'] || keys['ArrowUp']) fwd += 1;
@@ -589,7 +593,7 @@ function updatePlayer(dt) {
   crouching = !!(keys['KeyQ'] || (SHIFT_CROUCH ? (keys['ShiftLeft'] || keys['ShiftRight']) : (CTRL_CROUCH && (keys['ControlLeft'] || keys['ControlRight']))) || touchCrouch);   // [NY] Ctrl = dukk (hold)
   const speed = gliding ? GLIDE_SPEED : (crouching ? WALK * 0.5 : (SHIFT_CROUCH || keys['ShiftLeft'] || keys['ShiftRight']) ? SPRINT : WALK);   // [NY] løper alltid
   const sin = Math.sin(player.yaw), cos = Math.cos(player.yaw);
-  const wireK = typeof wireSlow === 'function' ? wireSlow(player.x, player.z) : 1;   // [NY] piggtråd = halv fart
+  const wireK = (typeof wireSlow === 'function' ? wireSlow(player.x, player.z) : 1) * (typeof pirateSwimK === 'function' ? pirateSwimK() : 1);   // [NY] piggtråd = halv fart, svømming = sakte
   let dx = (-sin * fwd + cos * strafe) * speed * wireK * dt;
   let dz = (-cos * fwd - sin * strafe) * speed * wireK * dt;
 
@@ -629,6 +633,7 @@ function updatePlayer(dt) {
   const oldFeet = player.feetY;
   player.vy -= GRAVITY * (underwater ? 0.35 : 1) * dt;
   if (underwater) player.vy = Math.max(player.vy, -6);     // synker sakte
+  if (typeof pirateWater === 'function') pirateWater(dt, fwd);   // [NY] Piratbukta: svømming og klatring (pirate.js)
   // [NY] Stige (det hellige tårnet): W = klatre opp, S = ned, ingenting = heng fast
   let climbV = (typeof ladderClimbV === 'function') ? ladderClimbV(fwd) : null;
   if (climbV === null && typeof farmLadderV === 'function') climbV = farmLadderV(fwd);   // [NY] stiger på kyllingfarmen
@@ -1742,7 +1747,7 @@ function updateWeapon(dt) {
     window.__scopeBtn.style.display = canScope() && joined ? 'flex' : 'none';
     window.__scopeBtn.style.background = scoped ? 'rgba(255,150,205,0.6)' : 'rgba(255,255,255,0.3)';
   }
-  gun.visible = alive && joined && !noWeapons() && !scoped && !(typeof inMortar !== 'undefined' && inMortar) && !(typeof spaceHideGun === 'function' && spaceHideGun()) && !(typeof farmHideGun === 'function' && farmHideGun()) && !(typeof dvHideGun === 'function' && dvHideGun()) && !(typeof gmHideGun === 'function' && gmHideGun());  // [NY] skjul våpenet i menyen, når du er død, i kikkerten og i morteren
+  gun.visible = alive && joined && !noWeapons() && !scoped && !(typeof inMortar !== 'undefined' && inMortar) && !(typeof spaceHideGun === 'function' && spaceHideGun()) && !(typeof farmHideGun === 'function' && farmHideGun()) && !(typeof dvHideGun === 'function' && dvHideGun()) && !(typeof gmHideGun === 'function' && gmHideGun()) && !(typeof pirHideGun === 'function' && pirHideGun());  // [NY] skjul våpenet i menyen, når du er død, i kikkerten og i morteren
 
   flashTime -= dt;
   flash.visible = flashTime > 0;
@@ -2349,6 +2354,7 @@ function animate(now) {
     if (typeof updateHammer === 'function') updateHammer(dt);       // [NY] hammeren: byggeklosser
     if (typeof updateWest === 'function') updateWest(dt);           // [NY] Ville Vesten: toget, tumbleweeds
     if (typeof updateDesert === 'function') updateDesert(dt);       // [NY] Ørkenkrigen: støv og skygger
+    if (typeof updatePirate === 'function') updatePirate(dt);       // [NY] Piratbukta: skipene og havet
     if (typeof updateDragons === 'function') updateDragons(dt);     // [NY] Dragetempelet: dragene
     if (typeof updateFarmVehicles === 'function') updateFarmVehicles(dt);   // [NY] doser og A-10
     if (typeof updateEasterEggs === 'function') updateEasterEggs(dt);       // [NY] påskeegget
