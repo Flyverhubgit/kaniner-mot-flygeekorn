@@ -181,3 +181,53 @@ function gfxSunFollow() {
   const c = sun.shadow.camera;
   if (c.right > 60) { c.left = c.bottom = -60; c.right = c.top = 60; c.updateProjectionMatrix(); }
 }
+
+// ---------- [NY] Omladings-bevegelse for alle våpen ----------
+// Våpenet vippes på skrå, venstre pote drar ut det gamle magasinet og setter inn et nytt,
+// slår det på plass, og til slutt "lades" våpenet med et rykk bakover.
+// ANGRE: sett RELOAD_ANIM = false -> den gamle (våpenet dukker bare ned).
+const RELOAD_ANIM = true;
+let rlOff = { x: 0, y: 0, z: 0 }, rlActive = false, rlLast = null;
+const rlSm = (a, b, p) => { const t = Math.max(0, Math.min(1, (p - a) / (b - a))); return t * t * (3 - 2 * t); };
+const rlBump = (a, b, p) => (p > a && p < b) ? Math.sin((p - a) / (b - a) * Math.PI) : 0;
+function reloadPose(p) {                        // p = 0..1 under omlading, -1 = ikke omlading
+  const on = p >= 0;
+  const tilt = on ? rlSm(0, 0.15, p) * (1 - rlSm(0.85, 1, p)) : 0;
+  const hand = on ? rlSm(0.15, 0.32, p) * (1 - rlSm(0.5, 0.7, p)) : 0;   // poten ned (gammelt magasin ut) og opp igjen (nytt inn)
+  const slap = on ? rlBump(0.7, 0.78, p) : 0;                              // dunk: magasinet på plass
+  const charge = on ? rlBump(0.8, 0.92, p) : 0;                            // lade-rykk
+  gun.position.set(GUN_BASE.x - 0.07 * tilt, GUN_BASE.y + 0.01 * tilt + 0.02 * slap, GUN_BASE.z + recoil * 0.05 + 0.04 * tilt + 0.05 * charge);
+  gun.rotation.x = recoil * 0.06 + 0.05 * tilt - 0.06 * slap + 0.06 * charge;
+  gun.rotation.y = 0.03 + 0.35 * tilt;          // magasinet vendes litt mot deg
+  gun.rotation.z = 0.45 * tilt;
+  // Venstre pote: flytt fra der den var (showWeaponModel setter grunnstillingen)
+  const L = arms.userData.L, nx = 0.02 * hand, ny = -0.3 * hand, nz = 0.12 * hand;
+  if (rlLast && L.position.distanceToSquared(rlLast) > 1e-10) rlOff = { x: 0, y: 0, z: 0 };   // noen satte ny grunnstilling (byttet våpen)
+  L.position.x += nx - rlOff.x; L.position.y += ny - rlOff.y; L.position.z += nz - rlOff.z;
+  rlOff = { x: nx, y: ny, z: nz };
+  rlLast = L.position.clone();
+  // Magasinet følger poten
+  if (on || rlActive) gun.traverse(o => {
+    if (!o.userData.mag) return;
+    if (!o.userData.magBase) o.userData.magBase = o.position.y;
+    o.position.y = o.userData.magBase - 0.3 * hand;
+  });
+  rlActive = on;
+}
+
+// ---------- [NY] Steg 4: litt mer detaljerte våpen (bare Høy) ----------
+// Treverk får årer, svart metall blir litt blankt. Gjelder AK-en og ørken-våpnene.
+let gfxFixGun = () => {};
+if (GFX_HIGH) {
+  const wood = gfxBlockTex('log').clone(); wood.needsUpdate = true; wood.repeat.set(1, 3); wood.wrapS = wood.wrapT = THREE.RepeatWrapping;
+  const fixGun = root => root.traverse(o => {
+    if (!o.isMesh || !o.material || o.material.userData.gfxDone) return;
+    const m = o.material, c = m.color ? m.color.getHex() : 0;
+    const r = (c >> 16) & 255, g = (c >> 8) & 255, b = c & 255;
+    if (r > g && g > b && r > 0x60 && r < 0xc0) m.map = wood;                       // brunt = tre
+    else if (r < 0x40 && g < 0x40 && b < 0x40) { m.metalness = 0.3; m.roughness = 0.5; }   // svart = metall
+    m.userData.gfxDone = true; m.needsUpdate = true;
+  });
+  gfxFixGun = () => fixGun(gun);                             // kalles også når du bytter våpen (ørken-våpnene kommer senere)
+  gfxFixGun();
+}

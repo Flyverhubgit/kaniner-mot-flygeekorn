@@ -35,7 +35,7 @@ function buildC7() {                       // svart karabin med 3x kikkert (ACOG
   dwBox(g, 0.02, 0.012, 0.36, 0, 0.044, -0.12, DW_GREY);            // skinne på toppen
   dwCyl(g, 0.02, 0.13, 0, 0.075, -0.06, DW_BLACK, 8);               // kikkert
   dwCyl(g, 0.022, 0.02, 0, 0.075, -0.13, DW_GLASS, 8);
-  dwBox(g, 0.035, 0.11, 0.06, 0, -0.09, -0.08, DW_BLACK, 0.25);     // buet magasin
+  dwBox(g, 0.035, 0.11, 0.06, 0, -0.09, -0.08, DW_BLACK, 0.25).userData.mag = true;     // buet magasin
   dwBox(g, 0.035, 0.08, 0.045, 0, -0.08, 0.1, DW_BLACK, -0.3);      // grep
   dwBox(g, 0.045, 0.06, 0.22, 0, -0.015, 0.27, DW_BLACK);           // kolbe
   return g;
@@ -47,7 +47,7 @@ function buildMinimi() {                   // lett maskingevær: grønn ammoboks
   dwCyl(g, 0.014, 0.3, 0, 0.012, -0.5, DW_BLACK);
   dwBox(g, 0.035, 0.035, 0.06, 0, 0.012, -0.66, DW_BLACK);          // flammedemper
   dwBox(g, 0.02, 0.05, 0.1, 0, 0.07, -0.25, DW_BLACK);              // bærehåndtak
-  dwBox(g, 0.09, 0.12, 0.12, -0.01, -0.12, -0.05, DW_OLIVE);        // ammoboks
+  dwBox(g, 0.09, 0.12, 0.12, -0.01, -0.12, -0.05, DW_OLIVE).userData.mag = true;        // ammoboks
   dwBox(g, 0.012, 0.012, 0.14, 0.03, -0.05, -0.52, DW_STEEL); dwBox(g, 0.012, 0.012, 0.14, -0.03, -0.05, -0.52, DW_STEEL);   // tobeint
   dwBox(g, 0.04, 0.08, 0.045, 0, -0.08, 0.1, DW_BLACK, -0.3);
   dwBox(g, 0.05, 0.07, 0.24, 0, -0.01, 0.28, DW_BLACK);
@@ -85,7 +85,7 @@ function buildSniper50() {                 // lang, tung .50 med stor kikkert og
   dwCyl(g, 0.03, 0.3, 0, 0.1, -0.06, DW_BLACK, 10);                 // kikkert
   dwCyl(g, 0.036, 0.04, 0, 0.1, -0.22, DW_BLACK, 10); dwCyl(g, 0.034, 0.012, 0, 0.1, -0.243, DW_GLASS, 10);
   dwBox(g, 0.02, 0.05, 0.03, 0, 0.065, -0.1, DW_BLACK); dwBox(g, 0.02, 0.05, 0.03, 0, 0.065, 0.02, DW_BLACK);
-  dwBox(g, 0.05, 0.1, 0.1, 0, -0.09, -0.06, DW_BLACK);              // magasin
+  dwBox(g, 0.05, 0.1, 0.1, 0, -0.09, -0.06, DW_BLACK).userData.mag = true;              // magasin
   dwBox(g, 0.04, 0.08, 0.045, 0, -0.09, 0.12, DW_BLACK, -0.3);
   dwBox(g, 0.06, 0.1, 0.3, 0, -0.02, 0.33, DW_TAN);                  // kolbe
   dwBox(g, 0.014, 0.014, 0.18, 0.04, -0.06, -0.38, DW_BLACK); dwBox(g, 0.014, 0.014, 0.18, -0.04, -0.06, -0.38, DW_BLACK);   // tobeint

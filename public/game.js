@@ -737,6 +737,7 @@ gun.traverse(o => { o.layers.set(2); o.castShadow = false; o.receiveShadow = fal
 
 // [NY] Snikskytter-modellen i første person (gulrot eller nøtt, etter lag)
 const akParts = gun.children.filter(c => c !== flash);
+akParts[5].userData.mag = true;   // [NY] magasinet (følger poten under omladingen)
 let sniperView = null;
 function buildSniperView(team) {
   if (sniperView) gun.remove(sniperView);
@@ -771,7 +772,7 @@ function buildDartGun() {
   part(0.055, 0.07, 0.3, 0, 0, 0, black);              // kasse
   part(0.02, 0.02, 0.42, 0, 0.01, -0.36, steel);       // langt, tynt løp
   part(0.035, 0.035, 0.05, 0, 0.01, -0.56, steel);     // munning
-  part(0.02, 0.2, 0.11, 0, -0.13, -0.08, black, 0.15); // bredt, flatt pilmagasin
+  part(0.02, 0.2, 0.11, 0, -0.13, -0.08, black, 0.15); g.children[g.children.length - 1].userData.mag = true; // bredt, flatt pilmagasin
   part(0.022, 0.03, 0.09, 0, -0.04, -0.1, yellow);     // pilspisser som stikker opp
   part(0.035, 0.09, 0.045, 0, -0.08, 0.1, black, -0.3);// grep
   part(0.012, 0.012, 0.25, 0.02, -0.01, 0.27, steel);  // trådkolbe
@@ -830,6 +831,7 @@ function showWeaponModel() {
   if (typeof medWeaponView === 'function') medWeaponView();   // [NY] Ridderborgen: bue, armbrøst og sverd
   if (typeof hammerWeaponView === 'function') hammerWeaponView();   // [NY] hammeren
   if (typeof desertWeaponView === 'function') desertWeaponView();   // [NY] ørken-våpnene
+  if (typeof gfxFixGun === 'function') gfxFixGun();   // [NY] Grafikk Høy: tre-årer og blankt metall
   if (typeof applyMySkins === 'function') applyMySkins();   // [FIKS] skins til slutt, når vi vet hvilket våpen som vises (ellers ble pynten hengende på hammeren)
 }
 function switchWeapon(w) {
@@ -1693,9 +1695,12 @@ function updateWeapon(dt) {
   // Animasjon: rekyl, og våpenet dukker ned under omlading
   recoil = Math.max(0, recoil - dt * 8);
   const dip = reloading > 0 ? Math.sin((1 - reloading / weapon.reloadTime) * Math.PI) : 0;
+  if (typeof RELOAD_ANIM !== 'undefined' && RELOAD_ANIM) reloadPose(reloading > 0 ? 1 - reloading / weapon.reloadTime : -1);   // [NY] ekte omlading (gfx.js)
+  else {
   gun.position.set(GUN_BASE.x, GUN_BASE.y - dip * 0.15, GUN_BASE.z + recoil * 0.05);
   gun.rotation.x = recoil * 0.06 - dip * 0.4;
   gun.rotation.z = dip * 0.5;
+  }
   // [NY] Kikkertsikte: zoom inn, skjul våpenet, vis sikte-ringen
   if (scoped && (!canScope() || !alive || reloading > 0)) scoped = false;
   const fovTarget = scoped ? (weapon === sniperW ? 22 : C7_ZOOM_FOV) : 75;   // [NY] C7: 3x zoom
