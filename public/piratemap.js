@@ -3,12 +3,12 @@
 //  En bukt med øyer du kan hoppe opp på og stå på. Hvert lag har et stort
 //  piratskip som kan styres med rattet bak på skipet. Kanoner på sidene.
 //  Kaninene starter i nord (z > 0), flygeekornene i sør (speilet: x -> -1-x, z -> -1-z).
-//  Rutenett: x -100..99, z -80..79, y 0..19. Havbunnen er y = 0, vannflaten er y = 3.
+//  Rutenett: x -160..159, z -130..129, y 0..19 (gjort større 2026-11-17: mer seiling før man møtes). Havbunnen er y = 0, vannflaten er y = 3.
 // ===================================================================
 (function (root) {
-  const NX = 200, NY = 20, NZ = 160, X0 = -100, Z0 = -80;
+  const NX = 320, NY = 20, NZ = 260, X0 = -160, Z0 = -130;
   const WATER = 3;                                   // vannflaten (du svømmer her)
-  const BOUND = { x: 96, z: 76 };                    // kanten av bukta
+  const BOUND = { x: 155, z: 125 };                  // kanten av bukta
 
   const T = { SAND: 1, GRASS: 2, ROCK: 3, STONE: 4, PLANK: 5, POST: 6, HAY: 7, TRUNK: 8, LEAF: 9, CRATE: 10,
     BARREL: 11, GOLD: 12, RED: 13, GREEN: 14, BONE: 15, STEP: 16, DARK: 17 };
@@ -43,10 +43,6 @@
     boxes: [
       [-4, 4, 1.2, DECK, -11, 8],                    // skroget
       [-3, 3, 1.2, DECK, 8, 10.5], [-1.8, 1.8, 1.2, DECK, 10.5, 12.5],   // baugen (smalere)
-      [-4.3, -3.9, DECK, DECK + 1, -11, 8], [3.9, 4.3, DECK, DECK + 1, -11, 8],          // rekkverk på sidene
-      [-3.3, -2.9, DECK, DECK + 1, 8, 10.5], [2.9, 3.3, DECK, DECK + 1, 8, 10.5],
-      [-4.3, -2.9, DECK, DECK + 1, 7.8, 8.1], [2.9, 4.3, DECK, DECK + 1, 7.8, 8.1],
-      [-2.1, -1.7, DECK, DECK + 1, 10.5, 12.5], [1.7, 2.1, DECK, DECK + 1, 10.5, 12.5], [-2.1, 2.1, DECK, DECK + 1, 12.5, 12.8],
       [-4, 4, DECK, QDECK, -11, -5],                 // det høye dekket bak
       [-1.2, 1.2, DECK, DECK + 0.5, -3.8, -3.2], [-1.2, 1.2, DECK, DECK + 1.0, -4.4, -3.8], [-1.2, 1.2, DECK, DECK + 1.5, -5, -4.4],   // trapp opp
       [-4.3, 4.3, QDECK, QDECK + 1, -11.3, -11], [-4.3, -3.9, QDECK, QDECK + 1, -11, -5], [3.9, 4.3, QDECK, QDECK + 1, -11, -5],
@@ -64,10 +60,25 @@
     HULL: [[0, 12.5], [-2.5, 10], [2.5, 10], [-4, 6], [4, 6], [-4, 0], [4, 0], [-4, -6], [4, -6], [-3.5, -11], [3.5, -11], [0, -11]],
     MAXHP: 1500
   };
+  // [NY] Høye skipssider (1,3 m) som du kan dukke bak, med kanonporter der sidekanonene stikker ut.
+  // Under portene er det en lav kant (du kan ikke gå ut gjennom porten).
+  const WALL = DECK + 1.3, gaps = [-3, -0.5, 4, 6.2];
+  SHIP.RAILS = [];
+  [-1, 1].forEach(sx => {
+    const x0 = sx < 0 ? -4.3 : 3.9, x1 = sx < 0 ? -3.9 : 4.3;
+    let z = -11;
+    gaps.forEach(g => { SHIP.RAILS.push([x0, x1, DECK, WALL, z, g - 0.6]); SHIP.RAILS.push([x0, x1, DECK, DECK + 0.6, g - 0.6, g + 0.6]); z = g + 0.6; });
+    SHIP.RAILS.push([x0, x1, DECK, WALL, z, 8]);
+  });
+  SHIP.RAILS.push([-3.3, -2.9, DECK, WALL, 8, 10.5], [2.9, 3.3, DECK, WALL, 8, 10.5],
+    [-4.3, -2.9, DECK, WALL, 7.8, 8.1], [2.9, 4.3, DECK, WALL, 7.8, 8.1],
+    [-2.1, -1.7, DECK, WALL, 10.5, 12.5], [1.7, 2.1, DECK, WALL, 10.5, 12.5], [-2.1, 2.1, DECK, WALL, 12.5, 12.8]);
+  SHIP.WALL = WALL;
+  SHIP.RAILS.forEach(r => SHIP.boxes.push(r));
   SHIP.CANNONS.forEach(c => SHIP.boxes.push([c[0] - 0.45, c[0] + 0.45, DECK, DECK + 0.75, c[1] - 0.55, c[1] + 0.55]));
   SHIP.boxes.push([-0.6, 0.6, DECK, DECK + 0.9, 9.4, 11.4]);   // den store baugkanonen
   // Startplassen til skipene (rattet bak, baugen mot fienden)
-  const SHIP_START = { bunny: { x: 0, z: 48, yaw: Math.PI }, squirrel: { x: 0, z: -48, yaw: 0 } };
+  const SHIP_START = { bunny: { x: 0, z: 96, yaw: Math.PI }, squirrel: { x: 0, z: -96, yaw: 0 } };
   // Lokal (x, z) på skipet -> verden
   function shipToWorld(s, lx, lz) {
     const c = Math.cos(s.yaw), n = Math.sin(s.yaw);
@@ -78,19 +89,21 @@
     return { x: dx * c - dz * n, z: dx * n + dz * c };
   }
   // Hjemmeøya: her kommer du når skipet ditt har sunket
-  const HOME = { bunny: { x: 0, z: 70 } };
+  const HOME = { bunny: { x: 0, z: 118 } };
 
   function build() {
     const g = new Uint8Array(NX * NY * NZ);
-    let MIR = false;
+    let MIR = false, OX = 0, OZ = 0;                   // OX/OZ: flytt en hel ting (øy med alt på) et annet sted
     let seed = 7;
     const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
     function set(x, y, z, t) {
+      x += OX; z += OZ;
       if (MIR) { x = -1 - x; z = -1 - z; }
       if (x < X0 || x >= X0 + NX || z < Z0 || z >= Z0 + NZ || y < 0 || y >= NY) return;
       g[idx(x, y, z)] = t;
     }
     function get(x, y, z) {
+      x += OX; z += OZ;
       if (MIR) { x = -1 - x; z = -1 - z; }
       if (x < X0 || x >= X0 + NX || z < Z0 || z >= Z0 + NZ || y < 0 || y >= NY) return 0;
       return g[idx(x, y, z)];
@@ -173,7 +186,8 @@
     // ===== Hver halvdel (kaninene nord, speilet for flygeekornene) =====
     [false, true].forEach(m => {
       MIR = m;
-      // Hodeskalle-klippen med hule
+      // Hodeskalle-klippen med hule (flyttet lenger ut)
+      OX = -32; OZ = 16;
       island(-48, 24, 10);
       for (let x = -53; x <= -43; x++) for (let z = 20; z <= 28; z++) {
         const d = Math.hypot((x + 48) / 5.5, (z - 24) / 4.5);
@@ -189,24 +203,31 @@
       set(-48, 4, 25, T.GOLD); set(-47, 4, 25, T.GOLD); set(-48, 5, 25, T.GOLD);   // gull i hula
       palm(-41, 28, 4); palm(-55, 29, 4);
 
-      // Palmeøy med hytte
+      // Palmeøy med hytte (flyttet lenger ut)
+      OX = 24; OZ = 20;
       island(40, 30, 8);
       hut(37, 27, 4);
       palm(46, 33, 4); palm(34, 35, 4);
       crates(44, 26, 4);
+      OX = 0; OZ = 0;
 
-      // Små holmer du kan hoppe til
-      island(-20, 38, 4); palm(-20, 38, 4);
-      island(70, 8, 5); crates(70, 8, 4);
-      island(-75, -5, 4); palm(-75, -5, 4);
-      island(18, 22, 3);
+      // Små holmer du kan hoppe til (flere nå som bukta er større)
+      island(-34, 62, 4); palm(-34, 62, 4);
+      island(115, 12, 5); crates(115, 12, 4);
+      island(-120, -8, 4); palm(-120, -8, 4);
+      island(30, 36, 3);
+      island(-62, 92, 6); palm(-60, 92, 4); palm(-65, 90, 4);
+      island(92, 86, 5); palm(92, 86, 4);
+      island(-112, 58, 4); crates(-112, 58, 4);
+      island(128, -62, 4); palm(128, -62, 4);
+      island(58, 112, 3);
 
       // Hjemmeøya med brygge og flagg
-      island(0, 71, 7);
-      pier(-1, 64, 61, 3);
-      for (let y = 4; y < 11; y++) set(4, y, 72, T.POST);
-      box(5, 7, 9, 10, 72, 72, m ? T.GREEN : T.RED);
-      palm(-4, 73, 4);
+      island(0, 119, 7);
+      pier(-1, 112, 109, 3);
+      for (let y = 4; y < 11; y++) set(4, y, 120, T.POST);
+      box(5, 7, 9, 10, 120, 120, m ? T.GREEN : T.RED);
+      palm(-4, 121, 4);
     });
     MIR = false;
     return g;

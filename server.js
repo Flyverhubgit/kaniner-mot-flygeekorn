@@ -2663,7 +2663,7 @@ setInterval(() => {                                  // bæreren døde, gikk ut 
 // [NY] PIRATBUKTA 🏴‍☠️: to piratskip som seiler rundt. Serveren bestemmer hvor skipene er.
 // Den som står ved rattet styrer: W = fram, S = bakover/brems, A/D = sving. Skipet stopper mot øyene.
 // ===================================================================
-const SHIP_SPEC = { max: 7, rev: 2, acc: 1.4, turn: 0.38 };
+const SHIP_SPEC = { max: 8, rev: 2, acc: 1.4, turn: 0.38 };   // (8 m/s: bukta er større nå)
 let ships = {};
 function shipReset() {
   ships = {};
@@ -2757,7 +2757,7 @@ function pirBallStep(b, h) {
     if (Math.abs(l.x) > 5 || l.z < -12 || l.z > 13) continue;
     for (const bx of PM.SHIP.boxes) if (l.x > bx[0] - 0.2 && l.x < bx[1] + 0.2 && l.z > bx[4] - 0.2 && l.z < bx[5] + 0.2 && y > bx[2] - 0.2 && y < bx[3] + 0.2) return { w: 'ship', ship: o };
   }
-  if (y < 20 && y >= 0) { const G = VOX.pirate.grid, ix = Math.floor(x), iy = Math.floor(y), iz = Math.floor(z); if (Math.abs(ix) < 100 && Math.abs(iz) < 80 && G[PM.idx(ix, iy, iz)]) return { w: 'land' }; }
+  if (y < 20 && y >= 0) { const G = VOX.pirate.grid, ix = Math.floor(x), iy = Math.floor(y), iz = Math.floor(z); if (ix >= PM.X0 && ix < PM.X0 + PM.NX && iz >= PM.Z0 && iz < PM.Z0 + PM.NZ && G[PM.idx(ix, iy, iz)]) return { w: 'land' }; }
   for (const id in players) {
     const t = players[id];
     if (!t.alive || t.team === b.team) continue;
@@ -2916,10 +2916,21 @@ function smokeBlocks(a, b) {                 // [NY] går sikten gjennom en røy
   }
   return false;
 }
+function pirShipSolid(x, y, z) {               // [NY] Piratbukta: er punktet inni en del av et skip (skipssiden, masten ...)?
+  for (const t in ships) {
+    const o = ships[t];
+    if (!o.alive || o.sinkAt) continue;
+    const l = PM.worldToShip(o, x, z);
+    if (Math.abs(l.x) > 5 || l.z < -12 || l.z > 13) continue;
+    for (const bx of PM.SHIP.boxes) if (l.x > bx[0] && l.x < bx[1] && l.z > bx[4] && l.z < bx[5] && y > bx[2] && y < bx[3]) return true;
+  }
+  return false;
+}
 function losClear(a, b) {                    // fri sikt mellom to punkter?
   if (mapName === 'desert' && smokes.length && smokeBlocks(a, b)) return false;
   const dx = b.x - a.x, dy = b.y - a.y, dz = b.z - a.z, d = Math.hypot(dx, dy, dz), n = Math.ceil(d / (mapName === 'desert' ? 0.8 : 0.4));   // [NY] ørkenen: grovere sjekk (mange roboter, lange avstander)
-  for (let i = 1; i < n; i++) { const k = i / n; if (bSolid(a.x + dx * k, a.y + dy * k, a.z + dz * k)) return false; }
+  const pir = mapName === 'pirate';
+  for (let i = 1; i < n; i++) { const k = i / n; if (bSolid(a.x + dx * k, a.y + dy * k, a.z + dz * k) || (pir && pirShipSolid(a.x + dx * k, a.y + dy * k, a.z + dz * k))) return false; }   // [NY] skipssidene beskytter
   return true;
 }
 function freeSpot(x, z) {                    // kan en robot stå her på bakken?
@@ -3053,7 +3064,7 @@ function pirBot(b, now, dt) {
     if (!b.chkAt || now > b.chkAt) {
       if (b.chkAt && Math.hypot(s.x - b.chkX, s.z - b.chkZ) < 2 && Math.hypot(gx - s.x, gz - s.z) > 12) {
         b.reverseUntil = now + 3000; b.wanderUntil = now + 16000;
-        for (let k = 0; k < 30; k++) { const x = (Math.random() - 0.5) * 160, z = (Math.random() - 0.5) * 120; if (!shipHits(s, { x, z, yaw: 0 })) { b.wander = [x, z]; break; } }
+        for (let k = 0; k < 30; k++) { const x = (Math.random() - 0.5) * 2 * (PM.BOUND.x - 20), z = (Math.random() - 0.5) * 2 * (PM.BOUND.z - 20); if (!shipHits(s, { x, z, yaw: 0 })) { b.wander = [x, z]; break; } }
       }
       b.chkAt = now + 6000; b.chkX = s.x; b.chkZ = s.z;
     }
@@ -3083,7 +3094,7 @@ function pirBot(b, now, dt) {
     const t = players[oid];
     if (!t.alive || t.team === b.team) continue;
     const d = Math.hypot(t.x - b.x, t.z - b.z);
-    if (d < bestD && losClear(eye, { x: t.x, y: t.y + 1.2, z: t.z })) { best = t; bestD = d; }
+    if (d < bestD && (losClear(eye, { x: t.x, y: t.y + 1.2, z: t.z }) || losClear(eye, { x: t.x, y: t.y + (t.crouch ? 0.8 : 1.55), z: t.z }))) { best = t; bestD = d; }   // hodet over skipssiden?
   }
   if (best && b.target !== best.id) { b.target = best.id; b.seenAt = now; }
   if (!best) b.target = null;

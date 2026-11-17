@@ -35,8 +35,8 @@ pirWater.rotation.x = -Math.PI / 2; pirWater.position.y = PW; pirWater.raycast =
 pirateGroup.add(pirWater);
 (function seabed() {
   const sand = pTex(64, 64, x => { x.fillStyle = '#c8b27a'; x.fillRect(0, 0, 64, 64); for (let i = 0; i < 200; i++) { x.fillStyle = ['#b8a26a', '#d8c28a'][i % 2]; x.fillRect(Math.random() * 64, Math.random() * 64, 2, 2); } });
-  sand.repeat.set(50, 40);
-  const g = new THREE.Mesh(new THREE.BoxGeometry(220, 0.2, 180), new THREE.MeshStandardMaterial({ map: sand, roughness: 1 }));
+  sand.repeat.set(80, 66);
+  const g = new THREE.Mesh(new THREE.BoxGeometry(PIR.NX + 20, 0.2, PIR.NZ + 20), new THREE.MeshStandardMaterial({ map: sand, roughness: 1 }));
   g.position.y = -0.1; g.receiveShadow = true; pirateGroup.add(g);   // (skudd treffer havbunnen)
   // Usynlige kanter: du kan ikke svømme ut av bukta
   const B = PIR.BOUND;
@@ -44,7 +44,7 @@ pirateGroup.add(pirWater);
     pirateColliders.push({ minX: x - w / 2, maxX: x + w / 2, minY: 0, maxY: 40, minZ: z - d / 2, maxZ: z + d / 2 }));
   // Fjell og klipper langt ute (bare pynt)
   for (let k = 0; k < 26; k++) {
-    const a = k / 26 * Math.PI * 2, r = 150 + (k % 3) * 25;
+    const a = k / 26 * Math.PI * 2, r = 230 + (k % 3) * 30;
     const m = new THREE.Mesh(new THREE.ConeGeometry(18 + (k % 4) * 6, 22 + (k % 5) * 8, 6), new THREE.MeshStandardMaterial({ color: k % 2 ? 0x5a7a4a : 0x6a8a5a, roughness: 1, flatShading: true }));
     m.position.set(Math.cos(a) * r, 8, Math.sin(a) * r); m.raycast = () => {}; pirateGroup.add(m);
   }
@@ -65,11 +65,11 @@ function buildPirateShip(team) {
   pBox(g, 7.9, 0.06, 18.9, 0, PS.DECK + 0.03, -1.5, 0xffffff, { mat: dm, noShadow: true });
   // Rød/grønn stripe langs skroget + kanonluker
   pBox(g, 8.08, 0.35, 19, 0, PS.DECK - 0.6, -1.5, tc, { noShadow: true });
-  PS.CANNONS.forEach(([cx, cz]) => pBox(g, 0.1, 0.5, 0.7, cx < 0 ? -4.05 : 4.05, PS.DECK + 0.45, cz, 0x2a1a10, { noShadow: true }));
   // Rekkverk
-  PS.boxes.forEach((b, i) => {
+  PS.RAILS.forEach(b => {                           // høye skipssider med kanonporter
     const h = b[3] - b[2];
-    if (i >= 3 && i <= 11) pBox(g, b[1] - b[0], h, b[5] - b[4], (b[0] + b[1]) / 2, (b[2] + b[3]) / 2, (b[4] + b[5]) / 2, 0x7a5030, { mat: wm });
+    pBox(g, b[1] - b[0], h, b[5] - b[4], (b[0] + b[1]) / 2, (b[2] + b[3]) / 2, (b[4] + b[5]) / 2, 0x6a4428, { mat: wm });
+    if (h > 1) pBox(g, b[1] - b[0] + 0.12, 0.12, b[5] - b[4], (b[0] + b[1]) / 2, b[3] + 0.06, (b[4] + b[5]) / 2, 0x3a2414, { noShadow: true });   // mørk list på toppen
   });
   // Det høye dekket bak (med trapp, rekkverk og vinduer i akterspeilet)
   pBox(g, 8, PS.QDECK - PS.DECK, 6, 0, (PS.QDECK + PS.DECK) / 2, -8, 0x5a3a20, { mat: wm });
@@ -123,9 +123,15 @@ function buildPirateShip(team) {
   const blackM = new THREE.MeshStandardMaterial({ color: 0x1c1c1e, metalness: 0.4, roughness: 0.5 });
   g.userData.cannons = PS.CANNONS.map(([cx, cz]) => {
     const c = new THREE.Group(); c.position.set(cx, PS.DECK, cz);
-    pBox(c, 0.8, 0.35, 1.0, 0, 0.18, 0, 0x6a4424, { mat: wm });
-    const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.24, 1.5, 10), blackM);
-    barrel.rotation.z = Math.PI / 2; barrel.position.set(cx < 0 ? -0.35 : 0.35, 0.5, 0); barrel.castShadow = true; c.add(barrel);
+    pBox(c, 1.0, 0.35, 0.9, 0, 0.22, 0, 0x6a4424, { mat: wm });                    // lavett (vogna)
+    [[-0.35, -0.42], [0.35, -0.42], [-0.35, 0.42], [0.35, 0.42]].forEach(([wx, wz]) => {   // små hjul
+      const w = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.17, 0.08, 10), new THREE.MeshStandardMaterial({ color: 0x4a2e18 }));
+      w.rotation.x = Math.PI / 2; w.position.set(wx, 0.17, wz); c.add(w);
+    });
+    const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.3, 1.9, 12), blackM);
+    barrel.rotation.z = Math.PI / 2; barrel.position.set(cx < 0 ? -0.35 : 0.35, 0.55, 0); barrel.castShadow = true; c.add(barrel);
+    const lip = new THREE.Mesh(new THREE.TorusGeometry(0.22, 0.05, 6, 12), blackM);   // munningen
+    lip.rotation.y = Math.PI / 2; lip.position.set(cx < 0 ? -1.3 : 1.3, 0.55, 0); c.add(lip);
     g.add(c); return c;
   });
   const big = new THREE.Group(); big.position.set(PS.BOW_GUN.x, PS.BOW_GUN.y, PS.BOW_GUN.z);
@@ -295,6 +301,7 @@ document.body.appendChild(pirHud);
 // ---------- Kanonene ----------
 // 8 sidekanoner (gå bort til en og trykk E) og den store foran (den som styrer skyter den). Klikk = fyr!
 let pirMan = -1;                                      // hvilken sidekanon du bemanner (-1 = ingen)
+let pirMyShotAt = 0, pirMyK = -1;                                  // når du selv skjøt (så smellet ikke spilles to ganger)
 const PIR_DRAG = 0.12;                                // luftmotstand (samme som serveren)
 const PIR_CD = { side: 4000, bow: 6000 }, PIR_TURN = { side: 0.7, bow: 0.95 }, PIR_SPEED = { side: 46, bow: 54 };
 const pirReady = new Array(9).fill(0);
@@ -331,6 +338,18 @@ function pirShoot() {                                 // kalles fra shoot() i ga
   if (now < pirReady[k]) return true;
   pirReady[k] = now + PIR_CD[k === 8 ? 'bow' : 'side'];
   const a = pirAimNow(s, k);
+  // Med en gang (før serveren svarer): kanonen rykker, flamme ved munningen, smell og risting
+  const c = k === 8 ? s.mesh.userData.bigGun : s.mesh.userData.cannons[k];
+  if (c) c.userData.kick = 0.45;
+  const mz = new THREE.Vector3(a.m.w.x, a.m.y, a.m.w.z), dir = new THREE.Vector3(-Math.sin(a.yaw), Math.sin(a.pitch), -Math.cos(a.yaw));
+  pirFlash.visible = true; pirFlash.position.copy(mz).addScaledVector(dir, 1.2); pirFlash.scale.setScalar(k === 8 ? 2.4 : 1.9); pirFlashT = 0.14;
+  pirFlashLight.position.copy(pirFlash.position); pirFlashLight.intensity = 6;
+  pirPuff(mz, dir, 14, { speed: 7, life: 3, size: 0.8, grow: 4, soot: 0.45 });
+  pirSparks(mz, dir, 14, 14);
+  pirCannonSound(0, k === 8);
+  shake = Math.max(shake, 0.7);
+  pirMyShotAt = now; pirMyK = k;
+  bannerMsg = '&#128165; BOOM!'; bannerTime = 0.6;
   socket.emit('pirFire', { k, yaw: +a.yaw.toFixed(4), pitch: +a.pitch.toFixed(4), x: +player.x.toFixed(2), z: +player.z.toFixed(2) });
   return true;
 }
@@ -348,7 +367,7 @@ function pirLanding(s, k) {
     v.y -= 9.8 * 0.02; v.multiplyScalar(1 - PIR_DRAG * 0.02); p.addScaledVector(v, 0.02);
     if (p.y < PW) return p.setY(PW + 0.08);
     const ix = Math.floor(p.x), iy = Math.floor(p.y), iz = Math.floor(p.z);
-    if (iy >= 0 && iy < PIR.NY && Math.abs(ix) < 100 && Math.abs(iz) < 80 && pirateWorld.grid[PIR.idx(ix, iy, iz)]) return p;
+    if (iy >= 0 && iy < PIR.NY && ix >= PIR.X0 && ix < PIR.X0 + PIR.NX && iz >= PIR.Z0 && iz < PIR.Z0 + PIR.NZ && pirateWorld.grid[PIR.idx(ix, iy, iz)]) return p;
   }
   return null;
 }
@@ -420,6 +439,7 @@ socket.on('pirBall', d => {
   pirBalls[d.id] = { m, v: new THREE.Vector3(d.v[0], d.v[1], d.v[2]), age: 0, trail: 0, big: !!d.bow, fire: !!d.fire };
   if (d.fire) { fruitWhoosh(0.6, 300); pirSparks(m.position, new THREE.Vector3(d.v[0], d.v[1], d.v[2]).normalize(), 20, 10); return; }
   const dir = new THREE.Vector3(d.v[0], d.v[1], d.v[2]).normalize();
+  if (d.team === myTeam && d.k === pirMyK && performance.now() - pirMyShotAt < 1500) { pirMyShotAt = 0; return; }   // ditt eget skudd: smellet er allerede vist
   // EPISK smell: flamme, lys, masse røyk og sot, gnister
   pirFlash.visible = true; pirFlash.position.copy(m.position).addScaledVector(dir, 1.2); pirFlash.scale.setScalar(d.bow ? 2.2 : 1.6); pirFlashT = 0.12;
   pirFlashLight.position.copy(pirFlash.position); pirFlashLight.intensity = d.bow ? 6 : 4;
@@ -519,7 +539,9 @@ function piratePlayer(dt) {
     if (!alive || !sm || sm.state !== 1) { pirMan = -1; return false; }
     const g = pirGunSpot(pirMan), w = PIR.shipToWorld(sm.pose, g.x, g.z);
     player.x = w.x; player.z = w.z; player.feetY = PS.DECK + pirShipY(sm); player.vy = 0; player.onGround = true;
-    camera.position.set(player.x, player.feetY + 1.35, player.z);
+    // Kamera litt bak og over kanonen, så du ser kanonen og smellet
+    const fx = -Math.sin(player.yaw), fz = -Math.cos(player.yaw);
+    camera.position.set(player.x - fx * 0.9, player.feetY + 2.0, player.z - fz * 0.9);
     camera.rotation.y = player.yaw; camera.rotation.x = player.pitch;
     return true;
   }
