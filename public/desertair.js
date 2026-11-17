@@ -3,7 +3,7 @@
 //  Bygger på ørken-kjøretøyene (desertvehicles.js): samme liv, treff, eksplosjon og nytt fly etter 40 sek.
 //  F-16: W/S = gass, musa = styr. Fart over ca. 120 km/t og nesa opp = lett. Klikk = maskinkanon, G = missil (2, ny hvert 20. sek).
 //        Lander du for bratt eller for fort, eller treffer noe – krasj!
-//  Helikopter: W/S/A/D = fly, Mellomrom = opp, Ctrl (eller C) = ned, musa = snu/sikte. Klikk = kanon, G = rakett (8, ny hvert 4. sek).
+//  Helikopter: W/S/A/D = fly, Mellomrom = opp, Shift (eller C) = ned, musa = snu/sikte. Klikk = kanon, G = rakett (8, ny hvert 4. sek).
 //  E = gå ut (bare når du står på bakken).
 // ===================================================================
 const jetW = { id: 'jetgun', mag: 300, magSize: 300, reserve: Infinity, fireDelay: 0.06, reloadTime: 3, climb: 0 };
@@ -131,7 +131,7 @@ function dvFly(dt, v) {
     if (dvEngine) dvEngine.set(dvl.spd / S.max);
   } else {
     dvl.yaw = turnTo(dvl.yaw, player.yaw, S.turn);
-    const up = (keys['Space'] ? 1 : 0) - (keys['ControlLeft'] || keys['ControlRight'] || keys['KeyC'] ? 1 : 0) + (jumpQueued ? 1 : 0);   // Ctrl (eller C) = ned
+    const up = (keys['Space'] ? 1 : 0) - (keys['ShiftLeft'] || keys['ShiftRight'] || keys['KeyC'] ? 1 : 0) + (jumpQueued ? 1 : 0);   // Shift (eller C) = ned
     jumpQueued = false;
     const fx = -Math.sin(dvl.yaw), fz = -Math.cos(dvl.yaw), rx = Math.cos(dvl.yaw), rz = -Math.sin(dvl.yaw);
     const wantX = fx * fwd * S.fwd + rx * side * S.side, wantZ = fz * fwd * S.fwd + rz * side * S.side;
