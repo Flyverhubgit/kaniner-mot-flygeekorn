@@ -98,10 +98,10 @@ function buildPirateShip(team) {
   [[2, 15.6, 1], [7, 12, 0.75]].forEach(([z, top, k]) => {
     const m = new THREE.Mesh(new THREE.CylinderGeometry(0.25 * k + 0.08, 0.35 * k + 0.05, top - PS.DECK, 8), new THREE.MeshStandardMaterial({ color: 0x5a3a20, map: pirWood }));
     m.position.set(0, (top + PS.DECK) / 2, z); m.castShadow = true; g.add(m);
-    [0.55, 0.85].forEach((f, i) => {
+    [0.64, 0.9].forEach((f, i) => {                    // (høyt nok til at styreren ser under seilet)
       const y = PS.DECK + (top - PS.DECK) * f;
-      pBox(g, 9 * k, 0.2, 0.2, 0, y + (i ? 1.6 : 2.4) * k, z, 0x4a3018, { noHit: true });
-      const sail = new THREE.Mesh(new THREE.PlaneGeometry(8.4 * k, (i ? 3 : 4.4) * k, 6, 3), new THREE.MeshStandardMaterial({ map: sailTex, side: THREE.DoubleSide, roughness: 1 }));
+      pBox(g, 9 * k, 0.2, 0.2, 0, y + (i ? 1.4 : 1.9) * k, z, 0x4a3018, { noHit: true });
+      const sail = new THREE.Mesh(new THREE.PlaneGeometry(8.4 * k, (i ? 2.6 : 3.6) * k, 6, 3), new THREE.MeshStandardMaterial({ map: sailTex, side: THREE.DoubleSide, roughness: 1 }));
       const pos = sail.geometry.attributes.position;
       for (let v = 0; v < pos.count; v++) { const sx = pos.getX(v) / (4.2 * k); pos.setZ(v, (1 - sx * sx) * 0.7 * k); }   // seilet buler i vinden
       sail.geometry.computeVertexNormals();
@@ -158,7 +158,8 @@ socket.on('ships', arr => {
     const a = arr[i], s = pirShips[t];
     if (!a) return;
     s.srv = { x: a[0], z: a[1], yaw: a[2] };
-    s.spd = a[3]; s.yawRate = a[4]; s.hp = a[5]; s.helm = a[6]; s.state = a[7];
+    s.spd = a[3]; s.yawRate = a[4]; s.hp = a[5]; s.helm = a[6]; s.state = a[7]; s.sink = a[8] || 0;
+    s.oy = -6.5 * s.sink;                               // synker
     if (!s.got || Math.hypot(s.pose.x - s.srv.x, s.pose.z - s.srv.z) > 8) { s.pose = { x: s.srv.x, z: s.srv.z, yaw: s.srv.yaw }; s.got = true; }
   });
   if (pirAtHelm && pirShips[myTeam] && pirShips[myTeam].helm !== socket.id && performance.now() - pirHelmAsk > 1500) pirLeaveHelm(true);
@@ -173,9 +174,16 @@ function pirStepShips(dt) {
     s.pose.x += (s.srv.x - s.pose.x) * k; s.pose.z += (s.srv.z - s.pose.z) * k;
     let dy = s.srv.yaw - s.pose.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy)); s.pose.yaw += dy * k;
     s.mesh.position.set(s.pose.x, pirShipY(s), s.pose.z);
-    s.mesh.rotation.y = s.pose.yaw;
+    s.mesh.rotation.set(s.sink * 0.12, s.pose.yaw, s.sink * 0.45);   // krenger når det synker
     s.mesh.visible = s.state !== 0;
   }
+}
+
+// Start på dekket: bruk plassen på skipet (skipet kan ha seilt litt siden serveren regnet ut stedet)
+function pirateSpawnFix(sp) {
+  if (!sp || !sp.ship || !pirShips[sp.ship]) return;
+  const s = pirShips[sp.ship], w = PIR.shipToWorld(s.pose, sp.lx, sp.lz);
+  player.x = w.x; player.z = w.z; player.feetY = PS.DECK + pirShipY(s); player.yaw = s.pose.yaw + Math.PI;
 }
 
 // ---------- Kollisjon med skipene (brukes av blocked() og groundAt() i game.js) ----------
@@ -241,7 +249,7 @@ function pirAboveDeck() {
 
 // ---------- Rattet: ta det med E, styr med W/S/A/D ----------
 let pirAtHelm = false, pirHelmAsk = 0, pirCtlSent = '', pirCtlAt = 0;
-function pirHideGun() { return pirateOn() && pirAtHelm; }   // hendene er på rattet
+function pirHideGun() { return pirateOn() && (pirAtHelm || pirMan >= 0); }   // hendene er på rattet / kanonen
 function pirWheelWorld(s) { return PIR.shipToWorld(s.pose, PS.WHEEL.x, PS.WHEEL.z); }
 function pirNearWheel() {
   const s = pirShips[myTeam];
@@ -249,16 +257,19 @@ function pirNearWheel() {
   const w = pirWheelWorld(s);
   return Math.hypot(player.x - w.x, player.z - w.z) < 2.6 && Math.abs(player.feetY - (PS.QDECK + pirShipY(s))) < 0.8;
 }
-function pirTakeHelm() { pirAtHelm = true; pirHelmAsk = performance.now(); socket.emit('shipHelm', { on: true }); }
+function pirTakeHelm() { pirAtHelm = true; pirHelmAsk = performance.now(); socket.emit('shipHelm', { on: true, x: +player.x.toFixed(2), z: +player.z.toFixed(2) }); }
 function pirLeaveHelm(quiet) {
   if (!pirAtHelm) return;
   pirAtHelm = false;
   if (!quiet) socket.emit('shipHelm', { on: false });
-  else { bannerMsg = '&#9875; Noen andre styrer skipet'; bannerTime = 2; }
+  else { bannerMsg = '&#9875; Fikk ikke tak i rattet'; bannerTime = 2; }
 }
 function pirateAction() {                             // E (og STYR-knappen på mobil)
   if (!pirateOn() || !joined) return false;
   if (pirAtHelm) { pirLeaveHelm(); return true; }
+  if (pirMan >= 0) { pirMan = -1; return true; }       // gå fra kanonen
+  const k = pirNearCannon();
+  if (k >= 0) { pirMan = k; const sm = pirShips[myTeam], m = pirMuzzleDir(sm, k); player.yaw = m.baseYaw; player.pitch = 0.12; return true; }
   if (pirNearWheel()) {
     const s = pirShips[myTeam];
     if (s.helm && s.helm !== socket.id) { bannerMsg = '&#9875; Noen på laget ditt styrer allerede'; bannerTime = 2; return true; }
@@ -280,6 +291,112 @@ if (isTouch) {
 const pirHud = document.createElement('div');
 pirHud.style.cssText = 'position:fixed;left:50%;bottom:150px;transform:translateX(-50%);padding:6px 14px;border-radius:10px;background:rgba(10,40,80,0.55);color:#fff;font:bold 15px sans-serif;z-index:5;display:none;pointer-events:none;text-align:center';
 document.body.appendChild(pirHud);
+
+// ---------- Kanonene ----------
+// 8 sidekanoner (gå bort til en og trykk E) og den store foran (den som styrer skyter den). Klikk = fyr!
+let pirMan = -1;                                      // hvilken sidekanon du bemanner (-1 = ingen)
+const PIR_CD = { side: 4000, bow: 6000 }, PIR_TURN = { side: 0.7, bow: 0.95 }, PIR_SPEED = { side: 46, bow: 54 };
+const pirReady = new Array(9).fill(0);
+function pirGunSpot(k) { const c = PS.CANNONS[k]; return { x: c[0] < 0 ? c[0] + 1.2 : c[0] - 1.2, z: c[1] }; }
+function pirMuzzleLocal(k) {
+  if (k === 8) return { x: 0, y: PS.DECK + 0.75, z: 12.2, dx: 0, dz: 1 };
+  const c = PS.CANNONS[k], sx = c[0] < 0 ? -1 : 1;
+  return { x: c[0] + sx * 1.2, y: PS.DECK + 0.5, z: c[1], dx: sx, dz: 0 };
+}
+// Kanonens retning (samme vinkel-system som spilleren) og hvor langt den kan svinge
+function pirMuzzleDir(s, k) {
+  const m = pirMuzzleLocal(k), w = PIR.shipToWorld(s.pose, m.x, m.z), b = PIR.shipToWorld(s.pose, m.dx, m.dz);
+  return { w, y: m.y + pirShipY(s), baseYaw: Math.atan2(-(b.x - s.pose.x), -(b.z - s.pose.z)) };
+}
+function pirAimNow(s, k) {                            // spillerens sikte, holdt innenfor det kanonen klarer
+  const m = pirMuzzleDir(s, k), T = PIR_TURN[k === 8 ? 'bow' : 'side'];
+  let d = player.yaw - m.baseYaw; d = Math.atan2(Math.sin(d), Math.cos(d));
+  return { m, yaw: m.baseYaw + Math.max(-T, Math.min(T, d)), pitch: Math.max(-0.12, Math.min(0.5, player.pitch + 0.08)) };
+}
+function pirNearCannon() {
+  const s = pirShips[myTeam];
+  if (!s || s.state !== 1 || !alive || Math.abs(player.feetY - (PS.DECK + pirShipY(s))) > 0.6) return -1;
+  const l = PIR.worldToShip(s.pose, player.x, player.z);
+  let best = -1, bd = 1.5;
+  PS.CANNONS.forEach((c, k) => { const g = pirGunSpot(k), d = Math.hypot(l.x - g.x, l.z - g.z); if (d < bd) { bd = d; best = k; } });
+  return best;
+}
+function pirShoot() {                                 // kalles fra shoot() i game.js og ved klikk
+  if (!pirateOn()) return false;
+  const k = pirMan >= 0 ? pirMan : pirAtHelm ? 8 : -1;
+  if (k < 0) return false;
+  const s = pirShips[myTeam], now = performance.now();
+  if (!s || s.state !== 1) return true;
+  if (now < pirReady[k]) return true;
+  pirReady[k] = now + PIR_CD[k === 8 ? 'bow' : 'side'];
+  const a = pirAimNow(s, k);
+  socket.emit('pirFire', { k, yaw: +a.yaw.toFixed(4), pitch: +a.pitch.toFixed(4), x: +player.x.toFixed(2), z: +player.z.toFixed(2) });
+  return true;
+}
+addEventListener('mousedown', e => {
+  if (e.button === 0 && pirateOn() && (pirMan >= 0 || pirAtHelm) && document.pointerLockElement === renderer.domElement) pirShoot();
+});
+// Sikte-ring: der kula vil lande (regnes ut med samme bue som serveren)
+const pirRing = new THREE.Mesh(new THREE.RingGeometry(1.6, 2.2, 24), new THREE.MeshBasicMaterial({ color: 0xff3a2a, transparent: true, opacity: 0.8, side: THREE.DoubleSide, depthTest: false }));
+pirRing.rotation.x = -Math.PI / 2; pirRing.visible = false; pirRing.raycast = () => {}; pirRing.renderOrder = 5; pirateGroup.add(pirRing);
+function pirLanding(s, k) {
+  const a = pirAimNow(s, k), sp = PIR_SPEED[k === 8 ? 'bow' : 'side'];
+  const p = new THREE.Vector3(a.m.w.x, a.m.y, a.m.w.z);
+  const v = new THREE.Vector3(-Math.sin(a.yaw) * Math.cos(a.pitch) * sp + Math.sin(s.pose.yaw) * s.spd, Math.sin(a.pitch) * sp, -Math.cos(a.yaw) * Math.cos(a.pitch) * sp + Math.cos(s.pose.yaw) * s.spd);
+  for (let i = 0; i < 400; i++) {
+    v.y -= 9.8 * 0.02; p.addScaledVector(v, 0.02);
+    if (p.y < PW) return p.setY(PW + 0.08);
+    const ix = Math.floor(p.x), iy = Math.floor(p.y), iz = Math.floor(p.z);
+    if (iy >= 0 && iy < PIR.NY && Math.abs(ix) < 100 && Math.abs(iz) < 80 && pirateWorld.grid[PIR.idx(ix, iy, iz)]) return p;
+  }
+  return null;
+}
+// Kulene (vises for alle) og smellene
+const pirBalls = {};
+const pirBallGeo = new THREE.SphereGeometry(0.28, 10, 8), pirBallMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, metalness: 0.5, roughness: 0.4 });
+const pirSmoke = [];
+for (let k = 0; k < 30; k++) { const m = new THREE.Mesh(new THREE.SphereGeometry(0.6, 8, 6), new THREE.MeshBasicMaterial({ color: 0xdddddd, transparent: true, opacity: 0.7, depthWrite: false })); m.visible = false; m.raycast = () => {}; pirateGroup.add(m); pirSmoke.push({ m, life: 0, v: new THREE.Vector3() }); }
+function pirPuff(p, dir, n) {
+  for (let i = 0; i < n; i++) {
+    const q = pirSmoke.find(x => x.life <= 0); if (!q) return;
+    q.life = 1.4; q.m.visible = true; q.m.position.copy(p); q.m.scale.setScalar(0.6);
+    q.v.copy(dir).multiplyScalar(2 + Math.random() * 3).add(new THREE.Vector3((Math.random() - 0.5) * 1.5, 0.8 + Math.random(), (Math.random() - 0.5) * 1.5));
+  }
+}
+socket.on('pirBall', d => {
+  if (!pirateOn()) return;
+  const m = new THREE.Mesh(pirBallGeo, pirBallMat); m.castShadow = true; m.raycast = () => {};
+  m.position.set(d.p[0], d.p[1], d.p[2]); m.scale.setScalar(d.bow ? 1.4 : 1); pirateGroup.add(m);
+  pirBalls[d.id] = { m, v: new THREE.Vector3(d.v[0], d.v[1], d.v[2]), age: 0 };
+  const dir = new THREE.Vector3(d.v[0], 0, d.v[2]).normalize();
+  pirPuff(m.position, dir, d.bow ? 8 : 5);
+  const dist = Math.hypot(d.p[0] - player.x, d.p[2] - player.z);
+  if (typeof playBoom === 'function') playBoom(Math.max(0.05, (d.bow ? 0.75 : 0.55) - dist * 0.006));
+  if (dist < 14) shake = Math.max(shake, d.bow ? 0.5 : 0.3);
+  // rekyl på kanonen (den rulles litt bakover)
+  const s = pirShips[d.team];
+  if (s) { const c = d.k === 8 ? s.mesh.userData.bigGun : s.mesh.userData.cannons[d.k]; if (c) c.userData.kick = 0.35; }
+});
+socket.on('pirBoom', d => {
+  const b = pirBalls[d.id];
+  if (b) { pirateGroup.remove(b.m); delete pirBalls[d.id]; }
+  if (!pirateOn()) return;
+  if (d.w === 'water') {
+    pirSplash(d.p[0], d.p[2], 2.5);
+    pirPuff(new THREE.Vector3(d.p[0], PW + 0.5, d.p[2]), new THREE.Vector3(0, 1, 0), 3);
+  } else explode(d.p, 1.8);
+});
+socket.on('pirSunk', d => {
+  if (!pirateOn()) return;
+  const mine = d.team === myTeam;
+  bannerMsg = (mine ? '&#128561; SKIPET DITT SYNKER!' : '&#127881; Fiendeskipet synker!') + '<br><span style="font-size:18px">' + (d.by ? 'Senket av ' + d.by + ' – ' : '') + 'nytt skip om 30 sek</span>';
+  bannerTime = 4;
+});
+socket.on('map', () => { for (const id in pirBalls) { pirateGroup.remove(pirBalls[id].m); delete pirBalls[id]; } pirMan = -1; });
+// Skipenes liv (øverst på skjermen)
+const pirHpEl = document.createElement('div');
+pirHpEl.style.cssText = 'position:fixed;left:50%;top:40px;transform:translateX(-50%);color:#fff;font:bold 13px sans-serif;z-index:5;display:none;pointer-events:none;text-shadow:0 0 3px #000;white-space:nowrap';
+document.body.appendChild(pirHpEl);
 
 // ---------- Svømming ----------
 let pirSwimming = false, pirClimb = false, pirSplashAt = 0;
@@ -327,6 +444,15 @@ function piratePlayer(dt) {
       if (l.x > b[0] && l.x < b[1] && l.z > b[4] && l.z < b[5] && player.feetY > b[2] + oy - 0.5 && player.feetY < b[3] + oy - 0.05) { player.feetY = b[3] + oy; player.vy = 0; }
     }
   }
+  if (pirMan >= 0) {                                // bemanner en sidekanon
+    const sm = pirShips[myTeam];
+    if (!alive || !sm || sm.state !== 1) { pirMan = -1; return false; }
+    const g = pirGunSpot(pirMan), w = PIR.shipToWorld(sm.pose, g.x, g.z);
+    player.x = w.x; player.z = w.z; player.feetY = PS.DECK + pirShipY(sm); player.vy = 0; player.onGround = true;
+    camera.position.set(player.x, player.feetY + 1.35, player.z);
+    camera.rotation.y = player.yaw; camera.rotation.x = player.pitch;
+    return true;
+  }
   if (!pirAtHelm) return false;
   const s = pirShips[myTeam];
   if (!alive || !s || s.state !== 1) { pirLeaveHelm(); return false; }
@@ -342,7 +468,7 @@ function piratePlayer(dt) {
   const key = t.toFixed(1) + ',' + r.toFixed(1), now = performance.now();
   if (key !== pirCtlSent || now - pirCtlAt > 400) { pirCtlSent = key; pirCtlAt = now; socket.emit('shipCtl', { t: +t.toFixed(2), r: +r.toFixed(2) }); }
   s.mesh.userData.wheel.rotation.z += -r * dt * 3;
-  camera.position.set(player.x, player.feetY + EYE, player.z);
+  camera.position.set(player.x, player.feetY + 2.2, player.z);   // styreren står litt høyt (ser over rattet)
   camera.rotation.y = player.yaw;
   camera.rotation.x = player.pitch;
   return true;
@@ -377,7 +503,7 @@ document.body.appendChild(pirUnder);
 
 // ---------- Hver frame ----------
 function updatePirate(dt) {
-  if (!pirateOn()) { pirUnder.style.display = 'none'; pirHud.style.display = 'none'; if (pirBtn) pirBtn.style.display = 'none'; pirStepped = false; return; }
+  if (!pirateOn()) { pirUnder.style.display = 'none'; pirHud.style.display = 'none'; pirHpEl.style.display = 'none'; if (pirBtn) pirBtn.style.display = 'none'; pirStepped = false; return; }
   if (!pirStepped) pirStepShips(dt);
   pirStepped = false;
   const t = performance.now() / 1000;
@@ -386,10 +512,38 @@ function updatePirate(dt) {
   for (const k in pirShips) { const f = pirShips[k].mesh.userData.flag; if (f) f.rotation.y = Math.sin(t * 3 + (k === 'bunny' ? 0 : 1)) * 0.25; }
   pirDrops.forEach(p => { if (p.life <= 0) return; p.life -= dt; p.v.y -= 12 * dt; p.m.position.addScaledVector(p.v, dt); if (p.life <= 0 || p.m.position.y < PW - 0.2) { p.life = 0; p.m.visible = false; } });
   pirUnder.style.display = camera.position.y < PW ? 'block' : 'none';
+  // Kulene flyr (samme bue som på serveren)
+  for (const id in pirBalls) {
+    const b = pirBalls[id]; b.age += dt;
+    b.v.y -= 9.8 * dt; b.m.position.addScaledVector(b.v, dt);
+    if (b.age > 9) { pirateGroup.remove(b.m); delete pirBalls[id]; }
+  }
+  pirSmoke.forEach(q => { if (q.life <= 0) return; q.life -= dt; q.m.position.addScaledVector(q.v, dt); q.v.multiplyScalar(0.96); const k = 1 - q.life / 1.4; q.m.scale.setScalar(0.6 + k * 2.5); q.m.material.opacity = 0.7 * (1 - k); if (q.life <= 0) q.m.visible = false; });
+  // Kanonene peker dit du sikter, og rulles tilbake når de skyter
+  for (const k2 in pirShips) {
+    const ud = pirShips[k2].mesh.userData;
+    ud.cannons.concat([ud.bigGun]).forEach(c => { c.userData.kick = Math.max(0, (c.userData.kick || 0) - dt * 0.8); c.children.forEach(ch => { if (ch.isMesh && ch.geometry.type === 'CylinderGeometry') ch.position.x = (c.position.x < 0 ? -0.35 : 0.35) + (c.position.x < 0 ? 1 : -1) * c.userData.kick; }); if (c === ud.bigGun) c.userData.pivot.position.z = -c.userData.kick; });
+  }
+  const sMe = pirShips[myTeam], aimK = pirMan >= 0 ? pirMan : pirAtHelm ? 8 : -1;
+  if (aimK >= 0 && sMe) {
+    const a = pirAimNow(sMe, aimK), c = aimK === 8 ? sMe.mesh.userData.bigGun : sMe.mesh.userData.cannons[aimK];
+    const rel = a.yaw - a.m.baseYaw;
+    if (aimK === 8) { c.rotation.y = rel; c.userData.pivot.rotation.x = -a.pitch; }
+    else { c.rotation.y = rel; }
+    const L = pirLanding(sMe, aimK);
+    pirRing.visible = !!L; if (L) { pirRing.position.copy(L); pirRing.position.y += 0.05; }
+    pirRing.material.color.setHex(performance.now() < pirReady[aimK] ? 0x888888 : 0xff3a2a);
+  } else pirRing.visible = false;
+  // Livet til skipene
+  const hpTxt = t => { const s2 = pirShips[t]; return s2.state === 0 ? 'senket' : s2.state === 2 ? 'synker!' : Math.round(s2.hp / PS.MAXHP * 100) + '%'; };
+  pirHpEl.innerHTML = '&#9875; <span style="color:#ff8080">Kaninskipet ' + hpTxt('bunny') + '</span> &nbsp; <span style="color:#a0e080">Ekornskipet ' + hpTxt('squirrel') + '</span>';
+  pirHpEl.style.display = 'block';
   // Hjelpetekst
   let txt = '', btn = '';
   const s = pirShips[myTeam];
-  if (pirAtHelm && s) { txt = '&#9875; Du styrer! ' + (isTouch ? 'Styrespaken = seil og sving' : '<b>W/S</b> = seil, <b>A/D</b> = sving') + ' &nbsp; ' + Math.abs(s.spd).toFixed(1) + ' m/s<br><span style="font-size:13px">' + (isTouch ? 'Trykk SLIPP for å gå' : '<b>E</b> = slipp rattet') + '</span>'; btn = 'SLIPP'; }
+  if (pirAtHelm && s) { const cd = Math.max(0, pirReady[8] - performance.now()); txt = '&#9875; Du styrer! ' + (isTouch ? 'Styrespaken = seil og sving' : '<b>W/S</b> = seil, <b>A/D</b> = sving') + ' &nbsp; ' + Math.abs(s.spd).toFixed(1) + ' m/s<br><span style="font-size:13px">Storkanonen foran: ' + (isTouch ? 'SKYT' : 'klikk') + (cd > 0 ? ' (lader ' + (cd / 1000).toFixed(1) + ' s)' : ' – KLAR!') + ' &nbsp; ' + (isTouch ? 'SLIPP = gå' : '<b>E</b> = slipp rattet') + '</span>'; btn = 'SLIPP'; }
+  else if (pirMan >= 0) { const cd = Math.max(0, pirReady[pirMan] - performance.now()); txt = '&#128163; Kanon: sikt og ' + (isTouch ? 'trykk SKYT' : 'klikk') + (cd > 0 ? ' (lader ' + (cd / 1000).toFixed(1) + ' s)' : ' – KLAR!') + '<br><span style="font-size:13px">' + (isTouch ? 'Trykk GÅ for å gå' : '<b>E</b> = gå fra kanonen') + '</span>'; btn = 'GÅ'; }
+  else if (pirNearCannon() >= 0) { txt = (isTouch ? 'Trykk KANON' : 'Trykk <b>E</b>') + ' for å bruke kanonen &#128163;'; btn = 'KANON'; }
   else if (pirNearWheel()) { txt = s.helm && s.helm !== socket.id ? '&#9875; Noen på laget styrer skipet' : (isTouch ? 'Trykk STYR' : 'Trykk <b>E</b>') + ' for å styre skipet &#9875;'; btn = s.helm && s.helm !== socket.id ? '' : 'STYR'; }
   else if (pirSwimming) txt = '&#127754; Du svømmer – ' + (isTouch ? 'hopp-knappen = opp' : '<b>mellomrom</b> = opp, <b>Shift</b> = dykk') + ', gå mot skipssiden for å klatre opp';
   pirHud.innerHTML = txt; pirHud.style.display = txt && alive ? 'block' : 'none';

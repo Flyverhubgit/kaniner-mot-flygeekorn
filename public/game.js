@@ -1579,6 +1579,7 @@ function shoot() {
   if (noWeapons()) return;                        // [NY] ingen våpen i loungen
   if (typeof dvShoot === 'function' && dvShoot()) return;   // [NY] stridsvognkanonen
   if (typeof gmlrsShoot === 'function' && gmlrsShoot()) return;   // [NY] GMLRS: klikk = skyt dit du sikter
+  if (typeof pirShoot === 'function' && pirShoot()) return;   // [NY] Piratbukta: kanonene (pirate.js)
   if (typeof seaRepairing !== 'undefined' && seaRepairing) return;   // [NY] reparerer basen: hendene er opptatt
   if (typeof farmShoot === 'function' && farmShoot()) return;   // [NY] dosertankens kanon / A-10 fra radioen
   if (typeof spaceShoot === 'function' && spaceShoot()) return;   // [NY] laser fra jagerfly / kanontårn
@@ -2208,6 +2209,7 @@ socket.on('roundStart', d => {
 function placeAtSpawn(sp) {
   player.x = sp.x; player.z = sp.z; player.feetY = sp.y || 0; player.vy = 0;   // [NY] y: start oppe på slottshaugen
   player.yaw = sp.yaw; player.pitch = 0;
+  if (typeof pirateSpawnFix === 'function') pirateSpawnFix(sp);   // [NY] Piratbukta: på dekket der skipet er nå
   slide.active = false;
   jumpQueued = false; slideQueued = false;
   camera.position.set(player.x, EYE, player.z);

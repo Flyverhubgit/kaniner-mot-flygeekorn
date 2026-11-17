@@ -1788,10 +1788,17 @@ io.on('connection', socket => {
     const s = ships[p.team];
     if (!s || !s.alive) return;
     if (!d.on) { if (s.helm === p.id) { s.helm = null; s.ctl = { t: 0, r: 0 }; } return; }
-    if (s.helm && s.helm !== p.id && players[s.helm] && players[s.helm].alive) return;   // noen andre styrer
+    if (s.helm && s.helm !== p.id && players[s.helm] && players[s.helm].alive && !players[s.helm].isBot) return;   // noen andre styrer (en robot slipper for deg)
+    pirUsePos(p, d);
     const w = PM.shipToWorld(s, PM.SHIP.WHEEL.x, PM.SHIP.WHEEL.z);
     if (Math.hypot(p.x - w.x, p.z - w.z) > 4) return;
     s.helm = p.id; s.ctl = { t: 0, r: 0 };
+  });
+  socket.on('pirFire', d => {                         // [NY] avfyr en kanon (k 0–7 = sidene, 8 = den store foran)
+    const p = players[socket.id];
+    if (!p || !d) return;
+    pirUsePos(p, d);
+    pirFireCannon(p, d.k | 0, num(d.yaw, -50, 50), num(d.pitch, -2, 2));
   });
   socket.on('shipCtl', d => {
     const p = players[socket.id];
@@ -2630,12 +2637,94 @@ function shipReset() {
   ships = {};
   ['bunny', 'squirrel'].forEach(t => {
     const st = PM.SHIP_START[t];
-    ships[t] = { team: t, x: st.x, z: st.z, yaw: st.yaw, spd: 0, yawRate: 0, hp: PM.SHIP.MAXHP, helm: null, ctl: { t: 0, r: 0 }, alive: true, sinkAt: 0, backAt: 0 };
+    ships[t] = shipNew(t);
+  });
+  pirBalls = [];
+}
+function shipNew(t) {
+  const st = process.env.PIRATE_TEST_NEAR ? { x: 85, z: t === 'bunny' ? 22 : -22, yaw: t === 'bunny' ? Math.PI : 0 } : PM.SHIP_START[t];   // (testing: skipene nær hverandre)
+  return { team: t, x: st.x, z: st.z, yaw: st.yaw, spd: 0, yawRate: 0, hp: +process.env.SHIP_TEST_HP || PM.SHIP.MAXHP, helm: null, ctl: { t: 0, r: 0 }, alive: true, sinkAt: 0, backAt: 0, ready: new Array(9).fill(0) };
+}
+// [NY] Kanonene: 8 på sidene (gå bort og trykk E) + den store foran (den som styrer). Kulene flyr i en bue.
+const CANNON = {
+  side: { cd: 4000, speed: 46, dmg: 110, r: 4, ship: 75, blocks: 1.6, turn: 0.7 },
+  bow: { cd: 6000, speed: 54, dmg: 150, r: 5, ship: 140, blocks: 2.4, turn: 0.95 }
+};
+const SINK_MS = 6000, SHIP_BACK_MS = +process.env.SHIP_BACK_MS || 30000;
+let pirBalls = [], pirBallSeq = 0;
+shipReset();
+function pirGunSpot(k) { const c = PM.SHIP.CANNONS[k]; return { x: c[0] < 0 ? c[0] + 1.2 : c[0] - 1.2, z: c[1] }; }
+function pirMuzzle(k) {
+  if (k === 8) return { x: 0, y: PM.SHIP.DECK + 0.75, z: 12.2, dx: 0, dz: 1 };
+  const c = PM.SHIP.CANNONS[k], sx = c[0] < 0 ? -1 : 1;
+  return { x: c[0] + sx * 1.2, y: PM.SHIP.DECK + 0.5, z: c[1], dx: sx, dz: 0 };
+}
+// Klienten sender posisjonen sin sammen med E/skudd (posisjonsmeldingen kan komme litt senere)
+function pirUsePos(p, d) {
+  const x = num(d.x, -300, 300), z = num(d.z, -300, 300);
+  if (x !== null && z !== null && Math.hypot(x - p.x, z - p.z) < 20) { p.x = x; p.z = z; }   // (skipet er 24 m langt)
+}
+function pirFireCannon(p, k, yaw, pitch) {
+  if (!p || !p.alive || intermission || mapName !== 'pirate') return false;
+  const s = ships[p.team];
+  if (!s || !s.alive || s.sinkAt || k < 0 || k > 8 || yaw === null || pitch === null) return false;
+  if (k === 8) { if (s.helm !== p.id) return false; }
+  else { const g = PM.shipToWorld(s, pirGunSpot(k).x, pirGunSpot(k).z); if (Math.hypot(p.x - g.x, p.z - g.z) > 4) return false; }
+  const now = Date.now(), K = CANNON[k === 8 ? 'bow' : 'side'];
+  if (now < s.ready[k]) return false;
+  s.ready[k] = now + K.cd;
+  const m = pirMuzzle(k), mw = PM.shipToWorld(s, m.x, m.z), base = PM.shipToWorld(s, m.dx, m.dz);
+  const baseYaw = Math.atan2(-(base.x - s.x), -(base.z - s.z));            // spiller-vinkel for kanonens retning
+  yaw = baseYaw + Math.max(-K.turn, Math.min(K.turn, wrapA(yaw - baseYaw)));
+  pitch = Math.max(-0.12, Math.min(0.5, pitch));
+  const v = [-Math.sin(yaw) * Math.cos(pitch) * K.speed + Math.sin(s.yaw) * s.spd, Math.sin(pitch) * K.speed, -Math.cos(yaw) * Math.cos(pitch) * K.speed + Math.cos(s.yaw) * s.spd];
+  const b = { id: 'c' + (++pirBallSeq), team: p.team, owner: p.id, kind: k === 8 ? 'bow' : 'side', p: [mw.x, m.y, mw.z], v, born: now };
+  pirBalls.push(b);
+  p.protectedUntil = 0;
+  io.emit('pirBall', { id: b.id, team: b.team, k, p: b.p.map(x => +x.toFixed(2)), v: v.map(x => +x.toFixed(2)), bow: k === 8 ? 1 : 0 });
+  return true;
+}
+function wrapA(a) { return Math.atan2(Math.sin(a), Math.cos(a)); }
+function pirBallStep(b, h) {
+  b.v[1] -= 9.8 * h;
+  b.p[0] += b.v[0] * h; b.p[1] += b.v[1] * h; b.p[2] += b.v[2] * h;
+  const [x, y, z] = b.p;
+  for (const t in ships) {                       // treffer et fiendeskip?
+    const o = ships[t];
+    if (o.team === b.team || !o.alive || o.sinkAt) continue;
+    const l = PM.worldToShip(o, x, z);
+    if (Math.abs(l.x) > 5 || l.z < -12 || l.z > 13) continue;
+    for (const bx of PM.SHIP.boxes) if (l.x > bx[0] - 0.2 && l.x < bx[1] + 0.2 && l.z > bx[4] - 0.2 && l.z < bx[5] + 0.2 && y > bx[2] - 0.2 && y < bx[3] + 0.2) return { w: 'ship', ship: o };
+  }
+  if (y < 20 && y >= 0) { const G = VOX.pirate.grid, ix = Math.floor(x), iy = Math.floor(y), iz = Math.floor(z); if (Math.abs(ix) < 100 && Math.abs(iz) < 80 && G[PM.idx(ix, iy, iz)]) return { w: 'land' }; }
+  for (const id in players) {
+    const t = players[id];
+    if (!t.alive || t.team === b.team) continue;
+    if (Math.hypot(t.x - x, t.y + 0.9 - y, t.z - z) < 1.3) return { w: 'player' };
+  }
+  if (y < PM.WATER) return { w: 'water' };
+  return null;
+}
+function pirBallBoom(b, hit) {
+  const K = CANNON[b.kind], pos = b.p.map(v => +v.toFixed(2)), owner = players[b.owner];
+  io.emit('pirBoom', { id: b.id, p: pos, w: hit.w === 'water' ? 'water' : 'hit' });
+  if (hit.w === 'land') { blastOwner = owner || null; blastCells(pos[0], pos[1], pos[2], K.blocks); blastOwner = null; }
+  if (intermission) return;
+  if (hit.w === 'ship') {
+    const o = hit.ship;
+    o.hp = Math.max(0, o.hp - K.ship);
+    if (o.hp <= 0 && !o.sinkAt) { o.sinkAt = Date.now(); o.helm = null; io.emit('pirSunk', { team: o.team, by: owner ? owner.name : '' }); }
+  }
+  if (!owner) return;
+  const r = hit.w === 'water' ? K.r * 0.7 : K.r;
+  Object.values(players).forEach(t => {
+    if (!t.alive || t.team === b.team) return;
+    const d = Math.hypot(t.x - pos[0], t.y + 0.9 - pos[1], t.z - pos[2]);
+    if (d < r) applyDamage(owner, t, Math.round(K.dmg * (1 - 0.7 * d / r)), false, 'cannon');
   });
 }
-shipReset();
 function shipPacket() {
-  return ['bunny', 'squirrel'].map(t => { const s = ships[t]; return [+s.x.toFixed(2), +s.z.toFixed(2), +s.yaw.toFixed(4), +s.spd.toFixed(2), +s.yawRate.toFixed(4), Math.round(s.hp), s.helm || '', s.alive ? (s.sinkAt ? 2 : 1) : 0]; });
+  return ['bunny', 'squirrel'].map(t => { const s = ships[t]; return [+s.x.toFixed(2), +s.z.toFixed(2), +s.yaw.toFixed(4), +s.spd.toFixed(2), +s.yawRate.toFixed(4), Math.round(s.hp), s.helm || '', s.alive ? (s.sinkAt ? 2 : 1) : 0, s.sinkAt ? +Math.min(1, (Date.now() - s.sinkAt) / SINK_MS).toFixed(3) : 0]; });
 }
 // Treffer skipet land, kanten eller det andre skipet?
 function shipHits(s, pose) {
@@ -2656,10 +2745,10 @@ function shipHits(s, pose) {
 }
 function pirateSpawn(team) {
   const s = ships[team];
-  if (s && s.alive && !s.sinkAt) {
+  if (s && s.alive && !s.sinkAt && s.hp > 0) {
     const sp = PM.SHIP.SPAWN[Math.floor(Math.random() * PM.SHIP.SPAWN.length)];
     const w = PM.shipToWorld(s, sp[0], sp[1]);
-    return { x: w.x, y: PM.SHIP.DECK, z: w.z, yaw: s.yaw + Math.PI };   // se mot baugen
+    return { x: w.x, y: PM.SHIP.DECK, z: w.z, yaw: s.yaw + Math.PI, ship: team, lx: sp[0], lz: sp[1] };   // se mot baugen (lx/lz: plassen på skipet)
   }
   const h = PM.HOME.bunny, sq = team === 'squirrel';
   const x = (sq ? -1 : 1) * (h.x + (Math.random() - 0.5) * 6), z = (sq ? -1 : 1) * (h.z + (Math.random() - 0.5) * 3);
@@ -2671,7 +2760,12 @@ setInterval(() => {
   const dt = 0.05, now = Date.now();
   for (const t in ships) {
     const s = ships[t];
-    if (!s.alive) continue;
+    if (!s.alive) { if (now >= s.backAt) ships[t] = shipNew(t); continue; }   // nytt skip etter 30 sek
+    if (s.sinkAt) {                                // synker: ingen styring, borte etter 6 sek
+      s.spd *= 0.97; s.helm = null;
+      if (now - s.sinkAt > SINK_MS) { s.alive = false; s.backAt = now + SHIP_BACK_MS; }
+      continue;
+    }
     const hp = s.helm && players[s.helm];
     if (s.helm) {                                  // rattet slippes hvis styreren dør, går eller er for langt unna
       const w = PM.shipToWorld(s, PM.SHIP.WHEEL.x, PM.SHIP.WHEEL.z);
@@ -2689,6 +2783,14 @@ setInterval(() => {
       s.spd = -s.spd * 0.25;                                       // dunk – litt tilbake
     } else { s.x = pose.x; s.z = pose.z; s.yaw = pose.yaw; }
   }
+  // Kanonkulene
+  for (let i = pirBalls.length - 1; i >= 0; i--) {
+    const b = pirBalls[i];
+    let hit = null;
+    for (let k = 0; k < 5 && !hit; k++) hit = pirBallStep(b, dt / 5);
+    if (hit) { pirBalls.splice(i, 1); pirBallBoom(b, hit); }
+    else if (now - b.born > 8000 || Math.abs(b.p[0]) > 300 || Math.abs(b.p[2]) > 300) pirBalls.splice(i, 1);
+  }
   if (++shipTick % 2 === 0) io.emit('ships', shipPacket());       // 10 ganger i sekundet
 }, 50);
 
@@ -2697,7 +2799,8 @@ setInterval(() => {
 // Bare på klosse-banene (Klosseslottet og Ridderborgen) der serveren vet hvor veggene er.
 // De er med vilje ganske dårlige: treg reaksjon, bommer mye, går saktere enn deg.
 // ===================================================================
-const BOT_MAPS = ['castle', 'medieval', 'room', 'temple', 'west', 'desert'];
+const BOT_MAPS = ['castle', 'medieval', 'room', 'temple', 'west', 'desert', 'pirate'];
+const PIRATE_TEAM = 5;                       // [NY] Piratbukta: robotene fyller hvert lag opp til 5
 const DESERT_TEAM = 16;                      // [NY] Ørkenkrigen: robotene fyller hvert lag opp til 16 (16 mot 16)
 const DESERT_BOT_W = ['c7', 'c7', 'c7', 'minimi', 'mg42', 'sniper50'];   // robotenes våpen (tilfeldig)
 const DESERT_BOT_MS = { c7: 330, minimi: 230, mg42: 170, sniper50: 1700 };   // tid mellom robot-skudd
@@ -2769,7 +2872,8 @@ const BOT_OUT = {
   medieval: [[0, 30.5], [0, 26.5], [0, 22.5], [0, 18]],
   room: [], temple: [],                       // åpne baner: rett ut på gulvet
   west: [[0, 47], [0, 30]],                   // Ville Vesten: ut av innhegningen og ned hovedgata
-  desert: [[0, 206], [0, 194]]                // [NY] Ørkenkrigen: ut sørporten av basen
+  desert: [[0, 206], [0, 194]],               // [NY] Ørkenkrigen: ut sørporten av basen
+  pirate: []                                  // [NY] Piratbukta: robotene er på skipet (egen kode)
 };
 function botField() {                        // tilfeldig ledig punkt ute på slagmarka
   if (mapName === 'desert') {                // [NY] Ørkenkrigen: oftest mot midten (landsbyen), ellers hvor som helst
@@ -2789,6 +2893,7 @@ function botField() {                        // tilfeldig ledig punkt ute på sl
 }
 function mir(team, pt) { return team === 'squirrel' ? [-pt[0], -pt[1]] : pt; }
 function botPlan(b) {                        // ny rute: ut av borgen, så rundt på slagmarka
+  if (mapName === 'pirate') { pirBotInit(b); return; }
   b.route = BOT_OUT[mapName].map(pt => mir(b.team, pt));
   b.mode = 'out';
 }
@@ -2820,6 +2925,7 @@ function balanceBots() {
   const h = { bunny: 0, squirrel: 0 };
   humans.forEach(p => h[p.team]++);
   const want = mapName === 'desert' ? { bunny: Math.max(0, DESERT_TEAM - h.bunny), squirrel: Math.max(0, DESERT_TEAM - h.squirrel) }   // [NY] 16 mot 16
+    : mapName === 'pirate' ? { bunny: Math.max(0, PIRATE_TEAM - h.bunny), squirrel: Math.max(0, PIRATE_TEAM - h.squirrel) }   // [NY] 5 mot 5
     : { bunny: Math.max(0, h.squirrel - h.bunny), squirrel: Math.max(0, h.bunny - h.squirrel) };
   TEAMS.forEach(team => {
     const mine = bots.filter(b => b.team === team);
@@ -2849,6 +2955,124 @@ function botMove(b, dirX, dirZ, speed, dt) {
   return moved;
 }
 
+// ===================================================================
+// [NY] PIRATBUKTA-ROBOTER: de bor på skipet sitt. Går rundt på dekket, skyter fiender de ser,
+// bemanner kanonene når fiendeskipet er nær, og én styrer skipet hvis ingen andre gjør det.
+// ===================================================================
+function pirBotInit(b) {
+  const s = ships[b.team];
+  b.target = null;
+  if (s && s.alive && !s.sinkAt) { const l = PM.worldToShip(s, b.x, b.z); b.onShip = true; b.lx = l.x; b.lz = l.z; }
+  else b.onShip = false;
+  b.goal = null; b.gun = -1; b.pirRole = Math.random() < 0.5 ? 'gunner' : 'fighter';
+}
+function pirBotPlace(b) {
+  const s = ships[b.team];
+  if (b.onShip && s && s.alive && !s.sinkAt) {
+    const w = PM.shipToWorld(s, b.lx, b.lz);
+    b.x = w.x; b.z = w.z;
+    b.y = b.lz < -5 && Math.abs(b.lx) < 4 ? PM.SHIP.QDECK : PM.SHIP.DECK;
+  } else if (b.onShip) { b.onShip = false; b.y = PM.WATER - 1.35; }   // skipet synker: i vannet
+}
+function pirBot(b, now, dt) {
+  const s = ships[b.team], enemy = ships[b.team === 'bunny' ? 'squirrel' : 'bunny'];
+  const shipOk = s && s.alive && !s.sinkAt;
+  // --- Styrmann: hvis ingen styrer, tar en robot rattet og seiler mot fienden ---
+  if (shipOk && b.onShip && (!s.helm || !players[s.helm]) && !Object.values(players).some(o => o.isBot && o.team === b.team && o.pirHelm && o.alive)) {
+    b.pirHelm = true; s.helm = b.id;
+  }
+  if (b.pirHelm && (!shipOk || s.helm !== b.id)) b.pirHelm = false;
+  if (b.pirHelm) {
+    b.lx = PM.SHIP.WHEEL.x; b.lz = PM.SHIP.WHEEL.z;
+    const tgt = enemy && enemy.alive && !enemy.sinkAt ? enemy : { x: 0, z: 0 };
+    // seil mot et punkt ved siden av fienden (så sidekanonene kan skyte)
+    const side = (b.id.charCodeAt(b.id.length - 1) % 2 ? 1 : -1) * 22;
+    let gx = tgt.x + Math.cos(tgt.yaw || 0) * side, gz = tgt.z - Math.sin(tgt.yaw || 0) * side;
+    // står skipet fast? (flyttet seg under 2 m på 6 sek) -> bakk, og seil til et tilfeldig sted på åpent vann en stund
+    if (!b.chkAt || now > b.chkAt) {
+      if (b.chkAt && Math.hypot(s.x - b.chkX, s.z - b.chkZ) < 2 && Math.hypot(gx - s.x, gz - s.z) > 12) {
+        b.reverseUntil = now + 3000; b.wanderUntil = now + 16000;
+        for (let k = 0; k < 30; k++) { const x = (Math.random() - 0.5) * 160, z = (Math.random() - 0.5) * 120; if (!shipHits(s, { x, z, yaw: 0 })) { b.wander = [x, z]; break; } }
+      }
+      b.chkAt = now + 6000; b.chkX = s.x; b.chkZ = s.z;
+    }
+    if (now < (b.wanderUntil || 0) && b.wander) { gx = b.wander[0]; gz = b.wander[1]; }
+    let want = Math.atan2(gx - s.x, gz - s.z);
+    const dist = Math.hypot(gx - s.x, gz - s.z);
+    // se framover: er det land i veien? Velg den nærmeste retningen som er fri
+    for (const off of [0, 0.4, -0.4, 0.8, -0.8, 1.2, -1.2, 1.7, -1.7, 2.3, -2.3]) {
+      const h = want + off;
+      if ([12, 20, 28].every(dd => !shipHits(s, { x: s.x + Math.sin(h) * dd, z: s.z + Math.cos(h) * dd, yaw: h }))) { want = h; break; }
+    }
+    const diff = wrapA(want - s.yaw);
+    if (s.spd < 0.3 && s.ctl.t > 0.3) b.stuckT = (b.stuckT || 0) + dt; else b.stuckT = 0;
+    if (b.stuckT > 3) { b.reverseUntil = now + 2500; b.stuckT = 0; }
+    if (now < (b.reverseUntil || 0)) s.ctl = { t: -1, r: 1 };
+    else s.ctl = { t: dist < 12 ? 0.2 : 0.7, r: Math.max(-1, Math.min(1, -diff * 2)) };
+  }
+  if (!b.onShip && shipOk) {                       // i vannet etter at skipet sank: klatrer opp på det nye skipet etter en stund
+    b.swimT = (b.swimT || 0) + dt;
+    if (b.swimT > 6) { b.swimT = 0; const sp = PM.SHIP.SPAWN[Math.floor(Math.random() * PM.SHIP.SPAWN.length)]; b.onShip = true; b.lx = sp[0]; b.lz = sp[1]; }
+  }
+  pirBotPlace(b);
+  // --- Se etter fiender ---
+  const eye = { x: b.x, y: b.y + 1.4, z: b.z };
+  let best = null, bestD = 70;
+  for (const oid in players) {
+    const t = players[oid];
+    if (!t.alive || t.team === b.team) continue;
+    const d = Math.hypot(t.x - b.x, t.z - b.z);
+    if (d < bestD && losClear(eye, { x: t.x, y: t.y + 1.2, z: t.z })) { best = t; bestD = d; }
+  }
+  if (best && b.target !== best.id) { b.target = best.id; b.seenAt = now; }
+  if (!best) b.target = null;
+  // --- Kanonen: fiendeskipet er på siden og ikke for langt unna ---
+  if (shipOk && b.onShip && !b.pirHelm && b.pirRole === 'gunner' && enemy && enemy.alive && !enemy.sinkAt) {
+    const l = PM.worldToShip(s, enemy.x, enemy.z), d = Math.hypot(l.x, l.z);
+    if (d < 90 && Math.abs(l.x) > Math.abs(l.z) * 0.6) {
+      const sideK = l.x < 0 ? [0, 1, 2, 3] : [4, 5, 6, 7];
+      if (b.gun < 0 || !sideK.includes(b.gun)) b.gun = sideK[Math.floor(Math.random() * 4)];
+      const g = pirGunSpot(b.gun);
+      const dx = g.x - b.lx, dz = g.z - b.lz, dl = Math.hypot(dx, dz);
+      if (dl > 0.3) { b.lx += dx / dl * Math.min(dl, 3 * dt); b.lz += dz / dl * Math.min(dl, 3 * dt); pirBotPlace(b); }
+      else if (now >= s.ready[b.gun] && now - (b.gunAt || 0) > 1000) {
+        b.gunAt = now;
+        const m = pirMuzzle(b.gun), mw = PM.shipToWorld(s, m.x, m.z);
+        const ex = enemy.x + (Math.random() - 0.5) * 10, ez = enemy.z + (Math.random() - 0.5) * 10, D = Math.hypot(ex - mw.x, ez - mw.z);
+        const yaw = Math.atan2(-(ex - mw.x), -(ez - mw.z));
+        const pitch = 0.5 * Math.asin(Math.min(1, 9.8 * D / (CANNON.side.speed * CANNON.side.speed))) + (Math.random() - 0.5) * 0.04;
+        pirFireCannon(b, b.gun, yaw, pitch);
+      }
+      b.yaw = Math.atan2(-(enemy.x - b.x), -(enemy.z - b.z));
+      return;
+    }
+  }
+  b.gun = -1;
+  // --- Gå rundt på dekket ---
+  if (b.onShip && !b.pirHelm && shipOk) {
+    if (!b.goal || Math.hypot(b.goal[0] - b.lx, b.goal[1] - b.lz) < 0.3) b.goal = PM.SHIP.SPAWN[Math.floor(Math.random() * PM.SHIP.SPAWN.length)];
+    if (!best || Math.random() < 0.3) {
+      const dx = b.goal[0] - b.lx, dz = b.goal[1] - b.lz, dl = Math.hypot(dx, dz) || 1;
+      b.lx += dx / dl * Math.min(dl, 2.2 * dt); b.lz += dz / dl * Math.min(dl, 2.2 * dt);
+      pirBotPlace(b);
+    }
+  }
+  if (!best) { b.pitch = 0; return; }
+  const dx = best.x - b.x, dz = best.z - b.z;
+  b.yaw = Math.atan2(-dx, -dz);
+  b.pitch = Math.atan2((best.y + 1.1) - (b.y + 1.4), bestD);
+  if (now - b.seenAt > BOT_REACT_MS && now >= b.nextShot) {
+    b.nextShot = now + 450 + Math.random() * 250;
+    b.protectedUntil = 0;
+    const chance = Math.max(0.08, 0.38 - bestD * 0.005) * (best.crouch ? 0.7 : 1);
+    const hit = Math.random() < chance, head = hit && Math.random() < 0.08;
+    const miss = hit ? 0 : 0.8 + Math.random() * 1.5;
+    const to = [+(best.x + (Math.random() - 0.5) * miss).toFixed(2), +(best.y + (head ? 1.3 : 0.9) + (Math.random() - 0.5) * miss).toFixed(2), +(best.z + (Math.random() - 0.5) * miss).toFixed(2)];
+    io.emit('shot', { id: b.id, to, w: 'ak' });
+    if (hit) applyDamage(b, best, head ? AK_HEAD : AK_BODY, head, 'gun');
+  }
+}
+
 const BOT_TICK = 100;
 setInterval(() => {
   if (!botOn() || intermission) return;
@@ -2856,6 +3080,7 @@ setInterval(() => {
   for (const id in players) {
     const b = players[id];
     if (!b.isBot || !b.alive) continue;
+    if (mapName === 'pirate') { pirBot(b, now, dt); continue; }   // [NY] Piratbukta: egen robot-kode
     // --- Se etter fiender (nærmeste med fri sikt) ---
     const eye = { x: b.x, y: b.y + 1.4, z: b.z }, desert = mapName === 'desert';
     let best = null, bestD = desert ? 85 : 42;
