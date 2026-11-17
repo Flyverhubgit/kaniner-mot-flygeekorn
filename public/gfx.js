@@ -224,10 +224,73 @@ if (GFX_HIGH) {
     if (!o.isMesh || !o.material || o.material.userData.gfxDone) return;
     const m = o.material, c = m.color ? m.color.getHex() : 0;
     const r = (c >> 16) & 255, g = (c >> 8) & 255, b = c & 255;
-    if (r > g && g > b && r > 0x60 && r < 0xc0) m.map = wood;                       // brunt = tre
+    if (r > g && g > b && r - b > 0x30 && r > 0x60 && r < 0xc0) m.map = wood;      // brunt = tre (ikke de grå-brune potene)
     else if (r < 0x40 && g < 0x40 && b < 0x40) { m.metalness = 0.3; m.roughness = 0.5; }   // svart = metall
     m.userData.gfxDone = true; m.needsUpdate = true;
   });
   gfxFixGun = () => fixGun(gun);                             // kalles også når du bytter våpen (ørken-våpnene kommer senere)
   gfxFixGun();
+}
+
+// ---------- [NY] Steg 5: småting på bakken (bare Høy) ----------
+// Gresstuster, blomster og småstein strødd ut på bakken. Bare pynt: du går gjennom dem og kulene går gjennom.
+// Legges bare på flat mark eller på klosser som ikke kan ødelegges (ellers ville de svevd).
+function gfxDecor(W) {
+  if (!GFX_HIGH) return;
+  const LIB = W.LIB, P = W.pristine;
+  let kind = null;
+  if (typeof CM !== 'undefined' && LIB === CM) kind = { grass: 0x5a9a34, flower: true, n: 2600, ground: [1] };
+  else if (typeof MED !== 'undefined' && LIB === MED) kind = { grass: 0x48682e, flower: true, n: 2600, ground: [1] };
+  else if (typeof FM !== 'undefined' && LIB === FM) kind = { grass: 0x4a6a2e, flower: false, stone: 0x6a6a60, n: 2200, ground: [] };
+  else if (typeof JP !== 'undefined' && LIB === JP) kind = { grass: 0x5a8a3a, flower: true, pink: true, n: 1800, ground: [] };
+  else if (typeof WEST !== 'undefined' && LIB === WEST) kind = { grass: 0xb09a5a, stone: 0x9a7a5a, n: 1800, ground: [] };
+  else if (typeof DESERT !== 'undefined' && LIB === DESERT) kind = { grass: 0xa8955a, stone: 0x9a8262, n: 15000, ground: [8], skip: (x, z) => Math.abs(z) > 195 };
+  if (!kind) return;
+  let sd = 12345;
+  const rnd = () => { sd = (sd * 16807) % 2147483647; return sd / 2147483647; };
+  // Finn et sted: øverste kloss i kolonnen må være "bakke" (eller ingen kloss = flat mark)
+  const spots = [];
+  for (let k = 0; k < kind.n * 3 && spots.length < kind.n; k++) {
+    const x = LIB.X0 + 1 + Math.floor(rnd() * (LIB.NX - 2)), z = LIB.Z0 + 1 + Math.floor(rnd() * (LIB.NZ - 2));
+    if (kind.skip && kind.skip(x, z)) continue;
+    let top = -1;
+    for (let y = LIB.NY - 1; y >= 0; y--) if (P[LIB.idx(x, y, z)]) { top = y; break; }
+    if (top >= 0 && !kind.ground.includes(P[LIB.idx(x, top, z)])) continue;
+    spots.push([x + rnd(), top + 1, z + rnd(), rnd() * 6.28, 0.7 + rnd() * 0.6]);   // posisjon, vinkel, størrelse
+  }
+  const d = new THREE.Object3D();
+  const addInst = (geo, mat, list, sc) => {
+    if (!list.length) return;
+    const m = new THREE.InstancedMesh(geo, mat, list.length);
+    list.forEach((p, i) => { d.position.set(p[0], p[1], p[2]); d.rotation.set(0, p[3], 0); d.scale.setScalar(sc * p[4]); d.updateMatrix(); m.setMatrixAt(i, d.matrix); });
+    m.raycast = () => {}; m.frustumCulled = false; m.receiveShadow = true;
+    W.group.add(m);
+  };
+  // Gresstust: tre skrå blader (to trekanter hver)
+  const tuft = new THREE.BufferGeometry(), v = [];
+  for (let b = 0; b < 5; b++) {
+    const a = b / 5 * Math.PI * 2, ox = Math.cos(a) * 0.06, oz = Math.sin(a) * 0.06, tx = Math.cos(a) * 0.16, tz = Math.sin(a) * 0.16, h = 0.28 + (b % 3) * 0.08;
+    const px = -Math.sin(a) * 0.035, pz = Math.cos(a) * 0.035;
+    v.push(ox - px, 0, oz - pz, ox + px, 0, oz + pz, tx, h, tz);
+  }
+  tuft.setAttribute('position', new THREE.Float32BufferAttribute(v, 3)); tuft.computeVertexNormals();
+  const grassMat = new THREE.MeshLambertMaterial({ color: kind.grass, side: THREE.DoubleSide });
+  const stoneGeo = new THREE.DodecahedronGeometry(0.12, 0); stoneGeo.scale(1, 0.55, 0.85);
+  const stoneMat = new THREE.MeshLambertMaterial({ color: kind.stone || 0x777770 });
+  const flowerGeo = new THREE.BoxGeometry(0.07, 0.07, 0.07); flowerGeo.translate(0, 0.3, 0);
+  const stemGeo = new THREE.BoxGeometry(0.015, 0.3, 0.015); stemGeo.translate(0, 0.15, 0);
+  const G = [], S = [], F = [[], [], []];
+  spots.forEach(p => {
+    const r = rnd();
+    if (kind.stone && r < 0.3) S.push(p);
+    else if (kind.flower && r < 0.12) F[Math.floor(rnd() * 3)].push(p);
+    else G.push(p);
+  });
+  addInst(tuft, grassMat, G, 1);
+  addInst(stoneGeo, stoneMat, S, 1);
+  const cols = kind.pink ? [0xf2a8c8, 0xffffff, 0xe080b0] : [0xf2d43a, 0xffffff, 0xd8483a];
+  F.forEach((list, i) => {
+    addInst(flowerGeo, new THREE.MeshLambertMaterial({ color: cols[i], emissive: cols[i], emissiveIntensity: 0.15 }), list, 1);
+    addInst(stemGeo, grassMat, list, 1);
+  });
 }

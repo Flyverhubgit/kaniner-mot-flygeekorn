@@ -135,6 +135,7 @@ function makeVoxelWorld(LIB, group) {
     W.flush();
   };
   W.reset();
+  if (typeof gfxDecor === 'function') gfxDecor(W);   // [NY] Grafikk Høy: gresstuster, blomster, småstein (gfx.js)
   return W;
 }
 const castleWorld = makeVoxelWorld(CM, castleGroup);
