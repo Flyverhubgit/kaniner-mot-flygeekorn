@@ -2647,9 +2647,11 @@ function shipNew(t) {
 }
 // [NY] Kanonene: 8 på sidene (gå bort og trykk E) + den store foran (den som styrer). Kulene flyr i en bue.
 const CANNON = {
-  side: { cd: 4000, speed: 46, dmg: 110, r: 4, ship: 75, blocks: 1.6, turn: 0.7 },
-  bow: { cd: 6000, speed: 54, dmg: 150, r: 5, ship: 140, blocks: 2.4, turn: 0.95 }
+  side: { cd: 4000, speed: 46, dmg: 110, r: 4, ship: 75, blocks: 1.6, turn: 0.7, spread: 0.035 },
+  bow: { cd: 6000, speed: 54, dmg: 150, r: 5, ship: 140, blocks: 2.4, turn: 0.95, spread: 0.025 }
 };
+// [NY] Kulene bremses av lufta (faller brattere jo lenger du skyter) og spres litt (ikke supertreffsikre)
+const PIR_DRAG = 0.12;
 const SINK_MS = 6000, SHIP_BACK_MS = +process.env.SHIP_BACK_MS || 30000;
 let pirBalls = [], pirBallSeq = 0;
 shipReset();
@@ -2677,7 +2679,10 @@ function pirFireCannon(p, k, yaw, pitch) {
   const baseYaw = Math.atan2(-(base.x - s.x), -(base.z - s.z));            // spiller-vinkel for kanonens retning
   yaw = baseYaw + Math.max(-K.turn, Math.min(K.turn, wrapA(yaw - baseYaw)));
   pitch = Math.max(-0.12, Math.min(0.5, pitch));
-  const v = [-Math.sin(yaw) * Math.cos(pitch) * K.speed + Math.sin(s.yaw) * s.spd, Math.sin(pitch) * K.speed, -Math.cos(yaw) * Math.cos(pitch) * K.speed + Math.cos(s.yaw) * s.spd];
+  yaw += (Math.random() - 0.5) * 2 * K.spread;                  // litt spredning
+  pitch += (Math.random() - 0.5) * 2 * K.spread * 0.6;
+  const sp = K.speed * (0.96 + Math.random() * 0.08);
+  const v = [-Math.sin(yaw) * Math.cos(pitch) * sp + Math.sin(s.yaw) * s.spd, Math.sin(pitch) * sp, -Math.cos(yaw) * Math.cos(pitch) * sp + Math.cos(s.yaw) * s.spd];
   const b = { id: 'c' + (++pirBallSeq), team: p.team, owner: p.id, kind: k === 8 ? 'bow' : 'side', p: [mw.x, m.y, mw.z], v, born: now };
   pirBalls.push(b);
   p.protectedUntil = 0;
@@ -2687,6 +2692,7 @@ function pirFireCannon(p, k, yaw, pitch) {
 function wrapA(a) { return Math.atan2(Math.sin(a), Math.cos(a)); }
 function pirBallStep(b, h) {
   b.v[1] -= 9.8 * h;
+  const dr = 1 - PIR_DRAG * h; b.v[0] *= dr; b.v[1] *= dr; b.v[2] *= dr;
   b.p[0] += b.v[0] * h; b.p[1] += b.v[1] * h; b.p[2] += b.v[2] * h;
   const [x, y, z] = b.p;
   for (const t in ships) {                       // treffer et fiendeskip?
@@ -2707,7 +2713,7 @@ function pirBallStep(b, h) {
 }
 function pirBallBoom(b, hit) {
   const K = CANNON[b.kind], pos = b.p.map(v => +v.toFixed(2)), owner = players[b.owner];
-  io.emit('pirBoom', { id: b.id, p: pos, w: hit.w === 'water' ? 'water' : 'hit' });
+  io.emit('pirBoom', { id: b.id, p: pos, w: hit.w === 'water' ? 'water' : hit.w === 'ship' ? 'ship' : 'hit' });
   if (hit.w === 'land') { blastOwner = owner || null; blastCells(pos[0], pos[1], pos[2], K.blocks); blastOwner = null; }
   if (intermission) return;
   if (hit.w === 'ship') {

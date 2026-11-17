@@ -295,6 +295,7 @@ document.body.appendChild(pirHud);
 // ---------- Kanonene ----------
 // 8 sidekanoner (gå bort til en og trykk E) og den store foran (den som styrer skyter den). Klikk = fyr!
 let pirMan = -1;                                      // hvilken sidekanon du bemanner (-1 = ingen)
+const PIR_DRAG = 0.12;                                // luftmotstand (samme som serveren)
 const PIR_CD = { side: 4000, bow: 6000 }, PIR_TURN = { side: 0.7, bow: 0.95 }, PIR_SPEED = { side: 46, bow: 54 };
 const pirReady = new Array(9).fill(0);
 function pirGunSpot(k) { const c = PS.CANNONS[k]; return { x: c[0] < 0 ? c[0] + 1.2 : c[0] - 1.2, z: c[1] }; }
@@ -344,7 +345,7 @@ function pirLanding(s, k) {
   const p = new THREE.Vector3(a.m.w.x, a.m.y, a.m.w.z);
   const v = new THREE.Vector3(-Math.sin(a.yaw) * Math.cos(a.pitch) * sp + Math.sin(s.pose.yaw) * s.spd, Math.sin(a.pitch) * sp, -Math.cos(a.yaw) * Math.cos(a.pitch) * sp + Math.cos(s.pose.yaw) * s.spd);
   for (let i = 0; i < 400; i++) {
-    v.y -= 9.8 * 0.02; p.addScaledVector(v, 0.02);
+    v.y -= 9.8 * 0.02; v.multiplyScalar(1 - PIR_DRAG * 0.02); p.addScaledVector(v, 0.02);
     if (p.y < PW) return p.setY(PW + 0.08);
     const ix = Math.floor(p.x), iy = Math.floor(p.y), iz = Math.floor(p.z);
     if (iy >= 0 && iy < PIR.NY && Math.abs(ix) < 100 && Math.abs(iz) < 80 && pirateWorld.grid[PIR.idx(ix, iy, iz)]) return p;
@@ -354,25 +355,78 @@ function pirLanding(s, k) {
 // Kulene (vises for alle) og smellene
 const pirBalls = {};
 const pirBallGeo = new THREE.SphereGeometry(0.28, 10, 8), pirBallMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, metalness: 0.5, roughness: 0.4 });
-const pirSmoke = [];
-for (let k = 0; k < 30; k++) { const m = new THREE.Mesh(new THREE.SphereGeometry(0.6, 8, 6), new THREE.MeshBasicMaterial({ color: 0xdddddd, transparent: true, opacity: 0.7, depthWrite: false })); m.visible = false; m.raycast = () => {}; pirateGroup.add(m); pirSmoke.push({ m, life: 0, v: new THREE.Vector3() }); }
-function pirPuff(p, dir, n) {
+// Røyk og sot: mange myke kuler som vokser, stiger og blekner (grå røyk, svart sot)
+const pirSmoke = [], pirSmokeGeo = new THREE.SphereGeometry(0.6, 8, 6);
+for (let k = 0; k < 220; k++) { const m = new THREE.Mesh(pirSmokeGeo, new THREE.MeshLambertMaterial({ color: 0xdddddd, transparent: true, opacity: 0.7, depthWrite: false })); m.visible = false; m.raycast = () => {}; pirateGroup.add(m); pirSmoke.push({ m, life: 0, max: 1, v: new THREE.Vector3(), grow: 2.5, op: 0.7 }); }
+let pirSmokeI = 0;
+function pirPuff(p, dir, n, o) {
+  o = o || {};
   for (let i = 0; i < n; i++) {
-    const q = pirSmoke.find(x => x.life <= 0); if (!q) return;
-    q.life = 1.4; q.m.visible = true; q.m.position.copy(p); q.m.scale.setScalar(0.6);
-    q.v.copy(dir).multiplyScalar(2 + Math.random() * 3).add(new THREE.Vector3((Math.random() - 0.5) * 1.5, 0.8 + Math.random(), (Math.random() - 0.5) * 1.5));
+    const q = pirSmoke[pirSmokeI]; pirSmokeI = (pirSmokeI + 1) % pirSmoke.length;
+    q.max = q.life = (o.life || 2.2) * (0.7 + Math.random() * 0.6);
+    q.m.visible = true; q.m.position.copy(p); q.m.scale.setScalar(o.size || 0.6);
+    q.grow = o.grow || 3; q.op = o.op || 0.7;
+    const soot = Math.random() < (o.soot === undefined ? 0.35 : o.soot);
+    const c = soot ? 0x1c1a18 + Math.floor(Math.random() * 3) * 0x080808 : 0x8a8a8a + Math.floor(Math.random() * 6) * 0x0f0f0f;
+    q.m.material.color.setHex(c); q.m.material.opacity = q.op;
+    const sp = (o.speed || 3) * (0.4 + Math.random());
+    q.v.copy(dir).multiplyScalar(sp).add(new THREE.Vector3((Math.random() - 0.5) * 2, (o.up || 0.8) + Math.random(), (Math.random() - 0.5) * 2));
   }
+}
+// Glør og gnister (oransje prikker som faller)
+const pirEmbers = [], pirEmberGeo = new THREE.BoxGeometry(0.08, 0.08, 0.08);
+for (let k = 0; k < 120; k++) { const m = new THREE.Mesh(pirEmberGeo, new THREE.MeshBasicMaterial({ color: 0xffa030 })); m.visible = false; m.raycast = () => {}; pirateGroup.add(m); pirEmbers.push({ m, life: 0, v: new THREE.Vector3() }); }
+let pirEmberI = 0;
+function pirSparks(p, dir, n, speed, color) {
+  for (let i = 0; i < n; i++) {
+    const e = pirEmbers[pirEmberI]; pirEmberI = (pirEmberI + 1) % pirEmbers.length;
+    e.life = 0.5 + Math.random() * 0.9; e.m.visible = true; e.m.position.copy(p);
+    e.m.material.color.setHex(color || [0xffd060, 0xff8020, 0xff4010][i % 3]);
+    e.v.copy(dir).multiplyScalar(speed * (0.3 + Math.random())).add(new THREE.Vector3((Math.random() - 0.5) * speed * 0.6, Math.random() * speed * 0.5, (Math.random() - 0.5) * speed * 0.6));
+  }
+}
+// Treflis (når et skip blir truffet)
+const pirSplinters = [];
+for (let k = 0; k < 40; k++) { const m = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.12, 0.6), new THREE.MeshLambertMaterial({ color: 0x7a5030 })); m.visible = false; m.raycast = () => {}; pirateGroup.add(m); pirSplinters.push({ m, life: 0, v: new THREE.Vector3(), r: new THREE.Vector3() }); }
+let pirSplI = 0;
+// Munningsflammen: et stort gult/oransje lysglimt + et ekte lys som lyser opp dekket et øyeblikk
+const pirFlash = new THREE.Mesh(new THREE.SphereGeometry(1, 10, 8), new THREE.MeshBasicMaterial({ color: 0xffc040, transparent: true, opacity: 0.9, depthWrite: false }));
+pirFlash.visible = false; pirFlash.raycast = () => {}; pirateGroup.add(pirFlash);
+const pirFlashLight = new THREE.PointLight(0xffa040, 0, 30, 2); pirateGroup.add(pirFlashLight);
+let pirFlashT = 0;
+// Kanonsmell: dyp bass + brak + lang hale. Lyden kommer litt senere jo lenger unna (lyden går 343 m/s)
+function pirCannonSound(dist, big) {
+  if (typeof audioCtx === 'undefined' || !audioCtx) return;
+  const vol = Math.max(0.04, (big ? 0.9 : 0.7) - dist * 0.005), t0 = audioCtx.currentTime + dist / 343;
+  const o = audioCtx.createOscillator(), og = audioCtx.createGain();
+  o.type = 'sine'; o.frequency.setValueAtTime(big ? 70 : 85, t0); o.frequency.exponentialRampToValueAtTime(28, t0 + 0.6);
+  og.gain.setValueAtTime(vol, t0); og.gain.exponentialRampToValueAtTime(0.001, t0 + 0.9);
+  o.connect(og); og.connect(audioCtx.destination); o.start(t0); o.stop(t0 + 1);
+  const sr = audioCtx.sampleRate, len = Math.floor(1.8 * sr), buf = audioCtx.createBuffer(1, len, sr), d = buf.getChannelData(0);
+  for (let i = 0; i < len; i++) { const k = i / len; d[i] = (Math.random() * 2 - 1) * (i < sr * 0.03 ? 1 : Math.pow(1 - k, 3) * 0.6); }
+  const src = audioCtx.createBufferSource(); src.buffer = buf;
+  const f = audioCtx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = dist > 60 ? 600 : 1400;
+  const g = audioCtx.createGain(); g.gain.value = vol * 0.8;
+  src.connect(f); f.connect(g); g.connect(audioCtx.destination); src.start(t0);
 }
 socket.on('pirBall', d => {
   if (!pirateOn()) return;
-  const m = new THREE.Mesh(pirBallGeo, pirBallMat); m.castShadow = true; m.raycast = () => {};
-  m.position.set(d.p[0], d.p[1], d.p[2]); m.scale.setScalar(d.bow ? 1.4 : 1); pirateGroup.add(m);
-  pirBalls[d.id] = { m, v: new THREE.Vector3(d.v[0], d.v[1], d.v[2]), age: 0 };
-  const dir = new THREE.Vector3(d.v[0], 0, d.v[2]).normalize();
-  pirPuff(m.position, dir, d.bow ? 8 : 5);
+  const m = new THREE.Group();
+  const ball = new THREE.Mesh(pirBallGeo, pirBallMat); ball.castShadow = true; m.add(ball);
+  const glow = new THREE.Mesh(new THREE.SphereGeometry(0.42, 8, 6), new THREE.MeshBasicMaterial({ color: 0xff7020, transparent: true, opacity: 0.35, depthWrite: false })); m.add(glow);   // varm glød (lett å se)
+  m.traverse(o => { o.raycast = () => {}; });
+  m.position.set(d.p[0], d.p[1], d.p[2]); m.scale.setScalar(d.bow ? 1.5 : 1.15); pirateGroup.add(m);
+  pirBalls[d.id] = { m, v: new THREE.Vector3(d.v[0], d.v[1], d.v[2]), age: 0, trail: 0, big: !!d.bow };
+  const dir = new THREE.Vector3(d.v[0], d.v[1], d.v[2]).normalize();
+  // EPISK smell: flamme, lys, masse røyk og sot, gnister
+  pirFlash.visible = true; pirFlash.position.copy(m.position).addScaledVector(dir, 1.2); pirFlash.scale.setScalar(d.bow ? 2.2 : 1.6); pirFlashT = 0.12;
+  pirFlashLight.position.copy(pirFlash.position); pirFlashLight.intensity = d.bow ? 6 : 4;
+  pirPuff(m.position, dir, d.bow ? 26 : 18, { speed: 7, life: 3.2, size: 0.8, grow: 4, soot: 0.45 });
+  pirPuff(m.position, new THREE.Vector3(0, 1, 0), d.bow ? 10 : 6, { speed: 1, life: 4, size: 1, grow: 5, soot: 0.6, op: 0.55 });   // sot som henger igjen
+  pirSparks(m.position, dir, d.bow ? 22 : 14, 14);
   const dist = Math.hypot(d.p[0] - player.x, d.p[2] - player.z);
-  if (typeof playBoom === 'function') playBoom(Math.max(0.05, (d.bow ? 0.75 : 0.55) - dist * 0.006));
-  if (dist < 14) shake = Math.max(shake, d.bow ? 0.5 : 0.3);
+  pirCannonSound(dist, d.bow);
+  if (dist < 18) shake = Math.max(shake, d.bow ? 0.7 : 0.45);
   // rekyl på kanonen (den rulles litt bakover)
   const s = pirShips[d.team];
   if (s) { const c = d.k === 8 ? s.mesh.userData.bigGun : s.mesh.userData.cannons[d.k]; if (c) c.userData.kick = 0.35; }
@@ -381,10 +435,22 @@ socket.on('pirBoom', d => {
   const b = pirBalls[d.id];
   if (b) { pirateGroup.remove(b.m); delete pirBalls[d.id]; }
   if (!pirateOn()) return;
+  const P = new THREE.Vector3(d.p[0], d.p[1], d.p[2]), up = new THREE.Vector3(0, 1, 0);
+  const dist = P.distanceTo(camera.position);
   if (d.w === 'water') {
-    pirSplash(d.p[0], d.p[2], 2.5);
-    pirPuff(new THREE.Vector3(d.p[0], PW + 0.5, d.p[2]), new THREE.Vector3(0, 1, 0), 3);
-  } else explode(d.p, 1.8);
+    pirSplash(d.p[0], d.p[2], 3.2);                    // høy vannsøyle
+    pirPuff(new THREE.Vector3(d.p[0], PW + 0.5, d.p[2]), up, 8, { speed: 3, life: 2, size: 0.7, grow: 3, soot: 0, op: 0.5 });   // vanndamp
+  } else {
+    explode(d.p, 1.8, true);
+    pirCannonSound(dist * 0.7, true);
+    pirPuff(P, up, 22, { speed: 4, life: 3.5, size: 1, grow: 5, soot: 0.6 });
+    pirSparks(P, up, 24, 9);
+    if (d.w === 'ship') for (let k = 0; k < 14; k++) {          // treflis fra skipet
+      const s = pirSplinters[pirSplI]; pirSplI = (pirSplI + 1) % pirSplinters.length;
+      s.life = 2 + Math.random(); s.m.visible = true; s.m.position.copy(P);
+      s.v.set((Math.random() - 0.5) * 12, 4 + Math.random() * 8, (Math.random() - 0.5) * 12); s.r.set(Math.random() * 10, Math.random() * 10, Math.random() * 10);
+    }
+  }
 });
 socket.on('pirSunk', d => {
   if (!pirateOn()) return;
@@ -515,10 +581,15 @@ function updatePirate(dt) {
   // Kulene flyr (samme bue som på serveren)
   for (const id in pirBalls) {
     const b = pirBalls[id]; b.age += dt;
-    b.v.y -= 9.8 * dt; b.m.position.addScaledVector(b.v, dt);
+    b.v.y -= 9.8 * dt; b.v.multiplyScalar(1 - PIR_DRAG * dt); b.m.position.addScaledVector(b.v, dt);
+    b.trail -= dt;
+    if (b.trail <= 0) { b.trail = 0.035; pirPuff(b.m.position, new THREE.Vector3(), 1, { speed: 0.3, life: 0.9, size: b.big ? 0.4 : 0.3, grow: 2, soot: 0.3, up: 0.2, op: 0.55 }); }   // røykstripe bak kula
     if (b.age > 9) { pirateGroup.remove(b.m); delete pirBalls[id]; }
   }
-  pirSmoke.forEach(q => { if (q.life <= 0) return; q.life -= dt; q.m.position.addScaledVector(q.v, dt); q.v.multiplyScalar(0.96); const k = 1 - q.life / 1.4; q.m.scale.setScalar(0.6 + k * 2.5); q.m.material.opacity = 0.7 * (1 - k); if (q.life <= 0) q.m.visible = false; });
+  pirSmoke.forEach(q => { if (q.life <= 0) return; q.life -= dt; q.m.position.addScaledVector(q.v, dt); q.v.multiplyScalar(1 - 2.2 * dt); q.v.y += 0.4 * dt; const k = 1 - q.life / q.max; q.m.scale.setScalar(0.5 + k * q.grow); q.m.material.opacity = q.op * (1 - k); if (q.life <= 0) q.m.visible = false; });
+  pirEmbers.forEach(e => { if (e.life <= 0) return; e.life -= dt; e.v.y -= 9 * dt; e.m.position.addScaledVector(e.v, dt); if (e.life <= 0 || e.m.position.y < PW - 0.3) { e.life = 0; e.m.visible = false; } });
+  pirSplinters.forEach(s => { if (s.life <= 0) return; s.life -= dt; s.v.y -= 12 * dt; s.m.position.addScaledVector(s.v, dt); s.m.rotation.x += s.r.x * dt; s.m.rotation.y += s.r.y * dt; if (s.m.position.y < PW) { s.v.set(0, 0, 0); s.m.position.y = PW; } if (s.life <= 0) s.m.visible = false; });
+  if (pirFlashT > 0) { pirFlashT -= dt; pirFlash.material.opacity = Math.max(0, pirFlashT / 0.12) * 0.9; pirFlashLight.intensity *= 0.7; if (pirFlashT <= 0) { pirFlash.visible = false; pirFlashLight.intensity = 0; } }
   // Kanonene peker dit du sikter, og rulles tilbake når de skyter
   for (const k2 in pirShips) {
     const ud = pirShips[k2].mesh.userData;
@@ -531,7 +602,8 @@ function updatePirate(dt) {
     if (aimK === 8) { c.rotation.y = rel; c.userData.pivot.rotation.x = -a.pitch; }
     else { c.rotation.y = rel; }
     const L = pirLanding(sMe, aimK);
-    pirRing.visible = !!L; if (L) { pirRing.position.copy(L); pirRing.position.y += 0.05; }
+    pirRing.visible = !!L;
+    if (L) { pirRing.position.copy(L); pirRing.position.y += 0.05; pirRing.scale.setScalar(1 + L.distanceTo(camera.position) / 35); }   // større ring langt unna: kula sprer litt
     pirRing.material.color.setHex(performance.now() < pirReady[aimK] ? 0x888888 : 0xff3a2a);
   } else pirRing.visible = false;
   // Livet til skipene
