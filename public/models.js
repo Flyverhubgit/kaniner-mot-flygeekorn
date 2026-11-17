@@ -2,6 +2,35 @@
 // Alt er bygget av bokser. Front = +z. Føttene står på y = 0.
 // Begge er like høye (topp av hodet ca. 1,47 m) og har samme farge.
 
+// [NY] GRAFIKK Lav/Høy (knappen og resten ligger i gfx.js). Står her fordi models.js lastes først.
+const GFX_KEY = 'kmf-gfx';
+const GFX_HIGH = (() => {
+  let v = null;
+  try { v = localStorage.getItem(GFX_KEY); } catch (e) {}
+  if (v === 'high') return true;
+  if (v === 'low') return false;
+  return !window.matchMedia('(pointer: coarse)').matches;   // standard: PC = Høy, mobil = Lav
+})();
+
+
+// [NY] Grafikk Høy: myk "stoff"-tekstur på kosedyr-pelsen (lages én gang)
+let plushTexCache = null;
+function plushTex() {
+  if (plushTexCache) return plushTexCache;
+  const S = 64, c = document.createElement('canvas'); c.width = c.height = S;
+  const x = c.getContext('2d');
+  x.fillStyle = '#eeeeee'; x.fillRect(0, 0, S, S);
+  let sd = 7; const r = () => { sd = (sd * 16807) % 2147483647; return sd / 2147483647; };
+  for (let k = 0; k < 900; k++) {                      // små hårstrå i litt ulike retninger
+    const v = 205 + r() * 50 | 0; x.strokeStyle = 'rgb(' + v + ',' + v + ',' + v + ')'; x.lineWidth = 1;
+    const a = r() * S, b = r() * S, ang = 1.2 + r() * 0.7;
+    x.beginPath(); x.moveTo(a, b); x.lineTo(a + Math.cos(ang) * 3, b + Math.sin(ang) * 3); x.stroke();
+  }
+  plushTexCache = new THREE.CanvasTexture(c);
+  plushTexCache.wrapS = plushTexCache.wrapT = THREE.RepeatWrapping;
+  return plushTexCache;
+}
+
 const PLUSH = 0x8d8479;        // hovedfarge (fra kosekluten)
 const PLUSH_FLAT = 0x80776d;   // litt mørkere (flyveskinn, glatte felt)
 const PLUSH_LIGHT = 0x9d9489;  // litt lysere (mage)
@@ -42,6 +71,7 @@ function blk(parent, w, h, d, x, y, z, color, rot) {
     SOFT_BLOCKS ? softBox(w, h, d) : new THREE.BoxGeometry(w, h, d),
     new THREE.MeshStandardMaterial({ color, roughness: 0.95 })
   );
+  if (GFX_HIGH && (color === PLUSH || color === PLUSH_FLAT || color === PLUSH_LIGHT)) m.material.map = plushTex();   // [NY] stoff-tekstur
   m.position.set(x, y, z);
   if (rot) m.rotation.set(rot[0] || 0, rot[1] || 0, rot[2] || 0);
   m.castShadow = true;
@@ -216,6 +246,21 @@ function buildBunny() {
   // Liten hale
   blk(g, 0.14, 0.14, 0.10, 0, 0.38, -0.27, PLUSH_LIGHT);
 
+  // [NY] Grafikk Høy: små detaljer (glimt i øynene, munn, værhår, sinte bryn, rosa inni ørene, mage, tå-puter)
+  if (GFX_HIGH) {
+    [-1, 1].forEach(s => {
+      blk(g, 0.015, 0.015, 0.01, s * 0.09, 1.30, 0.237, 0xffffff);                 // glimt i øyet
+      blk(g, 0.07, 0.018, 0.012, s * 0.10, 1.335, 0.226, 0x3a2f2a, [0, 0, s * 0.35]);  // sint bryn
+      for (let k = -1; k <= 1; k++) blk(g, 0.16, 0.008, 0.008, s * 0.17, 1.17 + k * 0.025, 0.232, 0xe8e8e8, [0, 0, s * k * 0.18]);  // værhår
+      blk(g.children.find(c => c.isGroup && Math.abs(c.position.x - s * 0.12) < 0.001 && c.position.y > 1.4) || g, 0.14, 0.30, 0.012, 0, 0.36, 0.03, PINK);   // rosa inni øret
+      blk(g, 0.09, 0.05, 0.01, s * 0.16, 0.06, 0.356, PINK);                        // tå-pute
+    });
+    blk(g, 0.025, 0.035, 0.012, 0, 1.125, 0.226, 0x5a3a3a);                         // munn
+    blk(g, 0.05, 0.015, 0.012, -0.02, 1.105, 0.226, 0x5a3a3a, [0, 0, 0.5]);
+    blk(g, 0.05, 0.015, 0.012, 0.02, 1.105, 0.226, 0x5a3a3a, [0, 0, -0.5]);
+    blk(g, 0.36, 0.28, 0.02, 0, 0.42, 0.235, PLUSH_LIGHT);                          // lys mage
+  }
+
   // Krigsutstyr: rødt pannebånd og to kulebelter i kryss
   bandana(g, 1.36, 0.50, 0.44, 0xb3261e);
   bandolier(g, 0.62, 0.24, -0.24, 0.62, 0.75);
@@ -267,6 +312,17 @@ function buildSquirrel() {
   const armR = joint(g, 0.24, 0.96, 0, -1.4, 0, 0);
   blk(armR, 0.12, 0.44, 0.12, 0, -0.22, 0, FUR);
   blk(g, 0.12, 0.52, 0.04, 0.27, 0.68, 0, FLAP);
+
+  // [NY] Grafikk Høy: munn, værhår, sinte bryn, glimt i øynene, lys flekk inni ørene
+  if (GFX_HIGH) {
+    [-1, 1].forEach(s => {
+      blk(g, 0.11, 0.022, 0.012, s * 0.15, 1.39, 0.206, 0x3a2418, [0, 0, s * 0.3]);   // sint bryn
+      for (let k = -1; k <= 1; k++) blk(g, 0.17, 0.008, 0.008, s * 0.2, 1.18 + k * 0.025, 0.212, 0xe8e8e8, [0, 0, s * k * 0.18]);  // værhår
+      blk(g, 0.012, 0.012, 0.008, s * 0.15 - 0.02, 1.30, 0.219, 0xffffff);            // ekstra glimt
+    });
+    blk(g, 0.09, 0.02, 0.012, 0.02, 1.105, 0.206, 0x3a2418);                           // munn
+    blk(g, 0.03, 0.03, 0.012, 0.055, 1.115, 0.206, 0x3a2418);                          // smil i munnviken
+  }
 
   // Krigsutstyr: grønt pannebånd og to kulebelter i kryss
   bandana(g, 1.42, 0.60, 0.40, 0x556b2f);

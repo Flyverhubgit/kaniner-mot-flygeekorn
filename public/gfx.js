@@ -1,14 +1,7 @@
 // [NY] GRAFIKK-INNSTILLING (Lav / Høy) + teksturer på klossene.
 // Høy = mer detaljer (teksturer, senere også mer lys/skygge). Lav = slik spillet var før.
 // Mobiler starter på Lav. Valget lagres i nettleseren ('kmf-gfx').
-const GFX_KEY = 'kmf-gfx';
-const GFX_HIGH = (() => {
-  let v = null;
-  try { v = localStorage.getItem(GFX_KEY); } catch (e) {}
-  if (v === 'high') return true;
-  if (v === 'low') return false;
-  return !window.matchMedia('(pointer: coarse)').matches;   // standard: PC = Høy, mobil = Lav
-})();
+// (GFX_KEY og GFX_HIGH står øverst i models.js, fordi figurene bygges før denne fila lastes.)
 
 // Knapp på startskjermen (ved siden av sikte-følsomhet). Bytter og laster siden på nytt.
 window.addEventListener('DOMContentLoaded', () => {
