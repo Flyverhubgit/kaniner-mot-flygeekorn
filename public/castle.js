@@ -64,6 +64,8 @@ function makeVoxelWorld(LIB, group) {
   for (const t in counts) {
     const info = LIB.INFO[t];
     const mat = new THREE.MeshStandardMaterial({ color: info.color, roughness: 0.85, emissive: info.emissive || ((LIB === CM && t == CM.T.GLASS) ? 0x224466 : 0) });
+    // [NY] Grafikk Høy: tekstur på klossene (stein, planker, murstein ...). Lav = flate farger som før.
+    if (typeof GFX_HIGH !== 'undefined' && GFX_HIGH) mat.map = gfxBlockTex(gfxPatternFor(LIB, t));
     const mesh = new THREE.InstancedMesh(boxGeo, mat, counts[t]);
     mesh.castShadow = !isTouch;          // skygger koster mye på mobil
     mesh.receiveShadow = true;
