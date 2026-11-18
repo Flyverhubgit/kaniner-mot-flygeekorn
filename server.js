@@ -2663,7 +2663,7 @@ setInterval(() => {                                  // bæreren døde, gikk ut 
 // [NY] PIRATBUKTA 🏴‍☠️: to piratskip som seiler rundt. Serveren bestemmer hvor skipene er.
 // Den som står ved rattet styrer: W = fram, S = bakover/brems, A/D = sving. Skipet stopper mot øyene.
 // ===================================================================
-const SHIP_SPEC = { max: 8, rev: 2, acc: 1.4, turn: 0.38 };   // (8 m/s: bukta er større nå)
+const SHIP_SPEC = { max: 5, rev: 1.5, acc: 0.8, turn: 0.26 };   // sakte med vilje: tunge piratskip (var 8 / 0.38)
 let ships = {};
 function shipReset() {
   ships = {};
