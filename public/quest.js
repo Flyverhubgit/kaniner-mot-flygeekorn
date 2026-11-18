@@ -71,7 +71,7 @@ if (QUEST_ON) sign([{ t: '⚽ OPPDRAG', size: 60, bold: true }], 3, 0.8, COACH.x
 
 // ---------- Snakkeboksen ----------
 const questPanel = document.createElement('div');
-questPanel.style.cssText = 'position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);width:min(90vw,420px);background:rgba(13,60,48,0.95);border:3px solid #fff;border-radius:16px;padding:14px;z-index:20;display:none;color:#fff;font:15px sans-serif;text-align:center;';
+questPanel.style.cssText = 'position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);width:min(90vw,420px);background:rgba(13,60,48,0.95);border:3px solid #fff;border-radius:16px;padding:14px;z-index:20;display:none;color:#fff;font:15px Fredoka, sans-serif;text-align:center;';
 document.body.appendChild(questPanel);
 let questOpen = false;
 function questBar(n, need) {
@@ -80,35 +80,35 @@ function questBar(n, need) {
 }
 function renderQuest() {
   const q = questState();
-  let h = '<div style="font:bold 18px sans-serif;margin-bottom:6px">⚽ Treneren</div>';
+  let h = '<div style="font:bold 18px Fredoka, sans-serif;margin-bottom:6px">⚽ Treneren</div>';
   if (profile.kit) {                                  // [NY] oppdrag 2: 100 drap -> GMLRS-radioen
     const q2 = quest2State();
     if (profile.gmlrs) {
       h += '<div>Du har GMLRS-radioen! 🚀<br>Gå opp i <b>radiotårnet</b> ved basen i <b>Ørkenkrigen</b>, trykk <b>E</b> ved radioen, sikt og skyt.<br><span style="font-size:13px;opacity:.85">Laget må vente 1 minutt mellom hver.</span></div>' +
-        '<button id="qClose" style="margin-top:10px;font:bold 15px sans-serif;padding:6px 16px;border-radius:8px">OK</button>';
+        '<button id="qClose" style="margin-top:10px;font:bold 15px Fredoka, sans-serif;padding:6px 16px;border-radius:8px">OK</button>';
     } else if (q2.on && q2.kills >= QUEST2_NEED) {
       h += '<div>100 drap! 🎉 Her er GMLRS-radioen! 🚀</div>' +
-        '<button id="qClaim2" style="margin-top:10px;font:bold 16px sans-serif;padding:8px 18px;border-radius:10px;background:#ffd23a;border:none">🚀 Ta imot</button>';
+        '<button id="qClaim2" style="margin-top:10px;font:bold 16px Fredoka, sans-serif;padding:8px 18px;border-radius:10px;background:#ffd23a;border:none">🚀 Ta imot</button>';
     } else if (q2.on) {
       h += '<div>Få <b>100 drap</b>! 🎯<br><span style="font-size:13px;opacity:.85">Alle baner teller – roboter også.</span></div>' + questBar(q2.kills, QUEST2_NEED) +
         '<div style="font-size:13px;opacity:.85">' + q2.kills + ' / ' + QUEST2_NEED + ' drap</div>' +
-        '<button id="qClose" style="margin-top:10px;font:bold 15px sans-serif;padding:6px 16px;border-radius:8px">OK</button>';
+        '<button id="qClose" style="margin-top:10px;font:bold 15px Fredoka, sans-serif;padding:6px 16px;border-radius:8px">OK</button>';
     } else {
       h += '<div>Kul drakt! 😎<br>Nytt oppdrag: få <b>100 drap</b>, så får du <b>GMLRS-radioen</b> 🚀<br><span style="font-size:13px;opacity:.85">Et rakettangrep fra himmelen i Ørkenkrigen!</span></div>' +
-        '<button id="qTake2" style="margin-top:10px;font:bold 16px sans-serif;padding:8px 18px;border-radius:10px;background:#ffd23a;border:none">Jeg tar oppdraget!</button> ' +
-        '<button id="qClose" style="margin-top:10px;font:15px sans-serif;padding:6px 12px;border-radius:8px">Senere</button>';
+        '<button id="qTake2" style="margin-top:10px;font:bold 16px Fredoka, sans-serif;padding:8px 18px;border-radius:10px;background:#ffd23a;border:none">Jeg tar oppdraget!</button> ' +
+        '<button id="qClose" style="margin-top:10px;font:15px Fredoka, sans-serif;padding:6px 12px;border-radius:8px">Senere</button>';
     }
   } else if (q.done) {
     h += '<div>Du klarte det! 🎉 Her er fotballdrakta og MIL-våpenskinnen!</div>' +
-      '<button id="qClaim" style="margin-top:10px;font:bold 16px sans-serif;padding:8px 18px;border-radius:10px;background:#ffd23a;border:none">⚽ Ta imot</button>';
+      '<button id="qClaim" style="margin-top:10px;font:bold 16px Fredoka, sans-serif;padding:8px 18px;border-radius:10px;background:#ffd23a;border:none">⚽ Ta imot</button>';
   } else if (q.on) {
     h += '<div>Gjør <b>5000 skade</b> uten å dø! 🐉⚔️<br><span style="font-size:13px;opacity:.85">Drager og vanlige kamper teller.</span></div>' + questBar(q.best || 0) +
       '<div style="font-size:13px;opacity:.85">Beste forsøk: ' + Math.floor(q.best || 0) + ' / 5000</div>' +
-      '<button id="qClose" style="margin-top:10px;font:bold 15px sans-serif;padding:6px 16px;border-radius:8px">OK</button>';
+      '<button id="qClose" style="margin-top:10px;font:bold 15px Fredoka, sans-serif;padding:6px 16px;border-radius:8px">OK</button>';
   } else {
     h += '<div>Hei! Vil du ha en ekte fotballdrakt og MIL-våpenskinnen?<br>Gjør <b>5000 skade</b> uten å dø! 🐉⚔️<br><span style="font-size:13px;opacity:.85">Drager og vanlige kamper teller.</span></div>' +
-      '<button id="qTake" style="margin-top:10px;font:bold 16px sans-serif;padding:8px 18px;border-radius:10px;background:#ffd23a;border:none">Jeg tar oppdraget!</button> ' +
-      '<button id="qClose" style="margin-top:10px;font:15px sans-serif;padding:6px 12px;border-radius:8px">Senere</button>';
+      '<button id="qTake" style="margin-top:10px;font:bold 16px Fredoka, sans-serif;padding:8px 18px;border-radius:10px;background:#ffd23a;border:none">Jeg tar oppdraget!</button> ' +
+      '<button id="qClose" style="margin-top:10px;font:15px Fredoka, sans-serif;padding:6px 12px;border-radius:8px">Senere</button>';
   }
   questPanel.innerHTML = h;
   const b = id => document.getElementById(id);
@@ -156,7 +156,7 @@ addEventListener('keydown', e => {
   if (e.code === 'Escape' && questOpen) closeQuest();
 });
 const coachPrompt = document.createElement('div');
-coachPrompt.style.cssText = 'position:fixed;left:50%;' + (isTouch ? 'top:46px' : 'bottom:110px') + ';transform:translateX(-50%);padding:8px 14px;border-radius:12px;background:rgba(13,110,87,0.9);color:#fff;font:bold 15px sans-serif;z-index:12;display:none;user-select:none;';   // [FIKS] på mobil øverst, så den ikke ligger oppå GRANAT-knappen
+coachPrompt.style.cssText = 'position:fixed;left:50%;' + (isTouch ? 'top:46px' : 'bottom:110px') + ';transform:translateX(-50%);padding:8px 14px;border-radius:12px;background:rgba(13,110,87,0.9);color:#fff;font:bold 15px Fredoka, sans-serif;z-index:12;display:none;user-select:none;';   // [FIKS] på mobil øverst, så den ikke ligger oppå GRANAT-knappen
 document.body.appendChild(coachPrompt);
 coachPrompt.addEventListener('click', openQuest);
 coachPrompt.addEventListener('touchstart', e => { e.preventDefault(); openQuest(); }, { passive: false });
@@ -192,7 +192,7 @@ socket.on('questDone', () => {
 });
 // [NY] Liten boks i hjørnet (oppe til høyre, under ammo) mens oppdraget pågår. Forsvinner når oppdraget er klart.
 const questHud = document.createElement('div');
-questHud.style.cssText = 'position:fixed;top:' + (isTouch ? 44 : 48) + 'px;right:16px;width:118px;color:#fff;font:bold 12px sans-serif;text-shadow:0 1px 2px #000;background:rgba(13,110,87,0.5);padding:3px 7px 5px;border-radius:9px;z-index:4;display:none;pointer-events:none;text-align:right;';
+questHud.style.cssText = 'position:fixed;top:' + (isTouch ? 44 : 48) + 'px;right:16px;width:118px;color:#fff;font:bold 12px Fredoka, sans-serif;text-shadow:0 1px 2px #000;background:rgba(13,110,87,0.5);padding:3px 7px 5px;border-radius:9px;z-index:4;display:none;pointer-events:none;text-align:right;';
 questHud.innerHTML = '<div id="questHudTxt">⚽ 0 / ' + QUEST_NEED + '</div><div style="height:5px;background:rgba(255,255,255,.25);border-radius:3px;overflow:hidden;margin-top:3px"><div id="questHudBar" style="height:100%;width:0%;background:#ffd23a"></div></div>';
 document.body.appendChild(questHud);
 const questHudTxt = questHud.querySelector('#questHudTxt'), questHudBar = questHud.querySelector('#questHudBar');

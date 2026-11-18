@@ -283,7 +283,7 @@ window.addEventListener('keydown', e => {
 let farmBtn = null;
 if (isTouch) {
   farmBtn = document.createElement('div');
-  farmBtn.style.cssText = 'position:fixed;left:50%;top:84px;transform:translateX(-50%);padding:12px 22px;border-radius:30px;background:rgba(90,70,20,0.85);border:2px solid #fff;color:#fff;font:bold 17px sans-serif;z-index:6;display:none;user-select:none;';
+  farmBtn.style.cssText = 'position:fixed;left:50%;top:84px;transform:translateX(-50%);padding:12px 22px;border-radius:30px;background:rgba(90,70,20,0.85);border:2px solid #fff;color:#fff;font:bold 17px Fredoka, sans-serif;z-index:6;display:none;user-select:none;';
   farmBtn.addEventListener('touchstart', e => { e.preventDefault(); farmAction(); }, { passive: false });
   document.body.appendChild(farmBtn);
 }
@@ -371,7 +371,7 @@ function impactFx(x, z) {
 
 // ---------- Hver ramme ----------
 const vehHud = document.createElement('div');
-vehHud.style.cssText = 'position:fixed;left:50%;bottom:' + (isTouch ? '8px' : '80px') + ';transform:translateX(-50%);color:#ffe9a0;font:bold 15px sans-serif;text-shadow:0 0 5px #000;z-index:6;pointer-events:none;display:none;text-align:center;white-space:nowrap;';
+vehHud.style.cssText = 'position:fixed;left:50%;bottom:' + (isTouch ? '8px' : '80px') + ';transform:translateX(-50%);color:#ffe9a0;font:bold 15px Fredoka, sans-serif;text-shadow:0 0 5px #000;z-index:6;pointer-events:none;display:none;text-align:center;white-space:nowrap;';
 document.body.appendChild(vehHud);
 function farmHideGun() { return farmOn() && !!tankRole; }
 function updateFarmVehicles(dt) {

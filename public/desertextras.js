@@ -131,7 +131,7 @@ if (isTouch) {
   [['smoke', '&#128168;', throwSmoke, '36%'], ['c4', '&#129512;', throwC4, '45%'], ['det', '&#128165;', detonateC4, '54%']].forEach(([k, icon, fn, top]) => {
     const b = document.createElement('div');
     b.innerHTML = icon;
-    b.style.cssText = 'position:fixed;right:10px;top:' + top + ';width:46px;height:46px;border-radius:50%;background:rgba(255,255,255,0.3);border:2px solid #fff;color:#fff;font:22px sans-serif;display:none;align-items:center;justify-content:center;z-index:6;user-select:none;';
+    b.style.cssText = 'position:fixed;right:10px;top:' + top + ';width:46px;height:46px;border-radius:50%;background:rgba(255,255,255,0.3);border:2px solid #fff;color:#fff;font:22px Fredoka, sans-serif;display:none;align-items:center;justify-content:center;z-index:6;user-select:none;';
     b.addEventListener('touchstart', e => { e.preventDefault(); e.stopPropagation(); fn(); }, { passive: false });
     document.body.appendChild(b); xtraBtns[k] = b;
   });

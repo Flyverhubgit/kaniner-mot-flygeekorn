@@ -15,7 +15,7 @@ const VOTE_MAPS = [
 let voteOpen = false, myVote = null;
 
 const votePanel = document.createElement('div');
-votePanel.style.cssText = 'position:fixed;left:50%;bottom:12%;transform:translateX(-50%);z-index:15;display:none;text-align:center;color:#fff;font:bold 16px sans-serif;text-shadow:0 0 4px #000;';
+votePanel.style.cssText = 'position:fixed;left:50%;bottom:12%;transform:translateX(-50%);z-index:15;display:none;text-align:center;color:#fff;font:bold 16px Fredoka, sans-serif;text-shadow:0 0 4px #000;';
 votePanel.innerHTML = '<div style="margin-bottom:8px">Stem på neste bane! ' + (isTouch ? '(trykk)' : '(trykk 1–5)') + '</div><div id="voteBtns" style="display:flex;gap:10px;justify-content:center"></div>';
 document.body.appendChild(votePanel);
 const voteBtns = votePanel.querySelector('#voteBtns');

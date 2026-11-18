@@ -110,12 +110,12 @@ function mkDiv(css, html) {
   document.body.appendChild(d);
   return d;
 }
-const pullPrompt = mkDiv('position:fixed;left:50%;top:60%;transform:translateX(-50%);color:#ffe14a;font:bold 20px sans-serif;text-shadow:0 0 6px #000;z-index:6;pointer-events:none;display:none;',
+const pullPrompt = mkDiv('position:fixed;left:50%;top:60%;transform:translateX(-50%);color:#ffe14a;font:bold 20px Fredoka, sans-serif;text-shadow:0 0 6px #000;z-index:6;pointer-events:none;display:none;',
   isTouch ? 'Trykk TREKK for å dra i håndtaket...' : 'Trykk <b>E</b> for å dra i håndtaket...');
-const fallEl = mkDiv('position:fixed;inset:0;z-index:15;display:none;align-items:center;justify-content:center;text-align:center;color:#fff;font:bold 30px sans-serif;text-shadow:0 0 8px #000;background:radial-gradient(circle, #ff5a00 0%, #6a0000 45%, #000 100%);pointer-events:none;');
+const fallEl = mkDiv('position:fixed;inset:0;z-index:15;display:none;align-items:center;justify-content:center;text-align:center;color:#fff;font:bold 30px Fredoka, sans-serif;text-shadow:0 0 8px #000;background:radial-gradient(circle, #ff5a00 0%, #6a0000 45%, #000 100%);pointer-events:none;');
 let pullBtn = null;
 if (isTouch) {
-  pullBtn = mkDiv('position:fixed;left:50%;bottom:40px;transform:translateX(-50%);padding:14px 26px;border-radius:30px;background:rgba(212,175,55,0.8);border:2px solid #fff;color:#222;font:bold 18px sans-serif;z-index:6;display:none;user-select:none;', 'TREKK');
+  pullBtn = mkDiv('position:fixed;left:50%;bottom:40px;transform:translateX(-50%);padding:14px 26px;border-radius:30px;background:rgba(212,175,55,0.8);border:2px solid #fff;color:#222;font:bold 18px Fredoka, sans-serif;z-index:6;display:none;user-select:none;', 'TREKK');
   pullBtn.addEventListener('touchstart', e => { e.preventDefault(); tryPull(); }, { passive: false });
 }
 

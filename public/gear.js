@@ -105,7 +105,7 @@ socket.on('roundOver', d => {
 
 // ---------- Liten melding nederst (ikke påtrengende) ----------
 const toast = document.createElement('div');
-toast.style.cssText = 'position:fixed;left:50%;bottom:70px;transform:translateX(-50%);padding:8px 16px;border-radius:12px;background:rgba(20,20,30,0.7);color:#ffe27a;font:bold 15px sans-serif;z-index:7;pointer-events:none;opacity:0;transition:opacity .4s;white-space:nowrap;';
+toast.style.cssText = 'position:fixed;left:50%;bottom:70px;transform:translateX(-50%);padding:8px 16px;border-radius:12px;background:rgba(20,20,30,0.7);color:#ffe27a;font:bold 15px Fredoka, sans-serif;z-index:7;pointer-events:none;opacity:0;transition:opacity .4s;white-space:nowrap;';
 document.body.appendChild(toast);
 let toastTimer = null;
 function showToast(t) { toast.textContent = t; toast.style.opacity = 1; clearTimeout(toastTimer); toastTimer = setTimeout(() => { toast.style.opacity = 0; }, 3500); }
@@ -298,7 +298,7 @@ function milBadgeTex() {
   const c = document.createElement('canvas'); c.width = c.height = 128; const x = c.getContext('2d');
   x.fillStyle = '#ffffff'; x.beginPath(); x.arc(64, 64, 62, 0, Math.PI * 2); x.fill();
   x.strokeStyle = '#0f7d62'; x.lineWidth = 9; x.beginPath(); x.arc(64, 64, 55, 0, Math.PI * 2); x.stroke();
-  x.fillStyle = '#0f7d62'; x.font = '900 40px Arial Black, Arial, sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle';
+  x.fillStyle = '#0f7d62'; x.font = '900 40px Arial Black, Arial, Fredoka, sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle';
   x.fillText('MIL', 64, 68);
   milBadgeT = new THREE.CanvasTexture(c); return milBadgeT;
 }
@@ -336,7 +336,7 @@ function norBadgeTex() {
   const c = document.createElement('canvas'); c.width = c.height = 128; const x = c.getContext('2d');
   x.fillStyle = '#ffffff'; x.beginPath(); x.arc(64, 64, 62, 0, Math.PI * 2); x.fill();
   x.strokeStyle = '#c81e2c'; x.lineWidth = 9; x.beginPath(); x.arc(64, 64, 55, 0, Math.PI * 2); x.stroke();
-  x.fillStyle = '#0d2a5c'; x.font = '900 40px Arial Black, Arial, sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle';
+  x.fillStyle = '#0d2a5c'; x.font = '900 40px Arial Black, Arial, Fredoka, sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle';
   x.fillText('NOR', 64, 68);
   norBadgeT = new THREE.CanvasTexture(c); return norBadgeT;
 }
@@ -345,11 +345,11 @@ let norBack = null;   // [NY] ['HAALAND', '9'] e.l. for drakten som bygges nå (
 function norBackTex(name, num, mode) {
   const c = document.createElement('canvas'); c.width = 256; c.height = mode === 'name' ? 64 : 256; const x = c.getContext('2d');
   x.fillStyle = '#ffffff'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.lineWidth = 8; x.strokeStyle = '#0d2a5c';
-  if (mode === 'name') { x.font = '900 40px Arial Black, Arial, sans-serif'; x.fillText(name, 128, 34, 244); }
-  else if (mode === 'num') { x.font = '900 190px Arial Black, Arial, sans-serif'; x.strokeText(num, 128, 140); x.fillText(num, 128, 140); }
+  if (mode === 'name') { x.font = '900 40px Arial Black, Arial, Fredoka, sans-serif'; x.fillText(name, 128, 34, 244); }
+  else if (mode === 'num') { x.font = '900 190px Arial Black, Arial, Fredoka, sans-serif'; x.strokeText(num, 128, 140); x.fillText(num, 128, 140); }
   else {
-    x.font = '900 34px Arial Black, Arial, sans-serif'; x.fillText(name, 128, 36, 240);
-    x.font = '900 150px Arial Black, Arial, sans-serif'; x.strokeText(num, 128, 160); x.fillText(num, 128, 160);
+    x.font = '900 34px Arial Black, Arial, Fredoka, sans-serif'; x.fillText(name, 128, 36, 240);
+    x.font = '900 150px Arial Black, Arial, Fredoka, sans-serif'; x.strokeText(num, 128, 160); x.fillText(num, 128, 160);
   }
   return new THREE.CanvasTexture(c);
 }
@@ -445,7 +445,7 @@ function updateGear(dt) {
 // ===================================================================
 const gearBox = document.createElement('div');
 gearBox.id = 'gearBox';
-gearBox.style.cssText = 'margin:8px auto 4px;max-width:520px;text-align:center;font:14px sans-serif;color:#fff;';
+gearBox.style.cssText = 'margin:8px auto 4px;max-width:520px;text-align:center;font:14px Fredoka, sans-serif;color:#fff;';
 const joinBtnEl = document.getElementById('joinBtn');
 joinBtnEl.parentNode.insertBefore(gearBox, joinBtnEl);
 let gearOpen = false;                              // [NY] sammenslått som standard (tar lite plass, spesielt på mobil)

@@ -110,13 +110,13 @@ function shellMesh() {
 
 // ---------- Skjerm ----------
 const mortarHud = document.createElement('div');
-mortarHud.style.cssText = 'position:fixed;left:50%;bottom:90px;transform:translateX(-50%);color:#fff;font:bold 17px sans-serif;text-shadow:0 0 5px #000;z-index:6;pointer-events:none;text-align:center;display:none;';
+mortarHud.style.cssText = 'position:fixed;left:50%;bottom:90px;transform:translateX(-50%);color:#fff;font:bold 17px Fredoka, sans-serif;text-shadow:0 0 5px #000;z-index:6;pointer-events:none;text-align:center;display:none;';
 document.body.appendChild(mortarHud);
 let mortarBtn = null;
 if (isTouch) {
   mortarBtn = document.createElement('div');
   mortarBtn.textContent = 'MORTER';
-  mortarBtn.style.cssText = 'position:fixed;left:50%;top:70px;transform:translateX(-50%);padding:12px 22px;border-radius:30px;background:rgba(75,83,32,0.85);border:2px solid #fff;color:#fff;font:bold 17px sans-serif;z-index:6;display:none;user-select:none;';
+  mortarBtn.style.cssText = 'position:fixed;left:50%;top:70px;transform:translateX(-50%);padding:12px 22px;border-radius:30px;background:rgba(75,83,32,0.85);border:2px solid #fff;color:#fff;font:bold 17px Fredoka, sans-serif;z-index:6;display:none;user-select:none;';
   mortarBtn.addEventListener('touchstart', e => { e.preventDefault(); toggleMortar(); }, { passive: false });
   document.body.appendChild(mortarBtn);
 }

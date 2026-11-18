@@ -82,7 +82,7 @@ function desertSign(text, color, x, y, z, ry) {
   const c = document.createElement('canvas'); c.width = 256; c.height = 64;
   const t = c.getContext('2d');
   t.fillStyle = color; t.fillRect(0, 0, 256, 64);
-  t.fillStyle = '#ffffff'; t.font = 'bold 36px sans-serif'; t.textAlign = 'center'; t.textBaseline = 'middle'; t.fillText(text, 128, 34);
+  t.fillStyle = '#ffffff'; t.font = 'bold 36px Fredoka, sans-serif'; t.textAlign = 'center'; t.textBaseline = 'middle'; t.fillText(text, 128, 34);
   const m = new THREE.Mesh(new THREE.PlaneGeometry(6, 1.5), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(c) }));
   m.position.set(x, y, z); m.rotation.y = ry; m.raycast = () => {};
   desertGroup.add(m);

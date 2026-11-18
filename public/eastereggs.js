@@ -21,7 +21,7 @@ const eggTable = (() => {
   // Lappen "IKKE TRYKK!"
   const c = document.createElement('canvas'); c.width = 128; c.height = 64;
   const x = c.getContext('2d'); x.fillStyle = '#f4ecd8'; x.fillRect(0, 0, 128, 64);
-  x.fillStyle = '#c01010'; x.font = 'bold 22px sans-serif'; x.textAlign = 'center'; x.fillText('IKKE', 64, 28); x.fillText('TRYKK!', 64, 54);
+  x.fillStyle = '#c01010'; x.font = 'bold 22px Fredoka, sans-serif'; x.textAlign = 'center'; x.fillText('IKKE', 64, 28); x.fillText('TRYKK!', 64, 54);
   const sign = add(new THREE.PlaneGeometry(0.4, 0.2), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(c) }), 0, 1.056, 0.32);
   sign.rotation.x = -Math.PI / 2;
   // Den hemmelige knappen under bordplata
@@ -69,7 +69,7 @@ let eggBtn = null;
 if (isTouch) {
   eggBtn = document.createElement('div');
   eggBtn.textContent = 'TRYKK';
-  eggBtn.style.cssText = 'position:fixed;left:50%;top:84px;transform:translateX(-50%);padding:12px 22px;border-radius:30px;background:rgba(160,20,20,0.85);border:2px solid #fff;color:#fff;font:bold 17px sans-serif;z-index:7;display:none;user-select:none;';
+  eggBtn.style.cssText = 'position:fixed;left:50%;top:84px;transform:translateX(-50%);padding:12px 22px;border-radius:30px;background:rgba(160,20,20,0.85);border:2px solid #fff;color:#fff;font:bold 17px Fredoka, sans-serif;z-index:7;display:none;user-select:none;';
   eggBtn.addEventListener('touchstart', e => { e.preventDefault(); pressLookedButton(); }, { passive: false });
   document.body.appendChild(eggBtn);
 }

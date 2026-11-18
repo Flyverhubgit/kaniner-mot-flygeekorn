@@ -343,12 +343,12 @@ addEventListener('keydown', e => { if (e.code === 'KeyE' && !(document.activeEle
 let dvBtn = null;
 if (isTouch) {
   dvBtn = document.createElement('div');
-  dvBtn.style.cssText = 'position:fixed;left:50%;top:84px;transform:translateX(-50%);padding:12px 22px;border-radius:30px;background:rgba(90,80,40,0.85);border:2px solid #fff;color:#fff;font:bold 17px sans-serif;z-index:6;display:none;user-select:none;';
+  dvBtn.style.cssText = 'position:fixed;left:50%;top:84px;transform:translateX(-50%);padding:12px 22px;border-radius:30px;background:rgba(90,80,40,0.85);border:2px solid #fff;color:#fff;font:bold 17px Fredoka, sans-serif;z-index:6;display:none;user-select:none;';
   dvBtn.addEventListener('touchstart', e => { e.preventDefault(); dvAction(); }, { passive: false });
   document.body.appendChild(dvBtn);
 }
 const dvHud = document.createElement('div');
-dvHud.style.cssText = 'position:fixed;left:50%;bottom:118px;transform:translateX(-50%);padding:6px 14px;border-radius:10px;background:rgba(0,0,0,0.45);color:#fff;font:bold 15px sans-serif;z-index:5;display:none;pointer-events:none;';
+dvHud.style.cssText = 'position:fixed;left:50%;bottom:118px;transform:translateX(-50%);padding:6px 14px;border-radius:10px;background:rgba(0,0,0,0.45);color:#fff;font:bold 15px Fredoka, sans-serif;z-index:5;display:none;pointer-events:none;';
 document.body.appendChild(dvHud);
 
 // ---------- Motorlyd ----------

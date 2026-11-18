@@ -152,7 +152,7 @@ addEventListener('keydown', e => { if (e.code === 'KeyE' && seaOn() && !(documen
 addEventListener('keyup', e => { if (e.code === 'KeyE') repairHold = false; });
 const repairBtn = document.createElement('div');
 repairBtn.textContent = '🔧 REPARER';
-repairBtn.style.cssText = 'position:fixed;right:18px;bottom:210px;padding:14px 16px;border-radius:14px;background:rgba(40,140,180,0.75);color:#fff;font:bold 16px sans-serif;z-index:6;display:none;user-select:none;touch-action:none;';
+repairBtn.style.cssText = 'position:fixed;right:18px;bottom:210px;padding:14px 16px;border-radius:14px;background:rgba(40,140,180,0.75);color:#fff;font:bold 16px Fredoka, sans-serif;z-index:6;display:none;user-select:none;touch-action:none;';
 document.body.appendChild(repairBtn);
 repairBtn.addEventListener('touchstart', e => { e.preventDefault(); repairHold = true; }, { passive: false });
 repairBtn.addEventListener('touchend', () => { repairHold = false; });

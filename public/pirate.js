@@ -290,12 +290,12 @@ addEventListener('keydown', e => {
 let pirBtn = null;
 if (isTouch) {
   pirBtn = document.createElement('div');
-  pirBtn.style.cssText = 'position:fixed;left:50%;top:84px;transform:translateX(-50%);padding:12px 22px;border-radius:30px;background:rgba(40,70,120,0.85);border:2px solid #fff;color:#fff;font:bold 17px sans-serif;z-index:6;display:none;user-select:none;';
+  pirBtn.style.cssText = 'position:fixed;left:50%;top:84px;transform:translateX(-50%);padding:12px 22px;border-radius:30px;background:rgba(40,70,120,0.85);border:2px solid #fff;color:#fff;font:bold 17px Fredoka, sans-serif;z-index:6;display:none;user-select:none;';
   pirBtn.addEventListener('touchstart', e => { e.preventDefault(); pirateAction(); }, { passive: false });
   document.body.appendChild(pirBtn);
 }
 const pirHud = document.createElement('div');
-pirHud.style.cssText = 'position:fixed;left:50%;bottom:150px;transform:translateX(-50%);padding:6px 14px;border-radius:10px;background:rgba(10,40,80,0.55);color:#fff;font:bold 15px sans-serif;z-index:5;display:none;pointer-events:none;text-align:center';
+pirHud.style.cssText = 'position:fixed;left:50%;bottom:150px;transform:translateX(-50%);padding:6px 14px;border-radius:10px;background:rgba(10,40,80,0.55);color:#fff;font:bold 15px Fredoka, sans-serif;z-index:5;display:none;pointer-events:none;text-align:center';
 document.body.appendChild(pirHud);
 
 // ---------- Kanonene ----------
@@ -484,7 +484,7 @@ socket.on('pirSunk', d => {
 socket.on('map', () => { for (const id in pirBalls) { pirateGroup.remove(pirBalls[id].m); delete pirBalls[id]; } pirMan = -1; });
 // Skipenes liv (øverst på skjermen)
 const pirHpEl = document.createElement('div');
-pirHpEl.style.cssText = 'position:fixed;left:50%;top:40px;transform:translateX(-50%);color:#fff;font:bold 13px sans-serif;z-index:5;display:none;pointer-events:none;text-shadow:0 0 3px #000;white-space:nowrap';
+pirHpEl.style.cssText = 'position:fixed;left:50%;top:40px;transform:translateX(-50%);color:#fff;font:bold 13px Fredoka, sans-serif;z-index:5;display:none;pointer-events:none;text-shadow:0 0 3px #000;white-space:nowrap';
 document.body.appendChild(pirHpEl);
 
 // ---------- Svømming ----------
@@ -800,7 +800,7 @@ let fruitBtns = null;
 if (isTouch) {
   fruitBtns = document.createElement('div');
   fruitBtns.style.cssText = 'position:fixed;right:20px;bottom:240px;display:none;flex-direction:column;gap:10px;z-index:6;user-select:none';
-  const mk = (txt) => { const b = document.createElement('div'); b.textContent = txt; b.style.cssText = 'padding:12px 16px;border-radius:30px;background:rgba(200,60,10,0.85);border:2px solid #fff;color:#fff;font:bold 16px sans-serif;text-align:center'; fruitBtns.appendChild(b); return b; };
+  const mk = (txt) => { const b = document.createElement('div'); b.textContent = txt; b.style.cssText = 'padding:12px 16px;border-radius:30px;background:rgba(200,60,10,0.85);border:2px solid #fff;color:#fff;font:bold 16px Fredoka, sans-serif;text-align:center'; fruitBtns.appendChild(b); return b; };
   const fl = mk('FLAMMER'), big = mk('🔥');
   fl.addEventListener('touchstart', e => { e.preventDefault(); fruitFlaming = true; }, { passive: false });
   fl.addEventListener('touchend', e => { e.preventDefault(); fruitFlaming = false; }, { passive: false });

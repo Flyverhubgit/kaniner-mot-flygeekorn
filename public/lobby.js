@@ -30,7 +30,7 @@ function textTex(lines, w, h, bg, fg, size) {
   const x = c.getContext('2d');
   if (bg) { x.fillStyle = bg; x.fillRect(0, 0, w, h); }
   x.fillStyle = fg || '#fff'; x.textAlign = 'center'; x.textBaseline = 'middle';
-  lines.forEach((l, i) => { x.font = (l.bold ? 'bold ' : '') + (l.size || size || 40) + 'px sans-serif'; x.fillStyle = l.color || fg || '#fff'; x.fillText(l.t, w / 2, l.y !== undefined ? l.y : h / (lines.length + 1) * (i + 1)); });
+  lines.forEach((l, i) => { x.font = (l.bold ? 'bold ' : '') + (l.size || size || 40) + 'px Fredoka, sans-serif'; x.fillStyle = l.color || fg || '#fff'; x.fillText(l.t, w / 2, l.y !== undefined ? l.y : h / (lines.length + 1) * (i + 1)); });
   const t = new THREE.CanvasTexture(c);
   return t;
 }
@@ -91,9 +91,9 @@ function drawVoters(f) {
   x.clearRect(0, 0, 512, 128);
   if (!f.names.length) { f.tex.needsUpdate = true; return; }
   x.fillStyle = 'rgba(0,0,0,0.55)'; x.fillRect(0, 10, 512, 108);
-  x.fillStyle = '#ffd23a'; x.font = 'bold 44px sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle';
+  x.fillStyle = '#ffd23a'; x.font = 'bold 44px Fredoka, sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle';
   x.fillText('🗳️ ' + f.names.length, 256, 42);
-  x.fillStyle = '#fff'; x.font = '28px sans-serif';
+  x.fillStyle = '#fff'; x.font = '28px Fredoka, sans-serif';
   x.fillText(f.names.slice(0, 4).join(', ') + (f.names.length > 4 ? ' …' : ''), 256, 92);
   f.tex.needsUpdate = true;
 }
@@ -192,10 +192,10 @@ lbox(SC.w + 0.3, SC.h + 0.3, 0.1, SC.x, SC.y, SC.z + 0.06, 0x111111);
 function drawScreen(res) {
   const x = scCanvas.getContext('2d');
   x.fillStyle = '#141a2a'; x.fillRect(0, 0, 1024, 456);
-  x.textAlign = 'center'; x.fillStyle = '#ffd23a'; x.font = 'bold 54px sans-serif';
+  x.textAlign = 'center'; x.fillStyle = '#ffd23a'; x.font = 'bold 54px Fredoka, sans-serif';
   if (!res) {
     x.fillText('🏠 Velkommen til loungen!', 512, 120);
-    x.fillStyle = '#fff'; x.font = '36px sans-serif';
+    x.fillStyle = '#fff'; x.font = '36px Fredoka, sans-serif';
     x.fillText('Gå inn i en portal for å velge bane', 512, 230);
     x.fillText('Kjøp skins hos kyllingen 🐔', 512, 300);
   } else {
@@ -204,8 +204,8 @@ function drawScreen(res) {
     const head = co ? (co.result === 'win' ? '🎉 SEIER! Bølge ' + co.wave : '😵 Tap på bølge ' + co.wave)
       : res.winner === 'draw' ? 'Uavgjort!' : res.winner === 'bunny' ? '🐰 Kaninene vant!' : '🐿️ Flygeekornene vant!';
     x.fillText('Forrige runde: ' + (names[res.map] || ''), 512, 70);
-    x.fillStyle = '#fff'; x.font = 'bold 48px sans-serif'; x.fillText(head, 512, 150);
-    x.font = '34px sans-serif';
+    x.fillStyle = '#fff'; x.font = 'bold 48px Fredoka, sans-serif'; x.fillText(head, 512, 150);
+    x.font = '34px Fredoka, sans-serif';
     (res.board || []).slice().sort((a, b) => b.kills - a.kills).slice(0, 3).forEach((p, i) => {
       x.fillText(['🥇', '🥈', '🥉'][i] + ' ' + p.name + ' – ' + p.kills + ' drap', 512, 240 + i * 60);
     });
@@ -238,9 +238,9 @@ function myPortal() { return LOB.portalAt(player.x, player.z); }
 // ===================================================================
 const shopPanel = document.createElement('div');
 shopPanel.style.cssText = 'position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);width:min(92vw,620px);max-height:86vh;overflow:auto;' +
-  'background:rgba(24,20,34,0.94);border:3px solid #ffd23a;border-radius:16px;padding:12px 10px 14px;z-index:20;display:none;color:#fff;font:14px sans-serif;text-align:center;touch-action:pan-y;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;';   // [NY] kan scrolles med fingeren
+  'background:rgba(24,20,34,0.94);border:3px solid #ffd23a;border-radius:16px;padding:12px 10px 14px;z-index:20;display:none;color:#fff;font:14px Fredoka, sans-serif;text-align:center;touch-action:pan-y;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;';   // [NY] kan scrolles med fingeren
 shopPanel.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><b style="font-size:18px">🐔 Kyllingens butikk</b>' +
-  '<button id="shopClose" style="font:bold 15px sans-serif;padding:4px 12px;border-radius:8px">✖ Lukk</button></div>';
+  '<button id="shopClose" style="font:bold 15px Fredoka, sans-serif;padding:4px 12px;border-radius:8px">✖ Lukk</button></div>';
 document.body.appendChild(shopPanel);
 // Flytt utstyr- og butikk-boksene fra startskjermen hit
 shopPanel.appendChild(gearBox);
@@ -268,7 +268,7 @@ addEventListener('keydown', e => {
   if (e.code === 'Escape' && shopPanelOpen) closeShop();
 });
 const shopPrompt = document.createElement('div');
-shopPrompt.style.cssText = 'position:fixed;left:50%;bottom:110px;transform:translateX(-50%);padding:8px 14px;border-radius:12px;background:rgba(179,38,30,0.85);color:#fff;font:bold 15px sans-serif;z-index:6;display:none;user-select:none;';
+shopPrompt.style.cssText = 'position:fixed;left:50%;bottom:110px;transform:translateX(-50%);padding:8px 14px;border-radius:12px;background:rgba(179,38,30,0.85);color:#fff;font:bold 15px Fredoka, sans-serif;z-index:6;display:none;user-select:none;';
 document.body.appendChild(shopPrompt);
 shopPrompt.addEventListener('click', openShop);
 shopPrompt.addEventListener('touchstart', e => { e.preventDefault(); openShop(); }, { passive: false });

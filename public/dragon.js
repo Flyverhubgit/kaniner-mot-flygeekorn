@@ -305,11 +305,11 @@ function playDragonFireSound(vol) {
 
 // ---------- Liten linje øverst: bølge, pagodens liv, sjefens liv ----------
 const dragonHud = document.createElement('div');
-dragonHud.style.cssText = 'position:fixed;top:34px;left:50%;transform:translateX(-50%);color:#fff;font:bold 14px sans-serif;text-shadow:0 1px 3px #000;background:rgba(0,0,0,0.25);padding:2px 10px;border-radius:10px;z-index:5;display:none;pointer-events:none;white-space:nowrap;';
+dragonHud.style.cssText = 'position:fixed;top:34px;left:50%;transform:translateX(-50%);color:#fff;font:bold 14px Fredoka, sans-serif;text-shadow:0 1px 3px #000;background:rgba(0,0,0,0.25);padding:2px 10px;border-radius:10px;z-index:5;display:none;pointer-events:none;white-space:nowrap;';
 document.body.appendChild(dragonHud);
 // [NY] Boss-bar: navn og en rød livsbar øverst når kjempedragen eller himmeldragen er ute
 const bossBar = document.createElement('div');
-bossBar.style.cssText = 'position:fixed;top:60px;left:50%;transform:translateX(-50%);width:min(420px,70vw);z-index:5;display:none;pointer-events:none;text-align:center;font:bold 14px sans-serif;color:#ffe9a0;text-shadow:0 1px 3px #000;';
+bossBar.style.cssText = 'position:fixed;top:60px;left:50%;transform:translateX(-50%);width:min(420px,70vw);z-index:5;display:none;pointer-events:none;text-align:center;font:bold 14px Fredoka, sans-serif;color:#ffe9a0;text-shadow:0 1px 3px #000;';
 bossBar.innerHTML = '<div id="bossName"></div><div style="height:12px;border:2px solid rgba(255,255,255,0.8);border-radius:7px;background:rgba(0,0,0,0.45);overflow:hidden;margin-top:2px"><div id="bossFill" style="height:100%;width:100%;background:linear-gradient(#ff5a4a,#b0201a);transition:width 0.2s"></div></div>';
 document.body.appendChild(bossBar);
 let dragonInfo = null;

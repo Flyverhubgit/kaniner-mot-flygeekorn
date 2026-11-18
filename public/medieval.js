@@ -53,7 +53,7 @@ function bannerTex(team) {
     x.fillStyle = team === 'bunny' ? '#b3261e' : '#4f7a2a'; x.fillRect(0, 0, 64, 96);
     x.fillStyle = '#e8c04a'; x.fillRect(0, 0, 64, 6); x.fillRect(0, 0, 6, 96); x.fillRect(58, 0, 6, 96);
     x.beginPath(); x.moveTo(0, 96); x.lineTo(32, 78); x.lineTo(64, 96); x.fillStyle = '#1a1a1a'; x.fill();
-    x.font = '34px sans-serif'; x.textAlign = 'center'; x.fillText(team === 'bunny' ? '🐰' : '🐿️', 32, 52);
+    x.font = '34px Fredoka, sans-serif'; x.textAlign = 'center'; x.fillText(team === 'bunny' ? '🐰' : '🐿️', 32, 52);
   });
 }
 ['bunny', 'squirrel'].forEach(team => {
@@ -136,7 +136,7 @@ function nearKettle() {
 }
 addEventListener('keydown', e => { if (e.code === 'KeyE' && nearKettle() && !(document.activeElement && document.activeElement.tagName === 'INPUT')) socket.emit('kettle'); });
 const kettleHud = document.createElement('div');
-kettleHud.style.cssText = 'position:fixed;left:50%;bottom:110px;transform:translateX(-50%);padding:7px 14px;border-radius:12px;background:rgba(120,40,10,0.8);color:#fff;font:bold 14px sans-serif;z-index:6;display:none;user-select:none;';
+kettleHud.style.cssText = 'position:fixed;left:50%;bottom:110px;transform:translateX(-50%);padding:7px 14px;border-radius:12px;background:rgba(120,40,10,0.8);color:#fff;font:bold 14px Fredoka, sans-serif;z-index:6;display:none;user-select:none;';
 document.body.appendChild(kettleHud);
 kettleHud.addEventListener('touchstart', e => { e.preventDefault(); socket.emit('kettle'); }, { passive: false });
 

@@ -429,11 +429,11 @@ function soccerBadgeTex() {                        // tegnes én gang og deles
   x.fillStyle = '#ffffff'; x.beginPath(); x.arc(64 * k, 64 * k, (SOCCER_BADGE_BIG ? 52 : 50) * k, 0, Math.PI * 2); x.fill();   // hvitt inni
   x.fillStyle = '#111111'; x.textAlign = 'center'; x.textBaseline = 'middle';
   if (SOCCER_BADGE_BIG) {                          // [NY] store, tykke bokstaver som fyller den hvite flaten
-    x.font = '900 ' + (36 * k) + 'px Arial Black, Arial, sans-serif';
+    x.font = '900 ' + (36 * k) + 'px Arial Black, Arial, Fredoka, sans-serif';
     let w = x.measureText('M-I-L').width; const maxW = 92 * k;
-    if (w > maxW) x.font = '900 ' + Math.floor(36 * k * maxW / w) + 'px Arial Black, Arial, sans-serif';
+    if (w > maxW) x.font = '900 ' + Math.floor(36 * k * maxW / w) + 'px Arial Black, Arial, Fredoka, sans-serif';
     x.fillText('M-I-L', 64 * k, 66 * k);
-  } else { x.font = 'bold 30px Arial, sans-serif'; x.fillText('M-I-L', 64, 66); }
+  } else { x.font = 'bold 30px Arial, Fredoka, sans-serif'; x.fillText('M-I-L', 64, 66); }
   soccerBadgeT = new THREE.CanvasTexture(c);
   soccerBadgeT.anisotropy = 4;
   return soccerBadgeT;
@@ -693,7 +693,7 @@ function updateSkins(dt) {
 
 // ---------- Mynter: få dem, og vis en liten "+10 🪙" ved siktet ----------
 const coinPop = document.createElement('div');
-coinPop.style.cssText = 'position:fixed;left:50%;top:56%;transform:translateX(-50%);color:#ffd23a;font:bold 13px sans-serif;text-shadow:0 0 3px #000;z-index:5;pointer-events:none;opacity:0;transition:opacity .3s;';
+coinPop.style.cssText = 'position:fixed;left:50%;top:56%;transform:translateX(-50%);color:#ffd23a;font:bold 13px Fredoka, sans-serif;text-shadow:0 0 3px #000;z-index:5;pointer-events:none;opacity:0;transition:opacity .3s;';
 document.body.appendChild(coinPop);
 let coinSum = 0, coinTimer = null;
 function gainCoins(n) {
@@ -719,7 +719,7 @@ socket.on('roundOver', d => {
 //  Butikken i menyen (sammenslått til én linje, som utstyret)
 // ===================================================================
 const shopBox = document.createElement('div');
-shopBox.style.cssText = 'margin:2px auto 6px;max-width:560px;text-align:center;font:14px sans-serif;color:#fff;';
+shopBox.style.cssText = 'margin:2px auto 6px;max-width:560px;text-align:center;font:14px Fredoka, sans-serif;color:#fff;';
 gearBox.parentNode.insertBefore(shopBox, gearBox.nextSibling);
 let shopOpen = false, shopWeapon = 'ak', confirmBuy = null;
 // [NY] Forhåndsvisning: se våpenet med skinnen før du kjøper (false = av)

@@ -437,44 +437,44 @@ if (isTouch) {
 
   const jumpBtn = document.createElement('div');
   jumpBtn.textContent = 'HOPP';
-  jumpBtn.style.cssText = 'position:fixed;right:30px;bottom:30px;width:80px;height:80px;border-radius:50%;background:rgba(255,255,255,0.3);border:2px solid rgba(255,255,255,0.6);color:#fff;font:bold 16px sans-serif;display:flex;align-items:center;justify-content:center;z-index:5;user-select:none;';
+  jumpBtn.style.cssText = 'position:fixed;right:30px;bottom:30px;width:80px;height:80px;border-radius:50%;background:rgba(255,255,255,0.3);border:2px solid rgba(255,255,255,0.6);color:#fff;font:bold 16px Fredoka, sans-serif;display:flex;align-items:center;justify-content:center;z-index:5;user-select:none;';
   document.body.appendChild(jumpBtn);
 
   const slideBtn = document.createElement('div');
   slideBtn.textContent = 'SLIDE';
-  slideBtn.style.cssText = 'position:fixed;right:30px;bottom:125px;width:80px;height:80px;border-radius:50%;background:rgba(255,255,255,0.3);border:2px solid rgba(255,255,255,0.6);color:#fff;font:bold 16px sans-serif;display:flex;align-items:center;justify-content:center;z-index:5;user-select:none;';
+  slideBtn.style.cssText = 'position:fixed;right:30px;bottom:125px;width:80px;height:80px;border-radius:50%;background:rgba(255,255,255,0.3);border:2px solid rgba(255,255,255,0.6);color:#fff;font:bold 16px Fredoka, sans-serif;display:flex;align-items:center;justify-content:center;z-index:5;user-select:none;';
   document.body.appendChild(slideBtn);
 
   const fireBtn = document.createElement('div');
   fireBtn.textContent = 'SKYT';
-  fireBtn.style.cssText = 'position:fixed;right:130px;bottom:50px;width:96px;height:96px;border-radius:50%;background:rgba(255,80,80,0.35);border:2px solid rgba(255,255,255,0.7);color:#fff;font:bold 16px sans-serif;display:flex;align-items:center;justify-content:center;z-index:5;user-select:none;';
+  fireBtn.style.cssText = 'position:fixed;right:130px;bottom:50px;width:96px;height:96px;border-radius:50%;background:rgba(255,80,80,0.35);border:2px solid rgba(255,255,255,0.7);color:#fff;font:bold 16px Fredoka, sans-serif;display:flex;align-items:center;justify-content:center;z-index:5;user-select:none;';
   document.body.appendChild(fireBtn);
 
   const reloadBtn = document.createElement('div');
   reloadBtn.textContent = 'LADE';
-  reloadBtn.style.cssText = 'position:fixed;right:145px;bottom:160px;width:64px;height:64px;border-radius:50%;background:rgba(255,255,255,0.3);border:2px solid rgba(255,255,255,0.6);color:#fff;font:bold 13px sans-serif;display:flex;align-items:center;justify-content:center;z-index:5;user-select:none;';
+  reloadBtn.style.cssText = 'position:fixed;right:145px;bottom:160px;width:64px;height:64px;border-radius:50%;background:rgba(255,255,255,0.3);border:2px solid rgba(255,255,255,0.6);color:#fff;font:bold 13px Fredoka, sans-serif;display:flex;align-items:center;justify-content:center;z-index:5;user-select:none;';
   document.body.appendChild(reloadBtn);
 
   // [NY] Granat-knapp
   const nadeBtn = document.createElement('div');
   nadeBtn.textContent = 'GRANAT';
-  nadeBtn.style.cssText = 'position:fixed;right:240px;bottom:66px;width:64px;height:64px;border-radius:50%;background:rgba(110,140,60,0.45);border:2px solid rgba(255,255,255,0.6);color:#fff;font:bold 11px sans-serif;display:flex;align-items:center;justify-content:center;z-index:5;user-select:none;';
+  nadeBtn.style.cssText = 'position:fixed;right:240px;bottom:66px;width:64px;height:64px;border-radius:50%;background:rgba(110,140,60,0.45);border:2px solid rgba(255,255,255,0.6);color:#fff;font:bold 11px Fredoka, sans-serif;display:flex;align-items:center;justify-content:center;z-index:5;user-select:none;';
   document.body.appendChild(nadeBtn);
 
   // [NY] Dukk-knapp (trykk = dukk, trykk igjen = reis deg)
   const crouchBtn = document.createElement('div');
   crouchBtn.textContent = 'DUKK';
-  crouchBtn.style.cssText = 'position:fixed;right:38px;bottom:220px;width:64px;height:64px;border-radius:50%;background:rgba(255,255,255,0.3);border:2px solid rgba(255,255,255,0.6);color:#fff;font:bold 13px sans-serif;display:flex;align-items:center;justify-content:center;z-index:5;user-select:none;';
+  crouchBtn.style.cssText = 'position:fixed;right:38px;bottom:220px;width:64px;height:64px;border-radius:50%;background:rgba(255,255,255,0.3);border:2px solid rgba(255,255,255,0.6);color:#fff;font:bold 13px Fredoka, sans-serif;display:flex;align-items:center;justify-content:center;z-index:5;user-select:none;';
   document.body.appendChild(crouchBtn);
 
   // [NY] Bytt våpen og kikkertsikte
   const swapBtn = document.createElement('div');
   swapBtn.textContent = 'BYTT';
-  swapBtn.style.cssText = 'position:fixed;right:240px;bottom:150px;width:64px;height:64px;border-radius:50%;background:rgba(255,255,255,0.3);border:2px solid rgba(255,255,255,0.6);color:#fff;font:bold 13px sans-serif;display:flex;align-items:center;justify-content:center;z-index:5;user-select:none;';
+  swapBtn.style.cssText = 'position:fixed;right:240px;bottom:150px;width:64px;height:64px;border-radius:50%;background:rgba(255,255,255,0.3);border:2px solid rgba(255,255,255,0.6);color:#fff;font:bold 13px Fredoka, sans-serif;display:flex;align-items:center;justify-content:center;z-index:5;user-select:none;';
   document.body.appendChild(swapBtn);
   const scopeBtn = document.createElement('div');
   scopeBtn.textContent = 'SIKTE';
-  scopeBtn.style.cssText = 'position:fixed;right:140px;bottom:240px;width:64px;height:64px;border-radius:50%;background:rgba(255,255,255,0.3);border:2px solid rgba(255,255,255,0.6);color:#fff;font:bold 13px sans-serif;display:none;align-items:center;justify-content:center;z-index:5;user-select:none;';
+  scopeBtn.style.cssText = 'position:fixed;right:140px;bottom:240px;width:64px;height:64px;border-radius:50%;background:rgba(255,255,255,0.3);border:2px solid rgba(255,255,255,0.6);color:#fff;font:bold 13px Fredoka, sans-serif;display:none;align-items:center;justify-content:center;z-index:5;user-select:none;';
   document.body.appendChild(scopeBtn);
   window.__scopeBtn = scopeBtn;   // vises bare med snikskytter (se updateWeapon)
   window.__mobBtns = { jumpBtn, slideBtn, reloadBtn, nadeBtn, crouchBtn, swapBtn, scopeBtn, fireBtn };   // [NY] fireBtn: skjules i loungen   // [NY] verdensrommet bytter navn/skjuler knapper i flyet
@@ -936,7 +936,8 @@ function updateBazScope(on) {
 const crosshairEl = document.getElementById('crosshair');
 // ---------- Ammo-visning ----------
 const hud = document.createElement('div');
-hud.style.cssText = 'position:fixed;right:16px;top:12px;color:#fff;font:bold 16px sans-serif;text-shadow:0 0 3px #000;z-index:4;pointer-events:none;text-align:right;opacity:0.9;';   // [NY] mindre
+hud.id = 'ammo';   // [NY] så HUD-stilen i index.html treffer
+hud.style.cssText = 'position:fixed;right:16px;top:12px;color:#fff;font:bold 16px Fredoka, sans-serif;text-shadow:0 0 3px #000;z-index:4;pointer-events:none;text-align:right;opacity:0.9;';   // [NY] mindre
 document.body.appendChild(hud);
 
 // ---------- [NY] Kulespor (tynn strek fra munningen til treffpunktet) ----------
@@ -1510,7 +1511,7 @@ foamBeacon.add(foamBubble);
   const c = document.createElement('canvas');
   c.width = 512; c.height = 96;
   const ctx = c.getContext('2d');
-  ctx.font = 'bold 44px sans-serif';
+  ctx.font = 'bold 44px Fredoka, sans-serif';
   ctx.textAlign = 'center';
   ctx.lineWidth = 8; ctx.strokeStyle = '#000';
   ctx.strokeText('STÅ HER = SKUMFEST!', 256, 62);
@@ -1805,7 +1806,7 @@ function makeTag(name, team) {
   const c = document.createElement('canvas');
   c.width = 256; c.height = 64;
   const ctx = c.getContext('2d');
-  ctx.font = 'bold 32px sans-serif';
+  ctx.font = 'bold 32px Fredoka, sans-serif';
   ctx.textAlign = 'center';
   ctx.lineWidth = 6;
   ctx.strokeStyle = '#000';
@@ -2003,7 +2004,7 @@ socket.on('lobby', c => {
 let pickedMap = null, lobbyMap = null;
 // [NY] Kyllingfarmen: alle er på samme lag – i menyen velger du bare hvilket dyr du vil være
 const coopNote = document.createElement('div');
-coopNote.style.cssText = 'display:none;font:bold 17px sans-serif;color:#ffe9a0;text-align:center;';
+coopNote.style.cssText = 'display:none;font:bold 17px Fredoka, sans-serif;color:#ffe9a0;text-align:center;';
 coopNote.innerHTML = '&#128020; Zombie-kyllinger: alle spiller SAMMEN &#129309; Velg bare hvilket dyr du vil være!';
 document.getElementById('cards').insertAdjacentElement('afterend', coopNote);
 function updateMenuMode() {
@@ -2318,7 +2319,7 @@ function renderFrame() {
   camera.layers.set(0); camera.layers.enable(1);
   if (typeof gfxSunFollow === 'function') gfxSunFollow();   // [NY] Grafikk Høy: skyggene følger spilleren (gfx.js)
   if (typeof gfxSkyUpdate === 'function') gfxSkyUpdate();   // [NY] Grafikk Høy: himmel med sol (gfx.js)
-  renderer.render(scene, camera);
+  if (!(typeof gfxPostRender === 'function' && gfxPostRender())) renderer.render(scene, camera);   // [NY] Høy: glød + farger (gfx.js)
   renderer.clearDepth();
   camera.layers.set(2);
   const bg = scene.background;

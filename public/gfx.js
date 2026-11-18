@@ -9,7 +9,7 @@ window.addEventListener('DOMContentLoaded', () => {
   if (!row) return;
   const b = document.createElement('button');
   b.id = 'gfxBtn';
-  b.style.cssText = 'margin-left:12px;font:bold 14px sans-serif;padding:4px 10px;border-radius:8px;border:2px solid #fff;background:rgba(0,0,0,0.3);color:#fff;cursor:pointer';
+  b.style.cssText = 'margin-left:12px;font:bold 14px Fredoka, sans-serif;padding:4px 10px;border-radius:8px;border:2px solid #fff;background:rgba(0,0,0,0.3);color:#fff;cursor:pointer';
   b.textContent = 'Grafikk: ' + (GFX_HIGH ? 'Høy ✨' : 'Lav ⚡');
   b.onclick = () => {
     try { localStorage.setItem(GFX_KEY, GFX_HIGH ? 'low' : 'high'); } catch (e) {}
@@ -386,4 +386,74 @@ function gfxSkyUpdate() {
   u.sunDir.value.copy(sun.position).sub(sun.target.position).normalize();
   gfxSky.position.copy(camera.position);
   gfxSky.scale.setScalar(camera.far * 0.9);
+}
+
+// ---------- [NY] Polering 3: lasteskjerm og livsstolpe ----------
+window.addEventListener('load', () => {
+  const l = document.getElementById('loading');
+  if (l) { l.style.opacity = '0'; setTimeout(() => l.remove(), 600); }
+});
+setInterval(() => {                                  // liten livsstolpe under ♥ (grønn -> gul -> rød)
+  const bar = document.getElementById('hpbar'), h = document.getElementById('health');
+  if (!bar || !h) return;
+  const show = h.style.display !== 'none' && getComputedStyle(h).display !== 'none' && typeof hp !== 'undefined';
+  bar.style.display = show ? 'block' : 'none';
+  if (!show) return;
+  const v = Math.max(0, Math.min(100, hp));
+  const d = bar.firstChild; d.style.width = v + '%';
+  d.style.background = v > 60 ? 'linear-gradient(90deg,#5fd36a,#b8f070)' : v > 30 ? 'linear-gradient(90deg,#e8c23a,#ffe070)' : 'linear-gradient(90deg,#e0413a,#ff7a5a)';
+}, 120);
+
+// ---------- [NY] Polering 4: glød (bloom) og fargeløft (bare Høy) ----------
+// Lyse ting (munningsflammer, ild, lykter, sola) gløder mykt. En liten fargejustering gjør bildet
+// litt friskere (mer metning, litt kontrast) og kantene litt mørkere (vignett) – som i "ekte" spill.
+// ANGRE: POST_ON = false.
+const POST_ON = true;
+let gfxComposer = null, gfxBloom = null, gfxPostFail = false;
+const GFX_GRADE = {
+  uniforms: { tDiffuse: { value: null }, vib: { value: 0.22 }, con: { value: 1.06 }, vig: { value: 0.28 } },
+  vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+  fragmentShader: [
+    'uniform sampler2D tDiffuse; uniform float vib; uniform float con; uniform float vig; varying vec2 vUv;',
+    'void main(){',
+    '  vec4 t = texture2D(tDiffuse, vUv); vec3 c = t.rgb;',
+    '  float l = dot(c, vec3(0.299, 0.587, 0.114));',
+    '  float mx = max(c.r, max(c.g, c.b)), mn = min(c.r, min(c.g, c.b));',
+    '  c = mix(vec3(l), c, 1.0 + vib * (1.0 - (mx - mn)));',      // metning (mest på bleke farger)
+    '  c = (c - 0.5) * con + 0.5;',                              // kontrast
+    '  vec2 d = vUv - 0.5; c *= 1.0 - vig * dot(d, d) * 1.6;',      // vignett
+    '  gl_FragColor = vec4(clamp(c, 0.0, 1.0), t.a);',
+    '}'
+  ].join('\n')
+};
+function gfxPostSetup() {
+  if (gfxComposer || gfxPostFail) return;
+  try {
+    const size = renderer.getSize(new THREE.Vector2()), pr = renderer.getPixelRatio();
+    const isGL2 = renderer.capabilities.isWebGL2 && THREE.WebGLMultisampleRenderTarget;
+    const rt = isGL2 ? new THREE.WebGLMultisampleRenderTarget(size.x * pr, size.y * pr, { format: THREE.RGBAFormat }) : undefined;   // behold kantutjevning
+    if (rt) rt.samples = 4;
+    gfxComposer = new THREE.EffectComposer(renderer, rt);
+    gfxComposer.addPass(new THREE.RenderPass(scene, camera));
+    gfxBloom = new THREE.UnrealBloomPass(new THREE.Vector2(size.x, size.y), 0.45, 0.45, 0.88);
+    gfxComposer.addPass(gfxBloom);
+    gfxComposer.addPass(new THREE.ShaderPass(GFX_GRADE));
+  } catch (e) { console.warn('etterbehandling av', e); gfxPostFail = true; gfxComposer = null; }
+}
+let gfxPostW = 0, gfxPostH = 0, gfxPostPR = 0;
+function gfxPostRender() {
+  if (!GFX_HIGH || !POST_ON || gfxPostFail || typeof THREE.EffectComposer === 'undefined') return false;
+  gfxPostSetup();
+  if (!gfxComposer) return false;
+  const size = renderer.getSize(new THREE.Vector2()), pr = renderer.getPixelRatio();
+  if (size.x !== gfxPostW || size.y !== gfxPostH || pr !== gfxPostPR) {   // vindusstørrelse / oppløsning endret
+    gfxPostW = size.x; gfxPostH = size.y; gfxPostPR = pr;
+    gfxComposer.setPixelRatio(pr); gfxComposer.setSize(size.x, size.y);
+  }
+  // Mindre glød der det er veldig lyst overalt (ørkenen) eller mørkt og stemningsfullt (natt)
+  const m = typeof currentMap !== 'undefined' ? currentMap : '';
+  gfxBloom.threshold = m === 'desert' || m === 'lobby' || m === 'room' ? 0.95 : 0.86;
+  gfxBloom.strength = m === 'space' || m === 'farm' || m === 'sea' ? 0.8 : 0.45;
+  gfxComposer.render();
+  return true;
 }

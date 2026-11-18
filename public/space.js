@@ -232,7 +232,7 @@ function makeLabel(text, color) {
   c.width = 64; c.height = 64;
   const x = c.getContext('2d');
   x.fillStyle = '#' + color.toString(16).padStart(6, '0');
-  x.font = 'bold 52px sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle';
+  x.font = 'bold 52px Fredoka, sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle';
   x.fillText(text, 32, 34);
   const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), depthWrite: false }));
   s.scale.set(1.4, 1.4, 1);
@@ -330,7 +330,7 @@ function fwdVec(yaw, pitch) { return new THREE.Vector3(-Math.sin(yaw) * Math.cos
 
 // ---------- Skjerm ----------
 const spaceHud = document.createElement('div');
-spaceHud.style.cssText = 'position:fixed;left:50%;top:44px;transform:translateX(-50%);color:#fff;font:bold 14px sans-serif;text-shadow:0 0 4px #000;z-index:4;pointer-events:none;display:none;white-space:nowrap;text-align:center;';
+spaceHud.style.cssText = 'position:fixed;left:50%;top:44px;transform:translateX(-50%);color:#fff;font:bold 14px Fredoka, sans-serif;text-shadow:0 0 4px #000;z-index:4;pointer-events:none;display:none;white-space:nowrap;text-align:center;';
 document.body.appendChild(spaceHud);
 const flyHud = document.createElement('div');
 flyHud.style.cssText = 'position:fixed;left:50%;bottom:' + (isTouch ? '8px' : '80px') + ';transform:translateX(-50%);color:#bfefff;font:bold ' + (isTouch ? '12px' : '15px') + ' monospace;white-space:nowrap;text-shadow:0 0 6px #08f;z-index:6;pointer-events:none;display:none;text-align:center;';
@@ -338,7 +338,7 @@ document.body.appendChild(flyHud);
 let spaceBtn = null;
 if (isTouch) {
   spaceBtn = document.createElement('div');
-  spaceBtn.style.cssText = 'position:fixed;left:50%;top:84px;transform:translateX(-50%);padding:12px 22px;border-radius:30px;background:rgba(20,60,110,0.85);border:2px solid #fff;color:#fff;font:bold 17px sans-serif;z-index:6;display:none;user-select:none;';
+  spaceBtn.style.cssText = 'position:fixed;left:50%;top:84px;transform:translateX(-50%);padding:12px 22px;border-radius:30px;background:rgba(20,60,110,0.85);border:2px solid #fff;color:#fff;font:bold 17px Fredoka, sans-serif;z-index:6;display:none;user-select:none;';
   spaceBtn.addEventListener('touchstart', e => { e.preventDefault(); spaceAction(); }, { passive: false });
   document.body.appendChild(spaceBtn);
 }

@@ -242,12 +242,12 @@ socket.on('map', () => { while (gmFlights.length) gmEndFlight(0); gmCraters.forE
 let gmBtn = null;
 if (isTouch) {
   gmBtn = document.createElement('div');
-  gmBtn.style.cssText = 'position:fixed;left:50%;top:84px;transform:translateX(-50%);padding:12px 22px;border-radius:30px;background:rgba(150,40,30,0.85);border:2px solid #fff;color:#fff;font:bold 17px sans-serif;z-index:6;display:none;user-select:none;';
+  gmBtn.style.cssText = 'position:fixed;left:50%;top:84px;transform:translateX(-50%);padding:12px 22px;border-radius:30px;background:rgba(150,40,30,0.85);border:2px solid #fff;color:#fff;font:bold 17px Fredoka, sans-serif;z-index:6;display:none;user-select:none;';
   gmBtn.addEventListener('touchstart', e => { e.preventDefault(); if (!gmToggleAim()) gmAction(); }, { passive: false });
   document.body.appendChild(gmBtn);
 }
 const gmHud = document.createElement('div');
-gmHud.style.cssText = 'position:fixed;left:50%;bottom:150px;transform:translateX(-50%);padding:6px 14px;border-radius:10px;background:rgba(80,10,10,0.55);color:#fff;font:bold 15px sans-serif;z-index:5;display:none;pointer-events:none;';
+gmHud.style.cssText = 'position:fixed;left:50%;bottom:150px;transform:translateX(-50%);padding:6px 14px;border-radius:10px;background:rgba(80,10,10,0.55);color:#fff;font:bold 15px Fredoka, sans-serif;z-index:5;display:none;pointer-events:none;';
 document.body.appendChild(gmHud);
 
 // ---------- Hver ramme ----------

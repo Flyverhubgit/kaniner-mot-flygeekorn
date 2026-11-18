@@ -266,7 +266,7 @@ function makeHazard() {
   const c = document.createElement('canvas'); c.width = c.height = 64;
   const x = c.getContext('2d');
   x.fillStyle = '#f2c418'; x.beginPath(); x.moveTo(32, 4); x.lineTo(60, 58); x.lineTo(4, 58); x.closePath(); x.fill();
-  x.fillStyle = '#000'; x.font = 'bold 40px sans-serif'; x.textAlign = 'center'; x.fillText('!', 32, 54);
+  x.fillStyle = '#000'; x.font = 'bold 40px Fredoka, sans-serif'; x.textAlign = 'center'; x.fillText('!', 32, 54);
   return new THREE.Mesh(new THREE.PlaneGeometry(0.42, 0.42), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(c), transparent: true }));
 }
 socket.on('barrels', list => {
@@ -433,7 +433,7 @@ function updateEggShots(dt) {
 //  Bølger, skjerm og runde-slutt
 // ===================================================================
 const farmHud = document.createElement('div');
-farmHud.style.cssText = 'position:fixed;left:50%;top:8px;transform:translateX(-50%);color:#fff;font:bold 15px sans-serif;text-shadow:0 0 3px #000;z-index:4;pointer-events:none;display:none;white-space:nowrap;text-align:center;opacity:0.9;';   // [NY] mindre
+farmHud.style.cssText = 'position:fixed;left:50%;top:8px;transform:translateX(-50%);color:#fff;font:bold 15px Fredoka, sans-serif;text-shadow:0 0 3px #000;z-index:4;pointer-events:none;display:none;white-space:nowrap;text-align:center;opacity:0.9;';   // [NY] mindre
 document.body.appendChild(farmHud);
 socket.on('wave', w => {
   const prev = waveInfo;
