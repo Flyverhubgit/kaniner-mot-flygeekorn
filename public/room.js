@@ -163,7 +163,7 @@ socket.on('map', d => {
     : currentMap === 'castle' ? 'KLOSSESLOTTET &#127984;<br><span style="font-size:20px">Alt kan skytes i stykker!</span>'
     : currentMap === 'dragon' ? 'DRAGETEMPELET &#128009;&#9961;&#65039;<br><span style="font-size:20px">Alle sammen: klar 10 bølger og slå kjempedragen!</span>'
     : currentMap === 'pirate' ? 'PIRATBUKTA &#127988;&#8205;&#9760;&#65039;<br><span style="font-size:20px">Styr skipet med rattet (E)!</span>'
-    : currentMap === 'desert' ? '&#216;RKENKRIGEN &#127964;&#65039;<br><span style="font-size:20px">16 mot 16 – første lag til 100 drap!</span>'
+    : currentMap === 'desert' ? '&#216;RKENKRIGEN &#127964;&#65039;<br><span style="font-size:20px">16 mot 16 – første lag til 200 drap!</span>'
     : currentMap === 'west' ? 'VILLE VESTEN &#129312;&#127797;<br><span style="font-size:20px">Pass deg for toget!</span>'
     : currentMap === 'medieval' ? 'RIDDERBORGEN &#9876;&#65039;&#127984;<br><span style="font-size:20px">Storm fiendens borg!</span>'
     : currentMap === 'lobby' ? 'LOUNGEN &#127968;<br><span style="font-size:20px">Gå inn i en portal for å velge bane</span>'

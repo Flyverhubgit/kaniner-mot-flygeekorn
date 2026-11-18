@@ -1731,6 +1731,7 @@ function updateWeapon(dt) {
   const dip = reloading > 0 ? Math.sin((1 - reloading / weapon.reloadTime) * Math.PI) : 0;
   if (typeof RELOAD_ANIM !== 'undefined' && RELOAD_ANIM) reloadPose(reloading > 0 ? 1 - reloading / weapon.reloadTime : -1);   // [NY] ekte omlading (gfx.js)
   if (typeof gfxFrame === 'function') gfxFrame(dt);   // [NY] Grafikk Høy: gnister, støv og munningslys (gfx.js)
+  if (typeof finGunFeel === 'function') finGunFeel(dt);   // [NY] våpenet svaier og gynger (finish.js)
   else {
   gun.position.set(GUN_BASE.x, GUN_BASE.y - dip * 0.15, GUN_BASE.z + recoil * 0.05);
   gun.rotation.x = recoil * 0.06 - dip * 0.4;
@@ -2319,6 +2320,7 @@ function renderFrame() {
   camera.layers.set(0); camera.layers.enable(1);
   if (typeof gfxSunFollow === 'function') gfxSunFollow();   // [NY] Grafikk Høy: skyggene følger spilleren (gfx.js)
   if (typeof gfxSkyUpdate === 'function') gfxSkyUpdate();   // [NY] Grafikk Høy: himmel med sol (gfx.js)
+  if (typeof finishFrame === 'function') finishFrame();   // [NY] dødsskjerm, skadetall, fottrinn (finish.js)
   if (!(typeof gfxPostRender === 'function' && gfxPostRender())) renderer.render(scene, camera);   // [NY] Høy: glød + farger (gfx.js)
   renderer.clearDepth();
   camera.layers.set(2);

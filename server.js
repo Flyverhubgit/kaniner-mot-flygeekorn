@@ -24,9 +24,9 @@ const io = new Server(server);
 const PORT = process.env.PORT || 3000;
 
 // ---------- Regler ----------
-const ROUND_SECONDS = +process.env.ROUND_SECONDS || 300;     // 5 minutter per runde (kan endres for testing)
+const ROUND_SECONDS = +process.env.ROUND_SECONDS || 600;     // 10 minutter per runde (var 5; kan endres for testing)
 // [NY] Ørkenkrigen: lagkamp (team deathmatch) – første lag til 100 drap, eller flest drap etter 15 minutter
-const DESERT_SECONDS = +process.env.DESERT_SECONDS || 15 * 60, DESERT_KILLS = +process.env.DESERT_KILLS || 100;
+const DESERT_SECONDS = +process.env.DESERT_SECONDS || 30 * 60, DESERT_KILLS = +process.env.DESERT_KILLS || 200;   // dobbelt så lang (var 15 min / 100 drap)
 // Ørken-våpen: skade i kroppen / hodet, og korteste tid mellom to treff (ms). 100 liv.
 const DESERT_W = {
   c7: { dmg: 20, head: 50, ms: 80 },          // C7-karabin (2 i hodet / 5 i kroppen)
@@ -384,7 +384,7 @@ const CHICK = {
 };
 const CTYPES = ['walker', 'runner', 'thrower', 'exploder', 'king'];
 const FARM_WAVES = 10;
-const FARM_SECONDS = +process.env.FARM_SECONDS || 900;            // maks 15 min per runde
+const FARM_SECONDS = +process.env.FARM_SECONDS || 1800;           // maks 30 min per runde (var 15)
 const WAVE_SECONDS = n => (35 + n * 4) * (+process.env.FARM_WAVE_SCALE || 1);   // (FARM_WAVE_SCALE er for testing)                              // [NY] bølgene kommer PÅ TID (39 s, 43 s, ... 75 s)
 const FARM_PREP_MS = +process.env.FARM_PREP || 15000;             // tid før første bølge
 const FARM_BREAK_MS = +process.env.FARM_BREAK || 8000;            // pause hvis dere rydder en bølge tidlig
@@ -1139,7 +1139,7 @@ function applyDamage(p, t, dmg, head, weapon) {
   }
   if (p !== t) questAddDmg(p, Math.min(dmg, Math.max(0, t.hp)));   // [NY] fotball-oppdraget
   t.hp -= dmg;
-  io.to(p.id).emit('hitConfirm', { head, kill: t.hp <= 0 });
+  io.to(p.id).emit('hitConfirm', { head, kill: t.hp <= 0, d: Math.round(dmg), x: +t.x.toFixed(1), y: +((t.y || 0) + 1.9).toFixed(1), z: +t.z.toFixed(1) });   // [NY] skadetall vises der du traff
   io.to(t.id).emit('damaged', { hp: Math.max(0, t.hp), fromX: p.x, fromZ: p.z });
 
   if (t.hp <= 0) {
@@ -2288,7 +2288,7 @@ function walkDragon(d, T, gx, gz, now, dt) {
   d.x = Math.max(-58, Math.min(58, d.x)); d.z = Math.max(-58, Math.min(58, d.z));
 }
 const DRAGON_TIMED = true;   // [NY] bølgene kommer på tid (som kyllingfarmen). false = neste bølge først når alle er drept
-const DRAGON_WAVES = 10, SHRINE_HP = 4000, DRAGON_PREP_MS = +process.env.DRAGON_PREP || 15000, DRAGON_BREAK_MS = 8000, DRAGON_SECONDS = 20 * 60;
+const DRAGON_WAVES = 10, SHRINE_HP = 4000, DRAGON_PREP_MS = +process.env.DRAGON_PREP || 15000, DRAGON_BREAK_MS = 8000, DRAGON_SECONDS = 40 * 60;   // (var 20 min)
 const DRAGON_HIT = { ak: 20, sniper: 90, dart: 30, bow: 45, crossbow: 85, sword: 40, flail: 70 };
 // [NY] Nye liv og hodeskudd (med AK): vanlig 150 liv / 2 hodeskudd, ilddrage 200 / 2, miniboss (bølge 5) 550 / 30, himmeldragen (bølge 10) 2500 / 200 hodeskudd.
 //      Andre våpen: hodeskudd skaleres med hvor sterkt våpenet er i forhold til AK. Kroppsskudd er aldri sterkere enn 60 % av et hodeskudd.
