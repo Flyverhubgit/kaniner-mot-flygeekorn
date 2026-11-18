@@ -232,3 +232,52 @@ function finishFrame() {
   finDeathFrame(dt);
   finDmgFrame(dt);
 }
+
+// ---------- [NY] Kuler som suser forbi (nesten-treff) ----------
+// Når en kule går tett forbi hodet ditt (under 2,2 m), hører du et skarpt "smell/sus" fra den siden
+// kula passerte, og bildet rister litt. Gjelder skudd fra andre spillere og roboter.
+const FIN_NEARMISS = true;
+let finWhizAt = 0;
+socket.on('shot', d => {
+  if (!FIN_NEARMISS || !joined || !alive || !d || !d.to || d.id === myId) return;
+  if (['sword', 'flail', 'fire', 'flame', 'bow', 'crossbow'].includes(d.w)) return;
+  const r = others[d.id]; if (!r || !r.cur) return;
+  const a = new THREE.Vector3(r.cur.x, r.cur.y + 1.4, r.cur.z), b = new THREE.Vector3(d.to[0], d.to[1], d.to[2]);
+  const head = camera.position, ab = b.clone().sub(a), L2 = ab.lengthSq();
+  if (L2 < 1) return;
+  const t = Math.max(0, Math.min(1, head.clone().sub(a).dot(ab) / L2));
+  if (t < 0.05) return;                                    // skytteren står inntil deg: vanlig smell holder
+  const close = a.clone().addScaledVector(ab, t), dist = close.distanceTo(head);
+  if (dist > 2.2 || b.distanceTo(head) < 0.6) return;     // langt unna, eller den traff deg (da er det treff-lyden)
+  const now = performance.now();
+  if (now - finWhizAt < 90) return;
+  finWhizAt = now;
+  // hvilken side passerte kula? (venstre/høyre i forhold til der du ser)
+  const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
+  const side = Math.max(-1, Math.min(1, close.clone().sub(head).dot(right) / Math.max(0.3, dist)));
+  finWhiz(1 - dist / 2.2, side);
+  shake = Math.max(shake, 0.12 * (1 - dist / 2.2) + 0.04);
+});
+function finWhiz(k, side) {
+  if (!audioCtx) return;
+  const t0 = audioCtx.currentTime, sr = audioCtx.sampleRate;
+  // 1) skarpt "knekk" (lydmuren)
+  const len = Math.floor(0.05 * sr), buf = audioCtx.createBuffer(1, len, sr), d = buf.getChannelData(0);
+  for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 6);
+  const src = audioCtx.createBufferSource(); src.buffer = buf;
+  const hp = audioCtx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 2500;
+  const g = audioCtx.createGain(); g.gain.value = 0.25 + 0.35 * k;
+  // 2) "sss-iu" som glir nedover
+  const len2 = Math.floor(0.22 * sr), buf2 = audioCtx.createBuffer(1, len2, sr), d2 = buf2.getChannelData(0);
+  for (let i = 0; i < len2; i++) d2[i] = (Math.random() * 2 - 1) * Math.sin(Math.PI * i / len2);
+  const src2 = audioCtx.createBufferSource(); src2.buffer = buf2;
+  const bp = audioCtx.createBiquadFilter(); bp.type = 'bandpass'; bp.Q.value = 6;
+  bp.frequency.setValueAtTime(4200, t0); bp.frequency.exponentialRampToValueAtTime(1300, t0 + 0.2);
+  const g2 = audioCtx.createGain(); g2.gain.value = 0.18 + 0.25 * k;
+  const pan = audioCtx.createStereoPanner ? audioCtx.createStereoPanner() : null;
+  const out = pan || finMaster();
+  if (pan) { pan.pan.value = side * 0.85; pan.connect(finMaster()); }
+  src.connect(hp); hp.connect(g); g.connect(out);
+  src2.connect(bp); bp.connect(g2); g2.connect(out);
+  src.start(t0); src2.start(t0 + 0.01);
+}

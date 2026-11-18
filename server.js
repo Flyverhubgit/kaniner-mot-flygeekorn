@@ -155,6 +155,7 @@ function destroyCells(list) {
 }
 // Alle klosser innenfor en radius (granat, bazooka, morter)
 function blastCells(x, y, z, r) {
+  navDirty = true;                             // [NY] robot-kartet må oppdateres
   const V = vox();
   if (!V) return;
   const L = V.LIB, list = [];
@@ -1138,6 +1139,7 @@ function applyDamage(p, t, dmg, head, weapon) {
     return;
   }
   if (p !== t) questAddDmg(p, Math.min(dmg, Math.max(0, t.hp)));   // [NY] fotball-oppdraget
+  if (t.isBot && p !== t) { t.hurtBy = p.id; t.hurtAt = Date.now(); t.hurtX = p.x; t.hurtZ = p.z; }   // [NY] smarte roboter: hvem skjøt meg?
   t.hp -= dmg;
   io.to(p.id).emit('hitConfirm', { head, kill: t.hp <= 0, d: Math.round(dmg), x: +t.x.toFixed(1), y: +((t.y || 0) + 1.9).toFixed(1), z: +t.z.toFixed(1) });   // [NY] skadetall vises der du traff
   io.to(t.id).emit('damaged', { hp: Math.max(0, t.hp), fromX: p.x, fromZ: p.z });
@@ -1984,6 +1986,7 @@ io.on('connection', socket => {
   // Kule traff en kloss på klosseslottet
   // [NY] HAMMEREN: sett en byggekloss. Serveren sjekker alt (avstand, ledig, inntil noe, ikke i spawn, ikke inni noen).
   socket.on('build', d => {
+    navDirty = true;                                 // [NY] robot-kartet må oppdateres
     const p = players[socket.id], V = vox();
     if (!p || !p.alive || !d || !V || intermission || mapName === 'lobby' || mapName === 'desert') return;   // [NY] ingen hammer i ørkenen
     const now = Date.now();
@@ -3145,10 +3148,208 @@ function pirBot(b, now, dt) {
   }
 }
 
+// ===================================================================
+// [NY] SMARTERE ROBOTER (ikke Piratbukta – der har de egen kode, og de kjører ikke kjøretøy)
+// - Finner veien rundt vegger (A*-søk på et kart over hvor man kan gå)
+// - Går i dekning når de har lite liv, venter, og titter fram igjen
+// - Noen flankerer: går rundt på siden av fienden i stedet for rett mot
+// - Jakter: går dit de så deg sist, og snur seg mot den som skjøt dem
+// Treffsikkerheten er den samme som før (lette å slå med vilje).
+// ANGRE: BOT_SMART = false.
+// ===================================================================
+const BOT_SMART = true;
+let nav = null, navDirty = true, navAt = 0, navMapName = '';
+function navBuild() {
+  const bm = boxMap(), L = bm ? null : BV().LIB;
+  const cs = mapName === 'desert' ? 2 : 1;                       // rutestørrelse (meter)
+  const x0 = bm ? -bm.xMax - 2 : L.X0 + 1, x1 = bm ? bm.xMax + 2 : L.X0 + L.NX - 1;
+  const z0 = bm ? -bm.zMax - 2 : L.Z0 + 1, z1 = bm ? bm.zMax + 2 : L.Z0 + L.NZ - 1;
+  const W = Math.floor((x1 - x0) / cs), H = Math.floor((z1 - z0) / cs);
+  const ok = new Uint8Array(W * H), hy = new Float32Array(W * H);
+  for (let j = 0; j < H; j++) for (let i = 0; i < W; i++) {
+    const x = x0 + (i + 0.5) * cs, z = z0 + (j + 0.5) * cs;
+    let y = -1;
+    if (bm) y = freeSpot(x, z);
+    else { const g = groundBelow(x, 4.5, z); if (g <= 3.5 && !bodyHits(x, g, z)) y = g; }   // gulv opp til 3,5 m (borggulv, trapper), ikke tak
+    ok[j * W + i] = y >= 0 ? 1 : 0; hy[j * W + i] = y;
+  }
+  nav = { x0, z0, cs, W, H, ok, hy };
+  navDirty = false; navAt = Date.now(); navMapName = mapName;
+}
+function navGet() {
+  if (!nav || navMapName !== mapName || (navDirty && Date.now() - navAt > (mapName === 'desert' ? 30000 : 10000))) navBuild();
+  return nav;
+}
+function navCell(N, x, z) { return [Math.floor((x - N.x0) / N.cs), Math.floor((z - N.z0) / N.cs)]; }
+function navOk(N, i, j) { return i >= 0 && j >= 0 && i < N.W && j < N.H && N.ok[j * N.W + i] === 1; }
+function navNearest(N, i, j) {                    // nærmeste gåbare rute (hvis du står litt feil)
+  if (navOk(N, i, j)) return [i, j];
+  for (let r = 1; r < 6; r++) for (let dj = -r; dj <= r; dj++) for (let di = -r; di <= r; di++) if (Math.max(Math.abs(di), Math.abs(dj)) === r && navOk(N, i + di, j + dj)) return [i + di, j + dj];
+  return null;
+}
+// A*: korteste vei mellom to punkter. Gir en liste med punkter (glattet), eller null.
+function navPath(ax, az, bx, bz, maxNodes) {
+  const N = navGet();
+  const s = navNearest(N, ...navCell(N, ax, az)), g = navNearest(N, ...navCell(N, bx, bz));
+  if (!s || !g) return null;
+  const W = N.W, start = s[1] * W + s[0], goal = g[1] * W + g[0];
+  const gs = new Map([[start, 0]]), from = new Map(), closed = new Set();
+  const heap = [[0, start]];
+  const push = (f, n) => { heap.push([f, n]); let i = heap.length - 1; while (i > 0) { const p = (i - 1) >> 1; if (heap[p][0] <= heap[i][0]) break; [heap[p], heap[i]] = [heap[i], heap[p]]; i = p; } };
+  const pop = () => { const top = heap[0], last = heap.pop(); if (heap.length) { heap[0] = last; let i = 0; for (;;) { const l = 2 * i + 1, r = l + 1; let m = i; if (l < heap.length && heap[l][0] < heap[m][0]) m = l; if (r < heap.length && heap[r][0] < heap[m][0]) m = r; if (m === i) break; [heap[m], heap[i]] = [heap[i], heap[m]]; i = m; } } return top; };
+  const h = n => { const dx = Math.abs(n % W - g[0]), dz = Math.abs(Math.floor(n / W) - g[1]); return Math.max(dx, dz) + 0.41 * Math.min(dx, dz); };
+  push(h(start), start);
+  let count = 0, found = false;
+  while (heap.length && count++ < (maxNodes || 30000)) {
+    const [, n] = pop();
+    if (n === goal) { found = true; break; }
+    if (closed.has(n)) continue;
+    closed.add(n);
+    const i = n % W, j = Math.floor(n / W), gn = gs.get(n);
+    for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) {
+      if (!di && !dj) continue;
+      const ni = i + di, nj = j + dj;
+      if (!navOk(N, ni, nj)) continue;
+      if (di && dj && (!navOk(N, i + di, j) || !navOk(N, i, j + dj))) continue;   // ikke skjær hjørner
+      if (N.hy[nj * W + ni] - N.hy[n] > 1.05) continue;                           // for høyt trinn opp (ned går fint)
+      const m = nj * W + ni, c = gn + (di && dj ? 1.414 : 1);
+      if (c < (gs.has(m) ? gs.get(m) : Infinity)) { gs.set(m, c); from.set(m, n); push(c + h(m), m); }
+    }
+  }
+  if (!found) return null;
+  const cells = [];
+  for (let n = goal; n !== undefined; n = from.get(n)) cells.push(n);
+  cells.reverse();
+  // Glatt ruta: hopp over punkter når det er fri vei i rett linje
+  const pts = cells.map(n => [N.x0 + (n % W + 0.5) * N.cs, N.z0 + (Math.floor(n / W) + 0.5) * N.cs]);
+  const out = [];
+  let k = 0;
+  while (k < pts.length - 1) {
+    let far = k + 1;
+    for (let t = Math.min(pts.length - 1, k + 40); t > k + 1; t--) if (navStraight(N, pts[k], pts[t])) { far = t; break; }
+    out.push(pts[far]); k = far;
+  }
+  return out;
+}
+function navStraight(N, a, b) {                  // er det gåbart hele veien i rett linje?
+  const d = Math.hypot(b[0] - a[0], b[1] - a[1]), n = Math.ceil(d / (N.cs * 0.5));
+  let last = null;
+  for (let i = 0; i <= n; i++) {
+    const k = i / n, c = navCell(N, a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k);
+    if (!navOk(N, c[0], c[1])) return false;
+    const h = N.hy[c[1] * N.W + c[0]];
+    if (last !== null && h - last > 1.05) return false;
+    last = h;
+  }
+  return true;
+}
+let navBudget = 0;                                 // maks noen få rutesøk per runde (sparer serveren)
+function botGo(b, x, z) {
+  if (navBudget <= 0) { b.route = [[x, z]]; b.routeLazy = true; return; }
+  navBudget--;
+  const p = navPath(b.x, b.z, x, z, mapName === 'desert' ? 15000 : 30000);
+  b.route = p && p.length ? p : [[x, z]];
+  b.routeLazy = !p;
+}
+// Finn dekning: et sted i nærheten der fienden ikke ser deg
+function botFindCover(b, t) {
+  const N = navGet(), eye = { x: t.x, y: t.y + 1.4, z: t.z };
+  let best = null, bd = 1e9;
+  for (let k = 0; k < 18; k++) {
+    const a = Math.random() * Math.PI * 2, r = 3 + Math.random() * 8, x = b.x + Math.cos(a) * r, z = b.z + Math.sin(a) * r;
+    const c = navCell(N, x, z);
+    if (!navOk(N, c[0], c[1])) continue;
+    const y = Math.max(0, freeSpot(x, z));
+    if (losClear(eye, { x, y: y + 1.1, z })) continue;                           // fienden ser deg der: ikke dekning
+    const d = Math.hypot(x - b.x, z - b.z) + Math.hypot(x - t.x, z - t.z) * 0.15;
+    if (d < bd) { bd = d; best = [x, z]; }
+  }
+  return best;
+}
+// Flankering: et punkt på siden av fienden
+function botFlankPoint(b, t) {
+  const dx = b.x - t.x, dz = b.z - t.z, d = Math.hypot(dx, dz) || 1, s = b.flankSide || 1;
+  const ux = dx / d, uz = dz / d, r = Math.min(16, Math.max(9, d * 0.6));
+  for (let k = 0; k < 8; k++) {
+    const ang = s * (0.9 + k * 0.08), x = t.x + (ux * Math.cos(ang) - uz * Math.sin(ang)) * r, z = t.z + (ux * Math.sin(ang) + uz * Math.cos(ang)) * r;
+    if (freeSpot(x, z) >= 0) return [x, z];
+  }
+  return null;
+}
+// Hjernen: kalles hver runde for hver robot (ikke ørken-kjøretøy / pirat). Returnerer true hvis den har tatt seg av bevegelsen.
+function botSmart(b, best, bestD, now, dt) {
+  if (!b.smartInit) { b.smartInit = true; b.role = Math.random() < 0.35 ? 'flank' : 'push'; b.flankSide = Math.random() < 0.5 ? -1 : 1; b.state = 'roam'; }
+  const desert = mapName === 'desert';
+  // Ble truffet av en vi ikke ser: snu oss og gå mot der skuddet kom fra
+  if (!best && b.hurtBy && now - b.hurtAt < 2500 && b.state !== 'cover') {
+    const t = players[b.hurtBy];
+    if (t && t.alive) { b.yaw = Math.atan2(-(b.hurtX - b.x), -(b.hurtZ - b.z)); if (b.state !== 'hunt') { b.state = 'hunt'; b.huntX = b.hurtX; b.huntZ = b.hurtZ; b.huntUntil = now + 7000; botGo(b, b.huntX, b.huntZ); } }
+  }
+  if (best) { b.lastSeenX = best.x; b.lastSeenZ = best.z; b.lastSeenAt = now; }
+  // Lite liv: løp i dekning, vent til livet er bedre (helse kommer tilbake), titt fram igjen
+  if (best && b.hp < 45 && b.state !== 'cover' && now > (b.coverCool || 0)) {
+    const c = botFindCover(b, best);
+    if (c) { b.state = 'cover'; b.coverUntil = now + 3500 + Math.random() * 2500; b.coverCool = now + 9000; botGo(b, c[0], c[1]); }
+  }
+  if (b.state === 'cover') {
+    b.crouch = 1;
+    if (now > b.coverUntil || b.hp >= 80) { b.state = 'roam'; b.crouch = 0; if (b.lastSeenAt && now - b.lastSeenAt < 12000) { b.state = 'hunt'; b.huntX = b.lastSeenX; b.huntZ = b.lastSeenZ; b.huntUntil = now + 8000; botGo(b, b.huntX, b.huntZ); } }
+    else { botFollow(b, now, dt, BOT_SPEED * 1.1); return true; }        // på vei til / i dekning (skyter fortsatt hvis den ser deg)
+  } else b.crouch = 0;
+  if (best) {
+    const near = desert ? (b.dw === 'sniper50' ? 70 : 30) : 14;
+    // Flankerer: gå rundt på siden når fienden er et stykke unna
+    if (b.role === 'flank' && bestD > near * 0.8 && bestD < (desert ? 90 : 45)) {
+      if (!b.flankAt || now > b.flankAt || !b.route || !b.route.length) {
+        const f = botFlankPoint(b, best);
+        b.flankAt = now + 2500;
+        if (f) botGo(b, f[0], f[1]);
+      }
+      botFollow(b, now, dt, BOT_SPEED);
+      return true;
+    }
+    b.state = 'fight';
+    return false;                                     // vanlig kamp (gammel kode: nærmere / fra side til side)
+  }
+  // Mistet fienden: gå dit den sist var
+  if (b.state === 'fight' && b.lastSeenAt && now - b.lastSeenAt < 1500) { b.state = 'hunt'; b.huntX = b.lastSeenX; b.huntZ = b.lastSeenZ; b.huntUntil = now + 8000; botGo(b, b.huntX, b.huntZ); }
+  if (b.state === 'hunt') {
+    if (now > b.huntUntil || !b.route || !b.route.length) { b.state = 'roam'; b.route = null; }
+    else { botFollow(b, now, dt, BOT_SPEED); return true; }
+  }
+  // Rundt på slagmarka: velg et mål og finn veien dit
+  b.state = 'roam';
+  if (!b.route || !b.route.length) {
+    const r = Math.random();
+    let g = null;
+    if (r < 0.4) {                                   // gå dit en fiende omtrent er (litt unøyaktig – de "hører" deg)
+      let best = null, bd = mapName === 'desert' ? 160 : 90;
+      for (const id in players) { const t = players[id]; if (!t.alive || t.team === b.team || t.vehicle) continue; const d = Math.hypot(t.x - b.x, t.z - b.z); if (d < bd) { bd = d; best = t; } }
+      if (best) { const j = Math.min(12, bd * 0.15); g = [best.x + (Math.random() - 0.5) * j, best.z + (Math.random() - 0.5) * j]; }   // nærmere = mer nøyaktig
+    }
+    if (!g && r < 0.6 && BOT_OUT[mapName] && BOT_OUT[mapName].length) g = mir(b.team === 'bunny' ? 'squirrel' : 'bunny', BOT_OUT[mapName][BOT_OUT[mapName].length - 1]);
+    if (!g) g = botField();
+    botGo(b, g[0], g[1]);
+  } else if (b.routeLazy && navBudget > 0) { const last = b.route[b.route.length - 1]; botGo(b, last[0], last[1]); }
+  botFollow(b, now, dt, BOT_SPEED);
+  return true;
+}
+function botFollow(b, now, dt, speed) {
+  if (!b.route || !b.route.length) return;
+  const wp = b.route[0], dx = wp[0] - b.x, dz = wp[1] - b.z;
+  if (Math.hypot(dx, dz) < 1.0) { b.route.shift(); return; }
+  let dirX = dx, dirZ = dz;
+  if (now < b.sideUntil) { dirX = -dz * b.side; dirZ = dx * b.side; }
+  botMove(b, dirX, dirZ, speed * (b.crouch ? 0.7 : 1), dt);
+  if (!b.target) b.pitch = 0;
+  b.smartMoved = true;
+}
+
 const BOT_TICK = 100;
 setInterval(() => {
   if (!botOn() || intermission) return;
   const now = Date.now(), dt = BOT_TICK / 1000, med = mapName === 'medieval';
+  navBudget = mapName === 'desert' ? 1 : 3;            // [NY] maks rutesøk per runde
   for (const id in players) {
     const b = players[id];
     if (!b.isBot || !b.alive) continue;
@@ -3172,14 +3373,20 @@ setInterval(() => {
     if (!best) b.target = null;
 
     let dirX = 0, dirZ = 0;
+    b.smartMoved = false;
+    const smart = BOT_SMART && botSmart(b, best, bestD, now, dt);   // [NY] smarte roboter tar seg av bevegelsen (dekning, flanke, jakt, veisøk)
+    if (smart && b.smartMoved) { dirX = 1; }                         // (for "står fast"-sjekken under)
     if (best) {
       // --- Kamp: gå nærmere hvis langt unna, ellers gå litt fra side til side ---
       const dx = best.x - b.x, dz = best.z - b.z;
       if (now > b.strafeAt) { b.strafe = Math.random() < 0.5 ? -1 : 1; b.strafeAt = now + 1200 + Math.random() * 1500; }
       const near = desert ? (b.dw === 'sniper50' ? 70 : 30) : 14;   // [NY] ørkenen: holder større avstand
-      if (bestD > near) { dirX = dx; dirZ = dz; }
+      if (!smart) {
+      if (bestD > near) { dirX = dx; dirZ = dz; if (BOT_SMART && (!b.chaseAt || now > b.chaseAt)) { b.chaseAt = now + 1500; botGo(b, best.x, best.z); } }   // [NY] finn veien mot fienden
       else { dirX = -dz * b.strafe; dirZ = dx * b.strafe; }
-      botMove(b, dirX, dirZ, BOT_SPEED * (bestD > near ? 1 : 0.6), dt);
+      if (BOT_SMART && bestD > near && b.route && b.route.length) botFollow(b, now, dt, BOT_SPEED);
+      else botMove(b, dirX, dirZ, BOT_SPEED * (bestD > near ? 1 : 0.6), dt);
+      }
       b.yaw = Math.atan2(-dx, -dz);                                   // se på fienden
       b.pitch = Math.atan2((best.y + 1.1) - (b.y + 1.4), bestD) ;
       // --- Skyt (etter reaksjonstid, sakte tempo, bommer ofte) ---
@@ -3204,7 +3411,7 @@ setInterval(() => {
         io.emit('shot', { id: b.id, to, w: med ? 'bow' : 'ak' });
         if (hit) applyDamage(b, best, med ? 20 : (head ? AK_HEAD : AK_BODY), head, med ? 'bow' : 'gun');
       }
-    } else {
+    } else if (!smart) {
       // --- Ingen fiende: følg ruta (ut av borgen), så rundt på slagmarka ---
       if (!b.route || !b.route.length) {
         if (Math.random() < (mapName === 'desert' ? 0.08 : 0.25) && BOT_OUT[mapName].length) b.route = BOT_OUT[mapName].slice().reverse().map(pt => mir(b.team === 'bunny' ? 'squirrel' : 'bunny', pt));   // raid: inn i fiendens borg
@@ -3223,7 +3430,7 @@ setInterval(() => {
     if (Math.hypot(b.x - b.lastX, b.z - b.lastZ) < 0.15 && (dirX || dirZ)) {
       b.stuck += dt;
       if (b.stuck > 0.8 && now > b.sideUntil) { b.side = Math.random() < 0.5 ? -1 : 1; b.sideUntil = now + 900; }
-      if (b.stuck > 2.5) { b.stuck = 0; b.route = b.mode === 'out' && b.route && b.route.length > 1 ? b.route.slice(1) : [botField()]; b.mode = 'roam'; }   // gi opp: nytt mål
+      if (b.stuck > 2.5) { b.stuck = 0; b.route = b.mode === 'out' && b.route && b.route.length > 1 ? b.route.slice(1) : (BOT_SMART ? null : [botField()]); b.mode = 'roam'; if (BOT_SMART) { navDirty = true; b.state = 'roam'; } }   // gi opp: nytt mål
     } else b.stuck = 0;
     b.lastX = b.x; b.lastZ = b.z;
   }
