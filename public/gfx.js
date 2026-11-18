@@ -347,3 +347,43 @@ if (GFX_HIGH) {
     lastFlash = f;
   };
 }
+
+// ---------- [NY] Polering 2: ekte himmel (bare Høy) ----------
+// En stor kuppel rundt kameraet: mørkere blå øverst, lysere ned mot horisonten (samme farge som tåka,
+// så landskapet glir pent over i himmelen) og en glødende sol der lyset faktisk kommer fra.
+const SKY_ON = true;
+const SKY_TOP = { castle: 0x3f86e0, temple: 0x4a7cc0, pirate: 0x2f88d8, desert: 0x6b9ad6, dragon: 0xb0607e, west: 0x6e88cc, medieval: 0x2c313c, farm: 0x02040c };
+const SKY_SUN = { castle: 1, temple: 1, pirate: 1, desert: 1, dragon: 1, west: 1, medieval: 0, farm: 0.35 };
+let gfxSky = null, gfxSkyMap = '';
+if (GFX_HIGH && SKY_ON) {
+  gfxSky = new THREE.Mesh(new THREE.SphereGeometry(1, 32, 16), new THREE.ShaderMaterial({
+    uniforms: { top: { value: new THREE.Color() }, hor: { value: new THREE.Color() }, sunDir: { value: new THREE.Vector3(0, 1, 0) }, sunCol: { value: new THREE.Color(1, 0.95, 0.8) }, sunOn: { value: 1 } },
+    vertexShader: 'varying vec3 vDir; void main(){ vDir = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+    fragmentShader: [
+      'uniform vec3 top; uniform vec3 hor; uniform vec3 sunDir; uniform vec3 sunCol; uniform float sunOn; varying vec3 vDir;',
+      'void main(){',
+      '  vec3 d = normalize(vDir); float h = max(d.y, 0.0);',
+      '  vec3 c = mix(hor, top, pow(h, 0.55));',
+      '  float s = max(dot(d, normalize(sunDir)), 0.0);',
+      '  c += sunCol * sunOn * (pow(s, 1200.0) * 1.2 + pow(s, 60.0) * 0.35 + pow(s, 6.0) * 0.12);',   // solskiva + glød
+      '  gl_FragColor = vec4(c, 1.0);',
+      '}'
+    ].join('\n'),
+    side: THREE.BackSide, depthWrite: false, depthTest: false, fog: false
+  }));
+  gfxSky.renderOrder = -10; gfxSky.frustumCulled = false; gfxSky.raycast = () => {};
+  scene.add(gfxSky);
+}
+function gfxSkyUpdate() {
+  if (!gfxSky) return;
+  const m = typeof currentMap !== 'undefined' ? currentMap : '';
+  const on = SKY_TOP[m] !== undefined && !(typeof underNow === 'function' && underNow());
+  gfxSky.visible = on;
+  if (!on) return;
+  const u = gfxSky.material.uniforms;
+  if (m !== gfxSkyMap) { gfxSkyMap = m; u.top.value.setHex(SKY_TOP[m]); u.sunOn.value = SKY_SUN[m]; u.sunCol.value.setHex(m === 'farm' ? 0xc8d8ff : m === 'dragon' ? 0xffc8a0 : 0xfff2d0); }
+  u.hor.value.copy(scene.fog.color);                    // horisonten = tåkefargen (følger med hvis banen endrer den)
+  u.sunDir.value.copy(sun.position).sub(sun.target.position).normalize();
+  gfxSky.position.copy(camera.position);
+  gfxSky.scale.setScalar(camera.far * 0.9);
+}
