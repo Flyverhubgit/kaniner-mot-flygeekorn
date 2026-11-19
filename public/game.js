@@ -1012,6 +1012,7 @@ function buildCloudberryNade() {
   }
   const G = multeGeo, M = multeMats, g = new THREE.Group();
   const mesh = (geo, mat, x, y, z) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.castShadow = true; g.add(m); return m; };
+  if (MULTE_V2) return buildCloudberryV2(g, mesh);                     // [NY] ny, tettere multe-modell
   mesh(G.core, M.core, 0, 0.01, 0);                                   // kjerne
   // Små kuler i ringer rundt kjernen (en multe er en klump av små "perler")
   const rings = [[-0.035, 6, 0.055], [0.01, 8, 0.075], [0.055, 7, 0.06], [0.09, 4, 0.03]];
@@ -1032,6 +1033,47 @@ function buildCloudberryNade() {
   mesh(G.stem, M.stem, 0, -0.1, 0);                                    // stilk
   const ring = mesh(G.ring, M.metal, 0.085, 0.07, 0);                 // sikringsring (det er tross alt en granat)
   ring.rotation.y = Math.PI / 2;
+  return g;
+}
+
+// [NY] MULTE V2: tett, rund klump av blanke rav-gule "perler" som sitter i en grønn skål av begerblad.
+// true = ny modell, false = første multe-modell
+const MULTE_V2 = true;
+let multe2 = null;
+function buildCloudberryV2(g, mesh) {
+  if (!multe2) multe2 = {
+    bead: new THREE.SphereGeometry(0.03, 10, 8),
+    coreG: new THREE.SphereGeometry(0.068, 12, 10),
+    sepal: new THREE.ConeGeometry(0.026, 0.085, 4),
+    stem: new THREE.CylinderGeometry(0.008, 0.011, 0.06, 6),
+    ring: new THREE.TorusGeometry(0.026, 0.006, 6, 14),
+    pin: new THREE.CylinderGeometry(0.005, 0.005, 0.05, 6),
+    beads: [0xf2a02e, 0xeb932a, 0xf5ad3c, 0xe48a26].map(c => new THREE.MeshStandardMaterial({ color: c, roughness: 0.22, metalness: 0.05, emissive: 0x5a2600, emissiveIntensity: 0.35 })),
+    core: new THREE.MeshStandardMaterial({ color: 0xc9721f, roughness: 0.4 }),
+    green: new THREE.MeshStandardMaterial({ color: 0x5b8f32, roughness: 0.7 }),
+    dark: new THREE.MeshStandardMaterial({ color: 0x3f6a24, roughness: 0.7 }),
+    metal: new THREE.MeshStandardMaterial({ color: 0xb0b0a8, metalness: 0.7, roughness: 0.35 })
+  };
+  const Q = multe2;
+  mesh(Q.coreG, Q.core, 0, 0.005, 0).scale.set(1, 1.05, 1);            // kjerne
+  // Perler jevnt fordelt over kula (Fibonacci-spiral), litt høyere enn bred – som en ekte multe
+  const N = 30, gold = Math.PI * (3 - Math.sqrt(5));
+  for (let i = 0; i < N; i++) {
+    const y = 1 - (i / (N - 1)) * 1.6;                                // fra toppen og ned til ca. 60 % under midten
+    const r = Math.sqrt(Math.max(0, 1 - y * y)), a = i * gold;
+    const b = mesh(Q.bead, Q.beads[(i * 7) % 4], Math.cos(a) * r * 0.07, 0.005 + y * 0.074, Math.sin(a) * r * 0.07);
+    b.scale.setScalar(0.92 + ((i * 37) % 10) / 60);
+  }
+  // Fem grønne begerblad som en skål under bæret, tuppene peker opp og ut
+  for (let i = 0; i < 5; i++) {
+    const a = (i / 5) * Math.PI * 2 + 0.3, s = mesh(Q.sepal, i % 2 ? Q.green : Q.dark, Math.cos(a) * 0.045, -0.06, Math.sin(a) * 0.045);
+    s.scale.set(1, 1, 0.35);                                          // flate blad
+    s.rotation.set(0, -a, 0); s.rotateZ(-1.15);                       // vipp utover
+  }
+  mesh(Q.stem, Q.dark, 0, -0.1, 0);                                    // stilk
+  // Sikringsring på en liten splint på siden
+  const pin = mesh(Q.pin, Q.metal, 0.075, 0.04, 0); pin.rotation.z = Math.PI / 2;
+  const ring = mesh(Q.ring, Q.metal, 0.11, 0.04, 0); ring.rotation.x = Math.PI / 2; ring.rotation.y = 0.4;
   return g;
 }
 
