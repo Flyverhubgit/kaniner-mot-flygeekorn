@@ -2568,12 +2568,13 @@ const DV_GUNNER = true;                             // [NY] nr. 2 i stridsvognen
 // [NY] Stridsvogn-granaten (sterkere 2026-11-16): dreper innen ca. 5 m, skader ut til 11 m, store hull i husene
 const DV_SHELL = { dmg: 220, r: 11, blocks: 4.8, big: 3.6, vr: 6, vdmg: 320 };   // (før: 150 / 6 m / 3.2 / 2.6 / 4 m / 240)
 let dvList = [];
+// [FIKS] For fly betyr ty krenging (rull), ikke tårnretning – før lå jetflyene på siden (ty = -90°) når de sto parkert
 function dvReset() {
   dvList = [];
   if (!DV_ON || mapName !== 'desert') return;
   TEAMS.forEach(team => DV_PARK.forEach((pk, i) => {
     const sq = team === 'squirrel', x = sq ? -pk.x : pk.x, z = sq ? -pk.z : pk.z, yaw = (pk.yaw || 0) + (sq ? Math.PI : 0);
-    dvList.push({ id: dvList.length, kind: pk.kind, team, home: { x, z, yaw }, x, y: 0, z, yaw, ty: yaw, tp: 0, hp: DV[pk.kind].hp, alive: true, driver: null, at: 0, shellAt: 0, respawnAt: 0, ammo: DV[pk.kind].ammo || 0, ammoAt: 0 });
+    dvList.push({ id: dvList.length, kind: pk.kind, team, home: { x, z, yaw }, x, y: 0, z, yaw, ty: DV[pk.kind].air ? 0 : yaw, tp: 0, hp: DV[pk.kind].hp, alive: true, driver: null, at: 0, shellAt: 0, respawnAt: 0, ammo: DV[pk.kind].ammo || 0, ammoAt: 0 });
   }));
 }
 function dvOf(p) { return p && p.vehicle === 'dv' ? dvList[p.dv] || null : null; }
@@ -2631,7 +2632,7 @@ setInterval(() => {
   if (mapName !== 'desert' || !dvList.length) return;
   const now = Date.now();
   dvList.forEach(v => {                              // nytt kjøretøy hjemme etter 40 sek
-    if (!v.alive && now >= v.respawnAt) Object.assign(v, { x: v.home.x, y: 0, z: v.home.z, yaw: v.home.yaw, ty: v.home.yaw, tp: 0, hp: DV[v.kind].hp, alive: true, driver: null, gunner: null, ammo: DV[v.kind].ammo || 0 });
+    if (!v.alive && now >= v.respawnAt) Object.assign(v, { x: v.home.x, y: 0, z: v.home.z, yaw: v.home.yaw, ty: DV[v.kind].air ? 0 : v.home.yaw, tp: 0, hp: DV[v.kind].hp, alive: true, driver: null, gunner: null, ammo: DV[v.kind].ammo || 0 });
     const S = DV[v.kind];
     if (S.ammo && v.ammo < S.ammo && now - (v.ammoAt || 0) > S.regenMs) { v.ammo++; v.ammoAt = now; }   // [NY] nye missiler/raketter
     if (v.driver && !players[v.driver]) v.driver = null;
