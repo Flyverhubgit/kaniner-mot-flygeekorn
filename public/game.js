@@ -1012,6 +1012,7 @@ function buildCloudberryNade() {
   }
   const G = multeGeo, M = multeMats, g = new THREE.Group();
   const mesh = (geo, mat, x, y, z) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.castShadow = true; g.add(m); return m; };
+  if (MULTE_V3) return buildCloudberryV3(g, mesh);                     // [NY] v3: én glatt bær med myke kuler (ikke mais)
   if (MULTE_V2) return buildCloudberryV2(g, mesh);                     // [NY] ny, tettere multe-modell
   mesh(G.core, M.core, 0, 0.01, 0);                                   // kjerne
   // Små kuler i ringer rundt kjernen (en multe er en klump av små "perler")
@@ -1074,6 +1075,50 @@ function buildCloudberryV2(g, mesh) {
   // Sikringsring på en liten splint på siden
   const pin = mesh(Q.pin, Q.metal, 0.075, 0.04, 0); pin.rotation.z = Math.PI / 2;
   const ring = mesh(Q.ring, Q.metal, 0.11, 0.04, 0); ring.rotation.x = Math.PI / 2; ring.rotation.y = 0.4;
+  return g;
+}
+
+// [NY] MULTE V3: v2 så ut som mais. Nå: én rund bær der få, store kuler er halvveis senket i kjernen
+// (myke kuler, ikke rader med korn), rav-farge med rødlig bunn, og brede grønne blad som en stjerne under.
+// true = v3, false = v2 / v1
+const MULTE_V3 = true;
+let multe3 = null;
+function buildCloudberryV3(g, mesh) {
+  if (!multe3) {
+    const mat = (c, e) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.3, emissive: e, emissiveIntensity: 0.25 });
+    multe3 = {
+      coreG: new THREE.SphereGeometry(0.075, 16, 12),
+      bump: new THREE.SphereGeometry(0.036, 12, 10),
+      leaf: new THREE.SphereGeometry(0.05, 8, 6),
+      stem: new THREE.CylinderGeometry(0.008, 0.011, 0.06, 6),
+      ring: new THREE.TorusGeometry(0.026, 0.006, 6, 14),
+      pin: new THREE.CylinderGeometry(0.005, 0.005, 0.05, 6),
+      top: mat(0xf4b552, 0x5a3000), mid: mat(0xeea04a, 0x5a2800), low: mat(0xd9783a, 0x4a1800),
+      green: new THREE.MeshStandardMaterial({ color: 0x6a9a3a, roughness: 0.75 }),
+      dark: new THREE.MeshStandardMaterial({ color: 0x4a7428, roughness: 0.75 }),
+      metal: new THREE.MeshStandardMaterial({ color: 0xb0b0a8, metalness: 0.7, roughness: 0.35 })
+    };
+  }
+  const Q = multe3;
+  mesh(Q.coreG, Q.mid, 0, 0, 0);                                       // selve bæret
+  // 3 lag med få, store kuler som er godt senket i kjernen (bare "bulker" stikker ut)
+  const layers = [[0.045, 5, 0.04, Q.top, 0.4], [0.0, 7, 0.06, Q.mid, 0], [-0.04, 6, 0.05, Q.low, 0.25]];
+  for (const [y, n, r, m, off] of layers) {
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2 + off;
+      mesh(Q.bump, m, Math.cos(a) * r, y, Math.sin(a) * r).scale.set(1, 0.9, 1);
+    }
+  }
+  mesh(Q.bump, Q.top, 0, 0.065, 0).scale.set(1, 0.7, 1);                // toppen
+  // Fem brede, flate grønne blad som en stjerne rett under bæret
+  for (let i = 0; i < 5; i++) {
+    const a = (i / 5) * Math.PI * 2 + 0.2;
+    const l = mesh(Q.leaf, i % 2 ? Q.green : Q.dark, Math.cos(a) * 0.06, -0.07, Math.sin(a) * 0.06);
+    l.scale.set(1.3, 0.12, 0.6); l.rotation.y = -a; l.rotateZ(0.25);   // flatt blad, tuppen litt opp
+  }
+  mesh(Q.stem, Q.dark, 0, -0.1, 0);                                    // stilk
+  const pin = mesh(Q.pin, Q.metal, 0.08, 0.03, 0); pin.rotation.z = Math.PI / 2;
+  const ring = mesh(Q.ring, Q.metal, 0.115, 0.03, 0); ring.rotation.x = Math.PI / 2; ring.rotation.y = 0.4;
   return g;
 }
 
