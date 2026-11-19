@@ -990,7 +990,7 @@ let grenades = GRENADES_MAX, nadeQueued = false, nadeCooldown = 0, nadeSeq = 0, 
 const nades = [];   // { id, mine, mesh, x, y, z, vx, vy, vz, t }
 
 // [NY] MULTE-GRANAT: true = multe, false = gammel ananas
-const NADE_CLOUDBERRY = true;
+const NADE_CLOUDBERRY = false;   // [NY] Flyver valgte ananas igjen (multe ligger klar: sett true)
 let multeGeo = null, multeMats = null;
 function buildNadeMesh() {
   return NADE_CLOUDBERRY ? buildCloudberryNade() : buildPineappleNade();
