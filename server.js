@@ -1676,7 +1676,8 @@ io.on('connection', socket => {
   socket.on('dvMove', d => {
     const p = players[socket.id], v = dvOf(p);
     if (!v || v.driver !== p.id || !d) return;
-    const air = DV[v.kind].air, B = air ? 480 : 240;   // [NY] flyene kan fly litt utenfor kartet
+    const air = DV[v.kind].air, B = air ? 640 : 240;   // [NY] 640: mer luft for jetflyet (var 480)
+      // [NY] flyene kan fly litt utenfor kartet
     const x = num(d.x, -B, B), y = num(d.y, 0, air ? 260 : 16), z = num(d.z, -B, B), yaw = num(d.yaw, -1e6, 1e6), ty = num(d.ty, -1e6, 1e6), tp = num(d.tp, -1.6, 1.6);
     if ([x, y, z, yaw, ty, tp].includes(null)) return;
     const now = Date.now(), dt = Math.max(0.05, (now - v.at) / 1000);

@@ -8,8 +8,11 @@
 // ===================================================================
 const jetW = { id: 'jetgun', mag: 300, magSize: 300, reserve: Infinity, fireDelay: 0.06, reloadTime: 3, climb: 0 };
 const heliW = { id: 'heligun', mag: 250, magSize: 250, reserve: Infinity, fireDelay: 0.075, reloadTime: 3, climb: 0 };
+// [NY] Jetflyet var for raskt for kartet: lavere toppfart og mer luft å snu i. false = gammel oppførsel
+const JET_SLOW = true;                               // toppfart 50 m/s (180 km/t) i stedet for 72 m/s (260 km/t)
+const AIR_ROOM = true;                               // jetflyet snur først 450 m fra midten (var 330 m)
 const AIR_SPEC = {
-  jet: { max: 72, lift: 34, turn: 1.1, pitchRate: 1.2, camBack: 16, camUp: 4.5 },
+  jet: { max: JET_SLOW ? 50 : 72, lift: 34, turn: 1.1, pitchRate: 1.2, camBack: 16, camUp: 4.5 },
   heli: { fwd: 28, side: 16, up: 10, turn: 1.6, camBack: 11, camUp: 4 }
 };
 let airAltReady = 0, airSay = 0;
@@ -99,7 +102,7 @@ function dvFly(dt, v) {
   const turnTo = (a, b, rate) => { let d = b - a; d = Math.atan2(Math.sin(d), Math.cos(d)); return a + Math.max(-rate * dt, Math.min(rate * dt, d)); };
   // Ute av kartet? Snu automatisk mot midten
   const far = Math.hypot(dvl.x, dvl.z);
-  if (far > 330) { player.yaw = turnTo(player.yaw, Math.atan2(dvl.x, dvl.z), 1.2); if ((airSay -= dt) <= 0) { airSay = 2; bannerMsg = '&#8617;&#65039; Snu – du er utenfor slagmarka!'; bannerTime = 1.5; } }
+  if (far > (AIR_ROOM && jet ? 450 : 330)) { player.yaw = turnTo(player.yaw, Math.atan2(dvl.x, dvl.z), 1.2); if ((airSay -= dt) <= 0) { airSay = 2; bannerMsg = '&#8617;&#65039; Snu – du er utenfor slagmarka!'; bannerTime = 1.5; } }
   if (jet) {
     const ground = dvl.y <= 0.05;
     dvl.spd = Math.max(0, Math.min(S.max, dvl.spd + fwd * 16 * dt));              // gass (holder farten når du slipper)
