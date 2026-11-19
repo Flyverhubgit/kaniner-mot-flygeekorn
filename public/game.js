@@ -1093,7 +1093,7 @@ function buildCloudberryV3(g, mesh) {
       stem: new THREE.CylinderGeometry(0.008, 0.011, 0.06, 6),
       ring: new THREE.TorusGeometry(0.026, 0.006, 6, 14),
       pin: new THREE.CylinderGeometry(0.005, 0.005, 0.05, 6),
-      top: mat(0xf4b552, 0x5a3000), mid: mat(0xeea04a, 0x5a2800), low: mat(0xd9783a, 0x4a1800),
+      top: mat(0xf7a030, 0x5a2600), mid: mat(0xf28a22, 0x5a2000), low: mat(0xe0661c, 0x4a1400),   // [NY] mer oransje
       green: new THREE.MeshStandardMaterial({ color: 0x6a9a3a, roughness: 0.75 }),
       dark: new THREE.MeshStandardMaterial({ color: 0x4a7428, roughness: 0.75 }),
       metal: new THREE.MeshStandardMaterial({ color: 0xb0b0a8, metalness: 0.7, roughness: 0.35 })
@@ -1119,8 +1119,13 @@ function buildCloudberryV3(g, mesh) {
   mesh(Q.stem, Q.dark, 0, -0.1, 0);                                    // stilk
   const pin = mesh(Q.pin, Q.metal, 0.08, 0.03, 0); pin.rotation.z = Math.PI / 2;
   const ring = mesh(Q.ring, Q.metal, 0.115, 0.03, 0); ring.rotation.x = Math.PI / 2; ring.rotation.y = 0.4;
-  return g;
+  // [NY] litt mindre: alt pakkes i en ytre gruppe som skaleres (MULTE_SIZE = 1 gir gammel størrelse)
+  const outer = new THREE.Group();
+  g.scale.setScalar(MULTE_SIZE);
+  outer.add(g);
+  return outer;
 }
+const MULTE_SIZE = 0.8;
 
 // Blokkete ananas-granat: gul kropp med brune ruter, grønn topp og sikringsring (brukes når NADE_CLOUDBERRY = false)
 function buildPineappleNade() {
