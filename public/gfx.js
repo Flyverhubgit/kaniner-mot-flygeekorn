@@ -16,7 +16,15 @@ window.addEventListener('DOMContentLoaded', () => {
     location.reload();
   };
   row.appendChild(b);
+  // [NY] Skygger på/av (noen synes de er forstyrrende, og Av gir mer fart)
+  const sb = document.createElement('button');
+  sb.style.cssText = b.style.cssText;
+  sb.textContent = 'Skygger: ' + (GFX_SHADOWS ? 'På' : 'Av');
+  sb.onclick = () => { try { localStorage.setItem('kmf-shadows', GFX_SHADOWS ? 'off' : 'on'); } catch (e) {} location.reload(); };
+  row.appendChild(sb);
 });
+const GFX_SHADOWS = (() => { try { return localStorage.getItem('kmf-shadows') !== 'off'; } catch (e) { return true; } })();
+if (!GFX_SHADOWS) { renderer.shadowMap.enabled = false; sun.castShadow = false; }
 
 // ---------- Klosse-teksturer (tegnes i koden, ingen bildefiler) ----------
 // Teksturen er grå/hvit og ganges med klossens egen farge, så fargene på banene blir de samme.
@@ -170,13 +178,25 @@ if (GFX_HIGH) {
   sun.shadow.camera.updateProjectionMatrix();
   scene.add(sun.target);
 }
+// [FIKS] Sola (og skygge-området) flyttes i hele "skygge-piksler" sett fra sola. Da står skyggene helt stille
+// når du går – før krøp og blafret kantene, og store skygger så ut til å flytte seg på bakken.
+const _gsD = new THREE.Vector3(), _gsR = new THREE.Vector3(), _gsU = new THREE.Vector3(), _gsP = new THREE.Vector3();
+function gfxPlaceSun(px, pz, ox, oy, oz) {
+  const c = sun.shadow.camera, texel = (c.right - c.left) / (sun.shadow.mapSize.x || 1024);
+  _gsD.set(ox, oy, oz).normalize();
+  _gsR.set(0, 1, 0).cross(_gsD).normalize();
+  _gsU.copy(_gsD).cross(_gsR).normalize();
+  _gsP.set(px, 0, pz);
+  const a = _gsP.dot(_gsR), b = _gsP.dot(_gsU);
+  _gsP.addScaledVector(_gsR, Math.floor(a / texel) * texel - a).addScaledVector(_gsU, Math.floor(b / texel) * texel - b);
+  sun.position.set(_gsP.x + ox, _gsP.y + oy, _gsP.z + oz);
+  sun.target.position.copy(_gsP);
+  sun.target.updateMatrixWorld();
+}
 function gfxSunFollow() {
   if (!GFX_HIGH || typeof joined === 'undefined' || !joined) return;
   if (typeof currentMap !== 'undefined' && currentMap === 'desert') return;   // ørkenen styrer sola selv (desert.js)
-  const px = Math.round(camera.position.x), pz = Math.round(camera.position.z);  // hele meter = mindre "flimring"
-  sun.position.set(px + 40, 60, pz + 20);           // samme retning som før (20, 30, 10)
-  sun.target.position.set(px, 0, pz);
-  sun.target.updateMatrixWorld();
+  gfxPlaceSun(camera.position.x, camera.position.z, 40, 60, 20);   // samme retning som før (20, 30, 10)
   // Store kart hadde skygge over hele banen (±95 m). Nå som skyggen følger spilleren holder ±60 m – skarpere skygger.
   const c = sun.shadow.camera;
   if (c.right > 60) { c.left = c.bottom = -60; c.right = c.top = 60; c.updateProjectionMatrix(); }
@@ -452,7 +472,7 @@ function gfxPostRender() {
   }
   // Mindre glød der det er veldig lyst overalt (ørkenen) eller mørkt og stemningsfullt (natt)
   const m = typeof currentMap !== 'undefined' ? currentMap : '';
-  gfxBloom.threshold = m === 'desert' || m === 'lobby' || m === 'room' ? 0.95 : 0.86;
+  gfxBloom.threshold = m === 'desert' || m === 'west' || m === 'lobby' || m === 'room' ? 0.96 : 0.86;   // lys sand skal ikke gløde
   gfxBloom.strength = m === 'space' || m === 'farm' || m === 'sea' ? 0.8 : 0.45;
   gfxComposer.render();
   return true;

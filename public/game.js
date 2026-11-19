@@ -2104,6 +2104,7 @@ socket.on('boom', d => {
   removeRocket(d.id);                                 // [NY] rakett
   if (d.space && typeof spaceBoomFx === 'function') { if (typeof removeTorp === 'function') removeTorp(d.id); spaceBoomFx(d.p, d.big); return; }   // [NY] smell i rommet
   explode(d.p, d.big, d.holy);
+  if (!d.holy && typeof blastFx === 'function') blastFx(d.p, d.big ? 1.35 : 1);   // [NY] kulere smell (blastfx.js)
   if (d.holy && typeof holyBoomFx === 'function') holyBoomFx(d.p);   // [NY] hvitt lys og mye fyll
   if (foamOn && d.p[1] < 3) cutHole(d.p[0], d.p[2]);   // [NY] granaten blåser bort skummet
 });
@@ -2321,6 +2322,7 @@ function renderFrame() {
   if (typeof gfxSunFollow === 'function') gfxSunFollow();   // [NY] Grafikk Høy: skyggene følger spilleren (gfx.js)
   if (typeof gfxSkyUpdate === 'function') gfxSkyUpdate();   // [NY] Grafikk Høy: himmel med sol (gfx.js)
   if (typeof finishFrame === 'function') finishFrame();   // [NY] dødsskjerm, skadetall, fottrinn (finish.js)
+  if (typeof updateBlastFx === 'function') updateBlastFx();   // [NY] granat-smell (blastfx.js)
   if (!(typeof gfxPostRender === 'function' && gfxPostRender())) renderer.render(scene, camera);   // [NY] Høy: glød + farger (gfx.js)
   renderer.clearDepth();
   camera.layers.set(2);

@@ -113,9 +113,8 @@ function updateDesert(dt) {
   }
   desertWasOn = true;
   const px = camera.position.x, pz = camera.position.z;
-  sun.position.set(px + 40, 70, pz + 25);
-  sun.target.position.set(px, 0, pz);
-  sun.target.updateMatrixWorld();
+  if (typeof gfxPlaceSun === 'function') gfxPlaceSun(px, pz, 40, 70, 25);   // [FIKS] skyggene står stille når du går (gfx.js)
+  else { sun.position.set(px + 40, 70, pz + 25); sun.target.position.set(px, 0, pz); sun.target.updateMatrixWorld(); }
   const p = dustGeo.attributes.position.array;
   for (let i = 0; i < DUST_N; i++) {
     let x = p[i * 3] + dt * 3.2, y = p[i * 3 + 1] + Math.sin((x + i) * 0.3) * dt * 0.3, z = p[i * 3 + 2] + dt * 1.1;
