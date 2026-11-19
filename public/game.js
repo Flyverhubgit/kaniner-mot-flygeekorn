@@ -989,8 +989,54 @@ const GRENADES_MAX = 3, NADE_FUSE = 2.0, NADE_SPEED = 17, NADE_GRAVITY = 20, NAD
 let grenades = GRENADES_MAX, nadeQueued = false, nadeCooldown = 0, nadeSeq = 0, shake = 0;
 const nades = [];   // { id, mine, mesh, x, y, z, vx, vy, vz, t }
 
-// Blokkete ananas-granat: gul kropp med brune ruter, grønn topp og sikringsring
+// [NY] MULTE-GRANAT: true = multe, false = gammel ananas
+const NADE_CLOUDBERRY = true;
+let multeGeo = null, multeMats = null;
 function buildNadeMesh() {
+  return NADE_CLOUDBERRY ? buildCloudberryNade() : buildPineappleNade();
+}
+
+// Multe: rund klase av små oransje-gule kuler, grønne begerblad under, stilk og sikringsring
+function buildCloudberryNade() {
+  if (!multeGeo) {
+    multeGeo = { ball: new THREE.SphereGeometry(0.034, 8, 6), core: new THREE.SphereGeometry(0.075, 10, 8),
+                 leaf: new THREE.BoxGeometry(0.09, 0.012, 0.045), stem: new THREE.CylinderGeometry(0.01, 0.012, 0.07, 6),
+                 ring: new THREE.TorusGeometry(0.03, 0.007, 6, 12) };
+    multeMats = { a: new THREE.MeshStandardMaterial({ color: 0xf2a33a, roughness: 0.35 }),
+                  b: new THREE.MeshStandardMaterial({ color: 0xe8862a, roughness: 0.35 }),
+                  c: new THREE.MeshStandardMaterial({ color: 0xf7c55a, roughness: 0.35 }),
+                  core: new THREE.MeshStandardMaterial({ color: 0xd9782a }),
+                  green: new THREE.MeshStandardMaterial({ color: 0x4f8a2e }),
+                  stem: new THREE.MeshStandardMaterial({ color: 0x6b7a2a }),
+                  metal: new THREE.MeshStandardMaterial({ color: 0x9a9a90, metalness: 0.6, roughness: 0.4 }) };
+  }
+  const G = multeGeo, M = multeMats, g = new THREE.Group();
+  const mesh = (geo, mat, x, y, z) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.castShadow = true; g.add(m); return m; };
+  mesh(G.core, M.core, 0, 0.01, 0);                                   // kjerne
+  // Små kuler i ringer rundt kjernen (en multe er en klump av små "perler")
+  const rings = [[-0.035, 6, 0.055], [0.01, 8, 0.075], [0.055, 7, 0.06], [0.09, 4, 0.03]];
+  const cols = [M.a, M.b, M.c];
+  let k = 0;
+  for (const [y, n, r] of rings) {
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2 + y * 9;
+      mesh(G.ball, cols[k++ % 3], Math.cos(a) * r, y, Math.sin(a) * r);
+    }
+  }
+  mesh(G.ball, M.c, 0, 0.11, 0);                                       // toppen
+  // Grønne begerblad under bæret
+  for (let i = 0; i < 5; i++) {
+    const a = (i / 5) * Math.PI * 2, l = mesh(G.leaf, M.green, Math.cos(a) * 0.06, -0.065, Math.sin(a) * 0.06);
+    l.rotation.y = -a; l.rotation.z = 0.35;
+  }
+  mesh(G.stem, M.stem, 0, -0.1, 0);                                    // stilk
+  const ring = mesh(G.ring, M.metal, 0.085, 0.07, 0);                 // sikringsring (det er tross alt en granat)
+  ring.rotation.y = Math.PI / 2;
+  return g;
+}
+
+// Blokkete ananas-granat: gul kropp med brune ruter, grønn topp og sikringsring (brukes når NADE_CLOUDBERRY = false)
+function buildPineappleNade() {
   const g = new THREE.Group();
   const yellow = new THREE.MeshStandardMaterial({ color: 0xd9a62e });
   const brown = new THREE.MeshStandardMaterial({ color: 0x8a5a14 });
