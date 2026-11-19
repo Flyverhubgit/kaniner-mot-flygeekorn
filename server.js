@@ -1206,6 +1206,8 @@ io.on('connection', socket => {
     if (Object.values(players).filter(o => !o.isBot).length === 0 && mapName !== 'lobby' && !process.env.START_MAP) startMap('lobby');   // [NY] tom server: begynn i loungen
     const name = String(data.name || '').replace(/[<>]/g, '').trim().slice(0, 16) || 'Spiller';
     const sp = spawnFor(team);
+    // [NY] Flammefrukten følger navnet: kommer eieren tilbake (ny fane / mistet nett), får hen frukten igjen resten av runden
+    if (FRUIT_KEEP_BY_NAME && fruit.taken && fruit.holder && !players[fruit.holder] && fruit.name === name) { fruit.holder = socket.id; io.emit('fruit', fruit); }
     if (mapName === 'pirate') { socket.emit('ships', shipPacket()); socket.emit('fruit', fruit); }   // [NY] skipene først, så du lander på dekket
     const p = players[socket.id] = {
       id: socket.id, name, team,
@@ -2734,6 +2736,7 @@ const FRUIT_POS = { x: -0.5, y: 12.5, z: -0.5 };
 const FRUIT_W = { fire: { dmg: 22, head: 40, ms: 260, reach: 120 }, flame: { dmg: 7, ms: 90, reach: 12 } };
 const FRUIT_BALL = { cd: 4000, speed: 30, dmg: 170, r: 7, ship: 220, blocks: 3 };
 let fruit = { taken: false, holder: null, name: '' };
+const FRUIT_KEEP_BY_NAME = true;   // [NY] false = gammel oppførsel (frukten er borte hvis eieren kobler fra)
 function fruitReset() { fruit = { taken: false, holder: null, name: '' }; io.emit('fruit', fruit); }
 setInterval(() => {                                   // havet: den som har spist frukten, synker og mister liv
   if (mapName !== 'pirate' || !fruit.holder || intermission) return;
