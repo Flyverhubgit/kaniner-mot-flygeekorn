@@ -18,7 +18,15 @@ const DM = require('./public/desertmap.js');   // [NY] Ørkenkrigen (stort slagf
 
 const app = express();
 app.use(require('compression')());                // [NY] pakker filene (ca. 1 MB -> 250 KB) – raskere lasting på mobil
-app.use(express.static(path.join(__dirname, 'public')));
+// [NY] Alltid nyeste versjon etter en oppdatering (ingen Ctrl+F5): nettleseren spør serveren hver gang om fila er endret.
+// Uendret fil = kort "304 ikke endret"-svar (rask). Bare biblioteker (vendor/) endres sjelden og lagres i 7 dager.
+const NO_STALE_FILES = true;
+app.use(express.static(path.join(__dirname, 'public'), NO_STALE_FILES ? {
+  setHeaders: (res, file) => {
+    if (/[\\/]vendor[\\/]/.test(file)) res.setHeader('Cache-Control', 'public, max-age=604800');
+    else res.setHeader('Cache-Control', 'no-cache');
+  }
+} : {}));
 const server = http.createServer(app);
 const io = new Server(server);
 const PORT = process.env.PORT || 3000;

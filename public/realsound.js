@@ -13,7 +13,9 @@ const RS_VERB = true;                                  // ekko ute / romklang in
 const RS_SKIP = { space: 1, sea: 1, medieval: 1 };      // her passer de gamle lydene bedre (laser, under vann, bue)
 const RS_NAMES = ['ak1', 'ak2', 'c71', 'c72', 'minimi1', 'minimi2', 'minimi3', 'mg421', 'mg422', 'mg423',
   'sniper1', 'sniper2', 'big1', 'big2', 'pistol1', 'pistol2', 'ak_far1', 'ak_far2',
-  'boom1', 'boom2', 'boom_big', 'boom_far', 'mag_out', 'mag_in', 'bolt', 'dry'];
+  'boom1', 'boom2', 'boom_big', 'boom_far', 'mag_out', 'mag_in', 'bolt', 'dry'].concat(
+  // [NY] fottrinn (Kenney "Impact Sounds", CC0): sand, tre, gress, stein, teppe – 5 av hver
+  ['sand', 'wood', 'grass', 'stone', 'carpet'].flatMap(k => [1, 2, 3, 4, 5].map(i => 'step_' + k + i)));
 const RS_BANK = {};                                    // 'ak' -> [buffer, buffer], 'boom' -> [...]
 let rsMuffle = null;                                    // [NY] dempes når du har lite liv (polish.js)
 let rsStarted = false, rsOut = null, rsVerb = null, rsVerbSend = null, rsVerbKind = '';
@@ -170,5 +172,29 @@ if (typeof startReload === 'function') {
     setTimeout(() => { if (weapon === w && reloading > 0) rsPlay(gun ? 'mag_out' : 'mag_in', 0.5); }, T * 0.15);
     if (gun) setTimeout(() => { if (weapon === w && reloading > 0) rsPlay('mag_in', 0.55); }, T * 0.55);
     setTimeout(() => { if (weapon === w) rsPlay('bolt', 0.45, gun ? 1.15 : 0.9); }, T * 0.8);
+  };
+}
+
+// ---------- [NY] Ekte fottrinn: underlaget avhenger av kartet ----------
+// Ørken/vesten = sand (knirk), piratskipet = tredekk, borger/gård = gress, templer/rommet = stein, loungen/barnerommet = teppe.
+const RS_STEPS = true;
+const RS_SURFACE = { desert: 'sand', west: 'sand', pirate: 'wood', castle: 'grass', medieval: 'grass', farm: 'grass', temple: 'stone', dragon: 'stone', space: 'stone', lobby: 'carpet', room: 'carpet' };
+if (RS_STEPS && typeof finSteps === 'function') {
+  const finStepsOld = finSteps;
+  finSteps = function (dt) {
+    const surf = typeof currentMap !== 'undefined' ? RS_SURFACE[currentMap] : null;
+    const bank = surf && RS_BANK['step_' + surf];
+    if (!REAL_SOUND || !bank || !bank.length || !audioCtx) return finStepsOld(dt);
+    if (!FIN_SOUND || !joined || !alive) return;
+    const sp = Math.hypot(player.x - finLastX, player.z - finLastZ) / Math.max(dt, 0.001);   // samme rytme som før
+    finLastX = player.x; finLastZ = player.z;
+    if (!player.onGround || sp < 1.2 || sp > 14 || (typeof dvBusy === 'function' && dvBusy()) || (typeof pirSwimming !== 'undefined' && pirSwimming)) { finStepT = Math.min(finStepT, 0.1); return; }
+    finStepT -= dt * (sp / 5.5);
+    if (finStepT > 0) return;
+    finStepT = 0.36;
+    const keep = rsAt; rsAt = null;                    // egne fottrinn: ikke 3D
+    const was = RS_SKIP[currentMap]; RS_SKIP[currentMap] = 0;   // fottrinn også på kart med gamle våpenlyder
+    rsPlay('step_' + surf, crouching ? 0.12 : 0.3, surf === 'sand' ? 0.85 : 1);
+    RS_SKIP[currentMap] = was; rsAt = keep;
   };
 }

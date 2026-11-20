@@ -8,3 +8,6 @@ All sounds in this folder are CC0 (public domain), free to use without credit. L
   Files were cut into single shots, normalised and converted to mp3.
 - Explosions (boom1, boom2, boom_big, boom_far): made for this game from a Mosin Nagant shot
   (same library, pitched down) mixed with "CrunchBlast01" from Kenney Sci-Fi Sounds (kenney.nl, CC0 1.0).
+- Footsteps (step_sand/wood/grass/stone/carpet): Kenney "Impact Sounds" (kenney.nl, CC0 1.0), via
+  github.com/Boyquotes/kenney-impact-sounds-for-godot. "Sand" uses Kenney's snow steps.
+- Background sounds (wind, waves, birds, gulls, crickets) and the app icon are made for this game (icon from the game's own figures).
