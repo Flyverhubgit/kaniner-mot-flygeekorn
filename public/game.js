@@ -1394,6 +1394,7 @@ function explode(p, big, silent) {   // [NY] silent: ingen lyd (den hellige fers
   }
   const dist = Math.hypot(p[0] - player.x, p[1] - (player.feetY + 1), p[2] - player.z);
   shake = Math.max(shake, 1.2 - dist / 15);
+  if (!silent && typeof rsSetPos === 'function') rsSetPos(p);   // [NY] ekte lyd: smellet kommer fra riktig sted
   if (!silent) playBoom(Math.max(0.05, 0.6 - dist * 0.012));
 }
 
@@ -2229,6 +2230,7 @@ socket.on('shot', d => {
     return;
   }
   addTracer(from, new THREE.Vector3(d.to[0], d.to[1], d.to[2]));
+  if (typeof rsSetPos === 'function') rsSetPos(from);   // [NY] ekte lyd: skuddet kommer fra riktig side (realsound.js)
   if (typeof playDesertShot === 'function' && playDesertShot(d.w, Math.max(0.08, 1 - dist * 0.008))) return;   // [NY] ørken-våpen høres på lang avstand
   if (d.w === 'sniper') playShot(Math.max(0.06, 0.5 - dist * 0.006), 650);   // [NY] snikskytter smeller høyere
   else playShot(Math.max(0.03, 0.3 - dist * 0.006));
