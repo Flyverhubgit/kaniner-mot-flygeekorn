@@ -1791,7 +1791,9 @@ function shoot() {
   }
   const end = o.clone().addScaledVector(d, bestT);
 
-  if (dvHitV) {
+  if (dvHitV && dvHitV.friend) {                   // [FIKS] eget kjøretøy: kula stopper (gnister), ingen skade
+    if (typeof addImpact === 'function') addImpact(end, d.clone().negate());
+  } else if (dvHitV) {
     socket.emit('dvHit', { id: dvHitV.id, w: weapon.id });
     hitmarkTime = 0.06;
   } else if (dragonHit) {

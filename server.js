@@ -2939,7 +2939,32 @@ function losClear(a, b) {                    // fri sikt mellom to punkter?
   const dx = b.x - a.x, dy = b.y - a.y, dz = b.z - a.z, d = Math.hypot(dx, dy, dz), n = Math.ceil(d / (mapName === 'desert' ? 0.8 : 0.4));   // [NY] ørkenen: grovere sjekk (mange roboter, lange avstander)
   const pir = mapName === 'pirate';
   for (let i = 1; i < n; i++) { const k = i / n; if (bSolid(a.x + dx * k, a.y + dy * k, a.z + dz * k) || (pir && pirShipSolid(a.x + dx * k, a.y + dy * k, a.z + dz * k))) return false; }   // [NY] skipssidene beskytter
+  if (mapName === 'desert' && DV_BOT_BLOCK && dvLineBlocked(a, b)) return false;   // [FIKS] stridsvogner og jeeper gir dekning
   return true;
+}
+// [FIKS] Robotene skjøt gjennom stridsvogner/jeeper. Nå gir kjøretøyene dekning. false = som før.
+const DV_BOT_BLOCK = true;
+const DV_BOX = { tank: [1.6, 2.9, 2.4], jeep: [1.0, 2.0, 2.0] };   // halv bredde, halv lengde, høyde
+function dvLineBlocked(a, b) {
+  if (typeof dvList === 'undefined') return false;
+  for (const v of dvList) {
+    const bx = DV_BOX[v.kind];
+    if (!v.alive || !bx) continue;
+    const c = Math.cos(v.yaw), sn = Math.sin(v.yaw), vy = v.y || 0;
+    const loc = p => { const ox = p.x - v.x, oz = p.z - v.z; return [ox * c - oz * sn, p.y - vy, ox * sn + oz * c]; };
+    const A = loc(a), B = loc(b), lo = [-bx[0], 0, -bx[1]], hi = [bx[0], bx[2], bx[1]];
+    const inside = P => P[0] > lo[0] && P[0] < hi[0] && P[1] > lo[1] && P[1] < hi[1] && P[2] > lo[2] && P[2] < hi[2];
+    if (inside(A) || inside(B)) continue;            // skytteren/målet sitter i dette kjøretøyet
+    let t0 = 0, t1 = 1, hit = true;
+    for (let k = 0; k < 3 && hit; k++) {
+      const d = B[k] - A[k];
+      if (Math.abs(d) < 1e-9) { if (A[k] < lo[k] || A[k] > hi[k]) hit = false; continue; }
+      let ta = (lo[k] - A[k]) / d, tb = (hi[k] - A[k]) / d; if (ta > tb) { const t = ta; ta = tb; tb = t; }
+      t0 = Math.max(t0, ta); t1 = Math.min(t1, tb); if (t0 > t1) hit = false;
+    }
+    if (hit) return true;
+  }
+  return false;
 }
 function freeSpot(x, z) {                    // kan en robot stå her på bakken?
   const y = groundBelow(x, 6, z);

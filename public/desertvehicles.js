@@ -298,16 +298,18 @@ function dvInsideBox(v, p, pad) {
   return Math.abs(lx) < spec.hw + pad && Math.abs(lz) < spec.hl + pad && p.y > v.y && p.y < v.y + (spec.h || (v.kind === 'tank' ? 2.4 : 2.0)) + pad;
 }
 // Treffer kula et fiendtlig kjøretøy? (kalles fra shoot())
+// [FIKS] Kuler gikk gjennom egne stridsvogner/jeeper/fly (og kunne treffe fiender bak). false = gammel oppførsel.
+const DV_FRIEND_BLOCKS = true;
 function dvRayTest(o, d, maxT) {
   if (!desertOn()) return null;
   let best = null;
   dvInfo.forEach(v => {
-    if (!v.alive || v.team === myTeam || v.id === myDv) return;
+    if (!v.alive || v.id === myDv || (v.team === myTeam && !DV_FRIEND_BLOCKS)) return;   // [FIKS] egne kjøretøy stopper også kulene
     const spec = DV_SPEC[v.kind], c = Math.cos(v.yaw), s = Math.sin(v.yaw);
     const ox = o.x - v.x, oz = o.z - v.z;               // strålen inn i kjøretøyets egne akser
     const lo = new THREE.Vector3(ox * c - oz * s, o.y - v.y, ox * s + oz * c), ld = new THREE.Vector3(d.x * c - d.z * s, d.y, d.x * s + d.z * c);
     const t = rayBox(lo, ld, -spec.hw, 0, -spec.hl, spec.hw, spec.h || (v.kind === 'tank' ? 2.4 : 2.0), spec.hl);
-    if (t !== null && t < maxT && (!best || t < best.t)) best = { t, id: v.id };
+    if (t !== null && t < maxT && (!best || t < best.t)) best = { t, id: v.id, friend: v.team === myTeam };
   });
   return best;
 }
