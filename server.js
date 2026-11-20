@@ -1227,6 +1227,7 @@ io.on('connection', socket => {
       timeLeft: mapName === 'lobby' ? 0 : Math.max(0, Math.ceil((roundEndsAt - Date.now()) / 1000)), intermission,
       lastResult                                       // [NY] forrige runde (skjermen i loungen)
     });
+    socket.emit('weather', { m: weatherNow });       // [NY] vær og tid på døgnet
     socket.emit('holy', holyState());                 // [NY] hvor er ferskenen?
     socket.emit('fleet', fleetState());               // [NY] moderskipene
     if (farmActive()) {                               // [NY] kyllingfarmen: bølge, tønner, gullegg
@@ -2110,6 +2111,17 @@ function questDied(t) {
 }
 function questResetAll() { Object.values(players).forEach(p => { p.questDmg = 0; p.questDone = false; }); }
 
+// [NY] VÆR OG TID PÅ DØGNET: ett "humør" per runde, likt for alle. Bare på kart under ute.
+// day = som før, sunset = solnedgang, storm = sandstorm/tåke, night = natt med lommelykter. WEATHER=night for testing.
+const WEATHER_ON = true;
+const WEATHER_MAPS = { desert: ['day', 'day', 'sunset', 'sunset', 'storm', 'night', 'night'], west: ['day', 'day', 'sunset', 'sunset', 'storm', 'night'],
+  pirate: ['day', 'day', 'sunset', 'sunset', 'night'], castle: ['day', 'day', 'sunset', 'night'], temple: ['day', 'day', 'sunset', 'night'] };
+let weatherNow = process.env.WEATHER || 'day';
+function pickWeather(m) {
+  if (!WEATHER_ON || !WEATHER_MAPS[m]) return 'day';
+  if (process.env.WEATHER) return process.env.WEATHER;
+  const l = WEATHER_MAPS[m]; return l[Math.floor(Math.random() * l.length)];
+}
 function startMap(name) {
   questResetAll();                                     // [NY] ny bane: tellingen starter på 0
   score = { bunny: 0, squirrel: 0 };
@@ -2124,6 +2136,7 @@ function startMap(name) {
   io.emit('fleet', fleetState());
   io.emit('holy', holyState());
   io.emit('map', { name: mapName, lastResult });
+  weatherNow = pickWeather(mapName); io.emit('weather', { m: weatherNow });   // [NY] vær og tid på døgnet (weather.js)
   balanceBots();                                                   // [NY] roboter inn/ut med en gang
   Object.values(players).forEach(p => { leaveVehicle(p); p.kills = 0; p.deaths = 0; p.streak = 0; respawn(p); });
   roundEndsAt = mapName === 'lobby' ? Infinity : Date.now() + (hordeMap() ? FARM_SECONDS : mapName === 'dragon' ? DRAGON_SECONDS : mapName === 'desert' ? DESERT_SECONDS : ROUND_SECONDS) * 1000;
