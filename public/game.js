@@ -1878,7 +1878,7 @@ function updateWeapon(dt) {
   }
   // [NY] Kikkertsikte: zoom inn, skjul våpenet, vis sikte-ringen
   if (scoped && (!canScope() || !alive || reloading > 0)) scoped = false;
-  const fovTarget = scoped ? (weapon === sniperW ? 22 : bazScopeOk() ? BAZ_ZOOM_FOV : C7_ZOOM_FOV) : 75;   // [NY] C7: 3x zoom
+  const fovTarget = scoped ? (weapon === sniperW ? 22 : bazScopeOk() ? BAZ_ZOOM_FOV : C7_ZOOM_FOV) : (typeof SET_FOV !== 'undefined' ? SET_FOV : 75);   // [NY] synsfelt fra innstillinger (settings.js)   // [NY] C7: 3x zoom
   if (Math.abs(camera.fov - fovTarget) > 0.05) {
     camera.fov += (fovTarget - camera.fov) * Math.min(1, dt * 18);
     camera.updateProjectionMatrix();

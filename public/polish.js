@@ -98,6 +98,7 @@ kcEl.style.cssText = 'position:fixed;left:50%;top:14%;transform:translateX(-50%)
 document.body.appendChild(kcEl);
 if (KILL_CAM) socket.on('kill', d => {
   if (d.victim !== myId || !d.killer || d.killer === myId || !others[d.killer]) return;
+  if (typeof setKillcamOn === 'function' && !setKillcamOn()) return;   // av i innstillingene
   if (typeof currentMap !== 'undefined' && currentMap === 'lobby') return;
   kc = { id: d.killer, name: d.killerName, t: 0, me: { x: player.x, y: player.feetY + 1.0, z: player.z }, fov: camera.fov };
 });
