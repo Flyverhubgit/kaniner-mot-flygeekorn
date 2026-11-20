@@ -148,3 +148,49 @@ if (typeof finishFrame === 'function') {
     camera.updateProjectionMatrix();
   };
 }
+
+// ===================================================================
+//  5) KROPPER SOM FALLER 💥 (lett "ragdoll", billig også på mobil)
+//  Faller BORT fra skuddet (bakover, forover eller til siden), først sakte så fortere (tyngdekraft),
+//  spretter litt i bakken og glir litt bakover fra treffet. ANGRE: RAGDOLL_LITE = false (ligger på ryggen som før).
+// ===================================================================
+const RAGDOLL_LITE = true;
+if (RAGDOLL_LITE) socket.on('kill', d => {
+  const r = others[d.victim];
+  if (!r) return;
+  const kk = d.killer && others[d.killer] ? others[d.killer].cur : (d.killer === myId ? { x: player.x, z: player.z } : null);
+  // retning bort fra den som skjøt (i verden), ellers: rett bakover
+  let wx = 0, wz = 0;
+  if (kk) { wx = r.cur.x - kk.x; wz = r.cur.z - kk.z; const l = Math.hypot(wx, wz) || 1; wx /= l; wz /= l; }
+  else { wx = Math.sin(r.cur.yaw); wz = Math.cos(r.cur.yaw); }
+  // over i modellens egne akser (modellen ser mot +z, root er snudd yaw+π)
+  const ry = r.root.rotation.y, lx = wx * Math.cos(ry) - wz * Math.sin(ry), lz = wx * Math.sin(ry) + wz * Math.cos(ry);
+  r.rag = { a: 0, w: 0.6, lx, lz, wx, wz, slide: 0, bounced: 0 };
+});
+if (RAGDOLL_LITE && typeof updateOthers === 'function') {
+  const updateOthersOld = updateOthers;
+  updateOthers = function (dt) {
+    updateOthersOld(dt);
+    for (const id in others) {
+      const r = others[id];
+      if (r.alive) { if (r.rag) { r.rag = null; r.body.rotation.z = 0; } continue; }
+      const g = r.rag;
+      if (!g) continue;
+      // fall som en planke: vinkelakselerasjon ~ sin(vinkel) (tyngdekraft), stopp på 90° med et lite sprett
+      if (g.a < 1.5 || g.w < 0) {
+        g.w += (2.2 + 9 * Math.sin(Math.max(0.05, g.a))) * dt;
+        g.a += g.w * dt;
+        if (g.a >= 1.5) { g.a = 1.5; if (g.bounced < 2) { g.w = -g.w * 0.22; g.bounced++; } else g.w = 0; }
+        if (g.a < 1.5 && g.w < 0 && g.a < 1.3) g.w = Math.abs(g.w) * 0.5;
+      }
+      // tipp i retning bort fra skuddet: z-akse fremover/bakover -> rotation.x, x-akse -> rotation.z
+      r.body.rotation.x = g.a * g.lz;
+      r.body.rotation.z = -g.a * g.lx;
+      r.body.position.y = 0.15;
+      // glir litt bakover fra treffet de første 0,35 s
+      if (g.slide < 0.55) { const s = Math.min(0.55 - g.slide, dt * 1.8); g.slide += s; }
+      r.root.position.x = r.cur.x + g.wx * g.slide;
+      r.root.position.z = r.cur.z + g.wz * g.slide;
+    }
+  };
+}
