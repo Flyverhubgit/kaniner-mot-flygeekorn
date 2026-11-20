@@ -127,7 +127,7 @@ if (AIR_COCKPIT && typeof dvFly === 'function') {
 
 // V = bytt mellom cockpit og utsikt utenfra (bare når du flyr)
 addEventListener('keydown', e => {
-  if (e.code !== 'KeyV' || !AIR_COCKPIT || typeof dvMine !== 'function') return;
+  if (e.code !== 'KeyV' || e.repeat || !AIR_COCKPIT || typeof dvMine !== 'function') return;   // [FIKS] holdt inne V byttet frem og tilbake mange ganger
   const v = dvMine();
   if (!v || myDvSeat !== 'drive' || (v.kind !== 'jet' && v.kind !== 'heli')) return;
   airInside = !airInside;
