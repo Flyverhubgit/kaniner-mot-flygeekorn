@@ -11,6 +11,7 @@ const heliW = { id: 'heligun', mag: 250, magSize: 250, reserve: Infinity, fireDe
 // [NY] Jetflyet var for raskt for kartet: lavere toppfart og mer luft å snu i. false = gammel oppførsel
 const JET_SLOW = true;                               // toppfart 50 m/s (180 km/t) i stedet for 72 m/s (260 km/t)
 const AIR_ROOM = true;                               // jetflyet snur først 450 m fra midten (var 330 m)
+const HELI_LEAN = true;                              // [NY] helikopteret lener seg i svingene. false = som før
 const AIR_SPEC = {
   jet: { max: JET_SLOW ? 50 : 72, lift: 34, turn: 1.1, pitchRate: 1.2, camBack: 16, camUp: 4.5 },
   heli: { fwd: 28, side: 16, up: 10, turn: 1.6, camBack: 11, camUp: 4 }
@@ -133,7 +134,9 @@ function dvFly(dt, v) {
     dvl.x = nx; dvl.y = Math.max(0, ny); dvl.z = nz;
     if (dvEngine) dvEngine.set(dvl.spd / S.max);
   } else {
+    const yawWas = dvl.yaw;
     dvl.yaw = turnTo(dvl.yaw, player.yaw, S.turn);
+    const yawRate = Math.atan2(Math.sin(dvl.yaw - yawWas), Math.cos(dvl.yaw - yawWas)) / Math.max(dt, 0.001);   // [NY] hvor fort den svinger
     const up = (keys['Space'] ? 1 : 0) - (keys['ShiftLeft'] || keys['ShiftRight'] || keys['KeyC'] ? 1 : 0) + (jumpQueued ? 1 : 0);   // Shift (eller C) = ned
     jumpQueued = false;
     const fx = -Math.sin(dvl.yaw), fz = -Math.cos(dvl.yaw), rx = Math.cos(dvl.yaw), rz = -Math.sin(dvl.yaw);
@@ -152,7 +155,9 @@ function dvFly(dt, v) {
     dvl.x = nx; dvl.y = ny; dvl.z = nz;
     const lfx = dvl.vx * fx + dvl.vz * fz, lsd = dvl.vx * rx + dvl.vz * rz;
     dvl.tp += (-lfx * 0.012 - dvl.tp) * Math.min(1, dt * 4);                         // nesa ned når den flyr fremover
-    dvl.ty += (-lsd * 0.02 - dvl.ty) * Math.min(1, dt * 4);                          // krenger sidelengs
+    // [NY] lener seg inn i svingen, mer jo fortere den flyr fremover (nesten ikke når den står stille i lufta)
+    const bank = HELI_LEAN ? Math.max(-0.55, Math.min(0.55, -yawRate * (0.06 + 0.03 * Math.max(0, lfx)))) : 0;
+    dvl.ty += (-lsd * 0.02 + bank - dvl.ty) * Math.min(1, dt * 3);                     // krenger sidelengs + i svinger
     dvl.spd = spd;
     if (dvEngine) dvEngine.set(Math.min(1, spd / S.fwd + Math.abs(dvl.vy) / 20));
   }
