@@ -46,7 +46,7 @@ function cpB(g, w, h, d, x, y, z, m) { const b = new THREE.Mesh(new THREE.BoxGeo
 function buildCockpit(kind) {
   const g = new THREE.Group(), E = AIR_EYE[kind];
   if (kind === 'jet') {
-    const dz = E.z - 0.95, dy = E.y - 0.36;
+    const dz = E.z - 0.95, dy = E.y - 0.5;      // [NY] litt lavere: ser mer av bakken
     cpB(g, 0.9, 0.24, 0.3, 0, dy, dz, CPM.dash);                              // dashbordet
     cpB(g, 0.24, 0.16, 0.02, -0.2, dy + 0.02, dz + 0.16, CPM.screen);          // skjermer
     cpB(g, 0.24, 0.16, 0.02, 0.2, dy + 0.02, dz + 0.16, CPM.screen2);
@@ -142,7 +142,67 @@ if (AIR_COCKPIT && typeof dvFly === 'function') {
 addEventListener('keydown', e => {
   if (e.code !== 'KeyV' || e.repeat || !AIR_COCKPIT || typeof dvMine !== 'function') return;   // [FIKS] holdt inne V byttet frem og tilbake mange ganger
   const v = dvMine();
-  if (!v || myDvSeat !== 'drive' || (v.kind !== 'jet' && v.kind !== 'heli')) return;
+  if (!v || ((v.kind === 'jet' || v.kind === 'heli') && myDvSeat !== 'drive')) return;   // [NY] også stridsvogn, jeep og skytter
   airInside = !airInside;
   if (typeof bannerMsg !== 'undefined') { bannerMsg = airInside ? 'Cockpit-visning' : 'Utsikt utenfra'; bannerTime = 1; }
 });
+
+// ===================================================================
+//  [NY] INNE-VISNING I STRIDSVOGN OG JEEP (+ skytteren på stridsvogna). V = utsikt utenfra, som i flyene.
+//  Stridsvogn, fører: hodet opp av luka på tårnet – ser dit tårnet/kanonen peker (følger tårnet, ikke musa direkte).
+//  Stridsvogn, skytter: bak maskingeværet på taket. Jeep: førersetet (panser, frontrute-ramme og ratt foran deg).
+//  ANGRE: GROUND_INSIDE = false.
+// ===================================================================
+const GROUND_INSIDE = true;
+const _gV = new THREE.Vector3(), _gE = new THREE.Euler(0, 0, 0, 'YXZ');
+const gHint = document.createElement('div');
+gHint.style.cssText = 'position:fixed;left:50%;bottom:84px;transform:translateX(-50%);z-index:4;pointer-events:none;display:none;' +
+  'color:#fff;font:600 13px Fredoka, sans-serif;opacity:0.75;text-shadow:0 1px 3px #000';
+gHint.textContent = 'V = utsikt utenfra';
+document.body.appendChild(gHint);
+let gLast = 0, gWheel = null;
+function gWorld(x, y, z, lx, ly, lz, yaw) {               // lokalt punkt -> verden (bare dreiing rundt y)
+  _gV.set(lx, ly, lz).applyEuler(_gE.set(0, yaw, 0));
+  return _gV.set(x + _gV.x, y + _gV.y, z + _gV.z);
+}
+if (GROUND_INSIDE && typeof dvDrive === 'function') {
+  const dvDriveOld = dvDrive;
+  dvDrive = function (dt) {
+    const r = dvDriveOld(dt);
+    const v = r && typeof dvMine === 'function' ? dvMine() : null;
+    if (!v || dvIsAir(v.kind) || !airInside || !alive || scoped) return r;
+    const m = dvMeshes[v.id], c = m ? m.userData.cur : v;
+    gLast = performance.now();
+    if (v.kind === 'tank') {
+      const ty = myDvSeat === 'gun' ? (c.ty !== undefined ? c.ty : v.ty) : dvl.ty;
+      const base = myDvSeat === 'gun' ? c : dvl;
+      const t = gWorld(base.x, base.y, base.z, 0, 1.45, 0.2, base.yaw);       // tårnets midtpunkt
+      const tx = t.x, tyy = t.y, tz = t.z;
+      if (myDvSeat === 'gun') {                                                // bak maskingeværet
+        const p = gWorld(tx, tyy, tz, 0.5, 1.78, 0.5, ty);   // over skjoldet
+        camera.position.set(p.x + Math.sin(player.yaw) * 0.7, p.y, p.z + Math.cos(player.yaw) * 0.7);
+        camera.rotation.set(player.pitch, player.yaw, 0);
+      } else {                                                                 // fører: opp av luka, ser langs kanonen
+        const p = gWorld(tx, tyy, tz, -0.35, 1.25, 0.3, ty);
+        camera.position.copy(p);
+        camera.rotation.set(Math.max(-0.3, player.pitch), ty, 0);
+      }
+    } else {                                                                   // jeep: førersetet
+      const p = gWorld(dvl.x, dvl.y, dvl.z, -0.5, 2.22, 0.2, dvl.yaw);
+      camera.position.copy(p);
+      camera.rotation.set(player.pitch, player.yaw, 0);
+      if (m && !m.userData.wheel) {                                            // ratt (bare på din egen jeep)
+        const w = new THREE.Mesh(new THREE.TorusGeometry(0.13, 0.018, 6, 16), CPM.frame);
+        w.position.set(-0.5, 1.66, -0.3); w.rotation.x = -0.9; m.add(w); m.userData.wheel = w;
+      }
+      if (m && m.userData.wheel) m.userData.wheel.visible = true;
+    }
+    return r;
+  };
+}
+(function gLoop() {
+  const on = gLast > 0 && performance.now() - gLast < 250;
+  gHint.style.display = on ? 'block' : 'none';
+  if (!on) for (const k in (typeof dvMeshes !== 'undefined' ? dvMeshes : {})) { const w = dvMeshes[k].userData.wheel; if (w) w.visible = false; }
+  requestAnimationFrame(gLoop);
+})();
