@@ -15,6 +15,7 @@ const RS_NAMES = ['ak1', 'ak2', 'c71', 'c72', 'minimi1', 'minimi2', 'minimi3', '
   'sniper1', 'sniper2', 'big1', 'big2', 'pistol1', 'pistol2', 'ak_far1', 'ak_far2',
   'boom1', 'boom2', 'boom_big', 'boom_far', 'mag_out', 'mag_in', 'bolt', 'dry'];
 const RS_BANK = {};                                    // 'ak' -> [buffer, buffer], 'boom' -> [...]
+let rsMuffle = null;                                    // [NY] dempes når du har lite liv (polish.js)
 let rsStarted = false, rsOut = null, rsVerb = null, rsVerbSend = null, rsVerbKind = '';
 const rsPhone = window.matchMedia && matchMedia('(pointer: coarse)').matches;
 
@@ -23,11 +24,12 @@ function rsOn() { return REAL_SOUND && audioCtx && typeof currentMap !== 'undefi
 function rsInit() {
   if (rsStarted || !REAL_SOUND || !audioCtx) return;
   rsStarted = true;
-  rsOut = audioCtx.createGain(); rsOut.gain.value = 1; rsOut.connect(audioCtx.destination);
+  rsMuffle = audioCtx.createBiquadFilter(); rsMuffle.type = 'lowpass'; rsMuffle.frequency.value = 20000; rsMuffle.connect(audioCtx.destination);
+  rsOut = audioCtx.createGain(); rsOut.gain.value = 1; rsOut.connect(rsMuffle);
   if (RS_VERB) {
     rsVerb = audioCtx.createConvolver();
     rsVerbSend = audioCtx.createGain(); rsVerbSend.gain.value = 1;
-    rsVerb.connect(rsVerbSend); rsVerbSend.connect(audioCtx.destination);
+    rsVerb.connect(rsVerbSend); rsVerbSend.connect(rsMuffle);
   }
   RS_NAMES.forEach(n => {
     fetch('sounds/' + n + '.mp3').then(r => r.arrayBuffer()).then(a => new Promise((ok, bad) => audioCtx.decodeAudioData(a, ok, bad)))
