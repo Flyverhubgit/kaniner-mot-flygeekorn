@@ -5,6 +5,7 @@
 //  Bygger oppå dvFly (desertair.js): den setter kameraet bak flyet, vi flytter det inn i cockpiten etterpå.
 // ===================================================================
 const AIR_COCKPIT = true;
+const HELI_GLASS = true;                                // [NY] helikopteret: se bakken gjennom en glass-boble (false = gammelt dashbord over nesa)
 let airInside = true;                                   // starter inne i cockpiten
 let airCpLast = 0, airCpMesh = null;
 
@@ -55,16 +56,27 @@ function buildCockpit(kind) {
     cpB(g, 0.012, 0.22, 0.012, -0.15, dy + 0.25, dz - 0.02, CPM.frame); cpB(g, 0.012, 0.22, 0.012, 0.15, dy + 0.25, dz - 0.02, CPM.frame);
     [-1, 1].forEach(s => cpB(g, 0.08, 0.06, 1.2, s * 0.52, E.y - 0.12, E.z - 0.1, CPM.frame));   // kanten på kanopyen
   } else {
-    const dz = E.z - 0.85, dy = E.y - 0.2;     // dashbordet ligger oppå nesa
-    cpB(g, 0.95, 0.16, 0.26, 0, dy, dz, CPM.dash);                            // dashbordet (over nesa)
-    cpB(g, 0.26, 0.13, 0.02, -0.22, dy + 0.02, dz + 0.14, CPM.screen);
-    cpB(g, 0.26, 0.13, 0.02, 0.22, dy + 0.02, dz + 0.14, CPM.screen2);
-    cpB(g, 0.06, 0.06, 0.02, 0, dy + 0.03, dz + 0.14, CPM.dial);
-    cpB(g, 0.05, 0.03, 0.02, 0, dy + 0.09, dz + 0.14, CPM.warn);
-    [-1, 1].forEach(s => {
-      cpB(g, 0.025, 0.6, 0.025, s * 0.62, E.y + 0.05, E.z - 0.9, CPM.frame).rotation.x = -0.3;   // tynne vindusstolper ute i kanten
-      cpB(g, 0.025, 0.025, 1.4, s * 0.6, E.y + 0.36, E.z - 0.2, CPM.frame);                          // takkanten
-    });
+    if (HELI_GLASS) {                                        // [NY] glass-boble: lite dashbord helt nederst, ingen stolper foran
+      const dz = E.z - 0.5, dy = E.y - 0.5;                 // ca. 45° ned = under synsfeltet når du ser rett frem
+      const d = cpB(g, 0.7, 0.08, 0.22, 0, dy, dz, CPM.dash); d.rotation.x = 0.5;
+      const sc = cpB(g, 0.2, 0.1, 0.01, -0.17, dy + 0.06, dz + 0.06, CPM.screen); sc.rotation.x = -0.6;
+      const sc2 = cpB(g, 0.2, 0.1, 0.01, 0.17, dy + 0.06, dz + 0.06, CPM.screen2); sc2.rotation.x = -0.6;
+      [-1, 1].forEach(s => {
+        cpB(g, 0.02, 0.02, 1.3, s * 0.68, E.y - 0.42, E.z - 0.35, CPM.frame);    // nedre karm langs siden
+        cpB(g, 0.02, 0.02, 1.3, s * 0.62, E.y + 0.5, E.z - 0.2, CPM.frame);      // takkanten
+      });
+    } else {
+      const dz = E.z - 0.85, dy = E.y - 0.2;     // dashbordet ligger oppå nesa
+      cpB(g, 0.95, 0.16, 0.26, 0, dy, dz, CPM.dash);                            // dashbordet (over nesa)
+      cpB(g, 0.26, 0.13, 0.02, -0.22, dy + 0.02, dz + 0.14, CPM.screen);
+      cpB(g, 0.26, 0.13, 0.02, 0.22, dy + 0.02, dz + 0.14, CPM.screen2);
+      cpB(g, 0.06, 0.06, 0.02, 0, dy + 0.03, dz + 0.14, CPM.dial);
+      cpB(g, 0.05, 0.03, 0.02, 0, dy + 0.09, dz + 0.14, CPM.warn);
+      [-1, 1].forEach(s => {
+        cpB(g, 0.025, 0.6, 0.025, s * 0.62, E.y + 0.05, E.z - 0.9, CPM.frame).rotation.x = -0.3;   // tynne vindusstolper ute i kanten
+        cpB(g, 0.025, 0.025, 1.4, s * 0.6, E.y + 0.36, E.z - 0.2, CPM.frame);                          // takkanten
+      });
+    }
   }
   g.visible = false;
   return g;
@@ -80,7 +92,8 @@ function airInnerParts(m, kind) {
     const nearEye = Math.abs(p.x) < 0.3 && Math.abs(p.z - E.z) < 0.35 && Math.abs(p.y - E.y) < 0.35;        // hjelm + visir
     const jetBar = kind === 'jet' && P.width < 0.07 && P.depth > 2.5;                                       // ramme-stav midt i kanopyen
     const heliPost = kind === 'heli' && P.width < 0.06 && P.height > 0.6 && Math.abs(p.z + 2.7) < 0.05;     // stolpe midt i frontruta
-    if (nearEye || jetBar || heliPost) list.push(o);
+    const heliNose = kind === 'heli' && HELI_GLASS && p.z < E.z + 0.3 && p.y < E.y + 0.45;            // [NY] nese/kanon foran og under deg
+    if (nearEye || jetBar || heliPost || heliNose) list.push(o);
   });
   return (m.userData.cpHide = list);
 }
