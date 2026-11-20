@@ -84,3 +84,67 @@ function lowBeat(v) {                                    // dunk-dunk (to slag, 
   if (typeof rsMuffle !== 'undefined' && rsMuffle) rsMuffle.frequency.value = lowK > 0.01 ? 20000 - 18200 * Math.min(1, lowK * 1.3) : 20000;
   requestAnimationFrame(lowLoop);
 })();
+
+// ===================================================================
+//  4) KILL CAM 📷 – etter at du dør: se 2,5 sekunder fra den som tok deg (der de står nå), mot der du falt.
+//  Så du lærer hvor de gjemte seg. ANGRE: KILL_CAM = false.
+// ===================================================================
+const KILL_CAM = true;
+const KC_WAIT = 0.6, KC_LEN = 2.5;                       // først faller du (dødskameraet), så killcam
+let kc = null;
+const kcEl = document.createElement('div');
+kcEl.style.cssText = 'position:fixed;left:50%;top:14%;transform:translateX(-50%);z-index:5;pointer-events:none;display:none;' +
+  'font:600 18px Fredoka, sans-serif;color:#fff;background:rgba(14,18,26,0.6);padding:6px 16px;border-radius:12px;border-left:4px solid #e0413a;';
+document.body.appendChild(kcEl);
+if (KILL_CAM) socket.on('kill', d => {
+  if (d.victim !== myId || !d.killer || d.killer === myId || !others[d.killer]) return;
+  if (typeof currentMap !== 'undefined' && currentMap === 'lobby') return;
+  kc = { id: d.killer, name: d.killerName, t: 0, me: { x: player.x, y: player.feetY + 1.0, z: player.z }, fov: camera.fov };
+});
+function kcEnd() {
+  if (!kc) return;
+  kcEl.style.display = 'none';
+  if (kc.on) {                                           // kameraet tilbake til deg
+    camera.fov = kc.fov; camera.updateProjectionMatrix();
+    camera.position.x = player.x; camera.position.z = player.z;
+    camera.rotation.set(player.pitch, player.yaw, 0);
+    if (typeof centerEl !== 'undefined') centerEl.style.visibility = '';
+    if (typeof crosshairEl !== 'undefined') crosshairEl.style.opacity = '';
+    const k = others[kc.id]; if (k && k.tag) k.tag.visible = true;
+  }
+  kc = null;
+}
+const _kcV = new THREE.Vector3();
+if (typeof finishFrame === 'function') {
+  const finishFrameOld = finishFrame;
+  let kcLast = performance.now();
+  finishFrame = function () {
+    finishFrameOld.apply(this, arguments);
+    const now = performance.now(), dt = Math.min(0.1, (now - kcLast) / 1000); kcLast = now;
+    if (!kc) return;
+    const k = others[kc.id];
+    if (alive || !k || (typeof roundMsg !== 'undefined' && roundMsg)) { kcEnd(); return; }
+    kc.t += dt;
+    if (kc.t < KC_WAIT) return;
+    if (kc.t > KC_WAIT + KC_LEN) { kcEnd(); return; }
+    if (!kc.on) {
+      kc.on = true;
+      kcEl.innerHTML = '📷 KILLCAM &nbsp;<span style="color:#ff8a80">' + (kc.name || '') + '</span>';
+      kcEl.style.display = 'block';
+      if (typeof centerEl !== 'undefined') centerEl.style.visibility = 'hidden';   // dødskortet kommer tilbake etterpå
+      if (typeof finDeathFx !== 'undefined') finDeathFx.style.opacity = 0;
+      if (typeof crosshairEl !== 'undefined') crosshairEl.style.opacity = '0';
+      if (k.tag) k.tag.visible = false;                // navneskiltet deres ville dekket bildet
+    }
+    if (typeof finDeathFx !== 'undefined') finDeathFx.style.opacity = 0;
+    // kameraet litt bak og over skulderen til den som skjøt, ser mot der du falt, og zoomer sakte inn
+    const c = k.cur, hx = c.x, hy = c.y + 1.65, hz = c.z;
+    _kcV.set(kc.me.x - hx, 0, kc.me.z - hz).normalize();
+    const p = Math.min(1, (kc.t - KC_WAIT) / KC_LEN), ease = 1 - Math.pow(1 - p, 2);
+    const back = 1.6 - ease * 0.9;
+    camera.position.set(hx - _kcV.x * back + _kcV.z * 0.45, hy + 0.35 - ease * 0.15, hz - _kcV.z * back - _kcV.x * 0.45);
+    camera.lookAt(kc.me.x, kc.me.y, kc.me.z);
+    camera.fov = kc.fov - ease * Math.min(30, kc.fov * 0.4);
+    camera.updateProjectionMatrix();
+  };
+}
