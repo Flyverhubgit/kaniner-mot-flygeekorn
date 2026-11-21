@@ -212,6 +212,10 @@ if (GROUND_INSIDE && typeof dvDrive === 'function') {
         camera.position.copy(p);
         camera.rotation.set(Math.max(-0.3, player.pitch), ty, 0);
       }
+    } else if (myDvSeat === 'gun') {                                           // [NY] jeep: skytteren bak .50 cal
+      const p = gWorld(c.x, c.y, c.z, 0, 2.55, 1.25, c.yaw);                   // midt over våpenfestet
+      camera.position.set(p.x + Math.sin(player.yaw) * 0.75, p.y, p.z + Math.cos(player.yaw) * 0.75);
+      camera.rotation.set(player.pitch, player.yaw, 0);
     } else {                                                                   // jeep: førersetet
       const p = gWorld(dvl.x, dvl.y, dvl.z, -0.5, 2.22, 0.2, dvl.yaw);
       camera.position.copy(p);

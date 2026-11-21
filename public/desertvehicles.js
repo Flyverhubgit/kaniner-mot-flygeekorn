@@ -19,6 +19,16 @@ const DV_KINDS = ['', 'tank', 'jeep', 'jet', 'heli'];
 function dvIsAir(k) { return k === 'jet' || k === 'heli'; }
 const tankMgW = { id: 'tankmg', mag: 200, magSize: 200, reserve: Infinity, fireDelay: 0.08, reloadTime: 3, climb: 0.002 };   // [NY] nr. 2 i stridsvognen
 let myDvSeat = null, dvGunSend = 0;                    // 'drive' eller 'gun'
+// [NY] BYTT SETE i stridsvogn og jeep: 1 = sjåfør, 2 = skytter (bare til et ledig sete). DV_SEATS_C = false: som før
+const DV_SEATS_C = true;
+addEventListener('keydown', e => {
+  if (!DV_SEATS_C || e.repeat || myDv === null || (e.code !== 'Digit1' && e.code !== 'Digit2')) return;
+  const v = dvMine(); if (!v || (v.kind !== 'tank' && v.kind !== 'jeep')) return;
+  const want = e.code === 'Digit1' ? 'drive' : 'gun';
+  if (want === myDvSeat) return;
+  if ((want === 'drive' && v.driver) || (want === 'gun' && v.gunner)) { bannerMsg = 'Setet er opptatt'; bannerTime = 1; return; }
+  socket.emit('dvSeat', { seat: want });
+});
 // [NY] .50 cal (12,7 mm, som en M2): saktere (ca. 460 skudd/min), 100-belte, mer rekyl. Gammelt MG: fireDelay 0.08, 200 skudd.
 const jeepW = { id: 'jeepmg', mag: 100, magSize: 100, reserve: Infinity, fireDelay: 0.13, reloadTime: 4, climb: 0.0045 };
 let dvInfo = [], myDv = null, dvPrevWeapon = null, dvShellReady = 0, dvSendT = 0, dvRamAt = {}, dvDozeSet = new Set(), dvDozeT = 0;
@@ -103,12 +113,12 @@ function dvEnterLocal(v, seat) {
   player.yaw = v.yaw; player.pitch = 0;
   dvPrevWeapon = weapon; scoped = false;
   if (v.kind === 'jeep') { weapon = jeepW; jeepW.mag = jeepW.magSize; }
-  if (myDvSeat === 'gun') { weapon = tankMgW; tankMgW.mag = tankMgW.magSize; player.yaw = v.ty; }
+  if (myDvSeat === 'gun') { const w = v.kind === 'jeep' ? jeepW : tankMgW; weapon = w; w.mag = w.magSize; player.yaw = v.ty; }   // [NY] jeep-skytteren har .50 cal
   if (v.kind === 'jet') { weapon = jetW; jetW.mag = jetW.magSize; }      // [NY] fly: maskinkanon
   if (v.kind === 'heli') { weapon = heliW; heliW.mag = heliW.magSize; }
   if (dvIsAir(v.kind)) { dvl.tp = 0; dvl.ty = 0; dvl.vx = dvl.vy = dvl.vz = 0; }
   if (typeof showWeaponModel === 'function') showWeaponModel();
-  bannerMsg = v.kind === 'jet' ? '&#9992;&#65039; F-16 – W = gass, nesa opp for å lette. Klikk = kanon, G = missil' : v.kind === 'heli' ? '&#128641; HELIKOPTER – Mellomrom = opp, Shift = ned. Klikk = kanon, G = rakett' : myDvSeat === 'gun' ? '&#128737;&#65039; SKYTTER – klikk = maskingevær på taket' : v.kind === 'tank' ? '&#128737;&#65039; STRIDSVOGN – klikk = kanon, høyre knapp = zoom' : '&#128665; JEEP – klikk = maskingevær'; bannerTime = 2;
+  bannerMsg = v.kind === 'jet' ? '&#9992;&#65039; F-16 – W = gass, nesa opp for å lette. Klikk = kanon, G = missil' : v.kind === 'heli' ? '&#128641; HELIKOPTER – Mellomrom = opp, Shift = ned. Klikk = kanon, G = rakett' : myDvSeat === 'gun' ? (v.kind === 'jeep' ? '&#128665; SKYTTER – klikk = .50 cal, 1 = sjåfør' : '&#128737;&#65039; SKYTTER – klikk = maskingevær på taket, 1 = sjåfør') : v.kind === 'tank' ? '&#128737;&#65039; STRIDSVOGN – klikk = kanon, høyre knapp = zoom, 2 = skytter' : '&#128665; JEEP – klikk = .50 cal, 2 = skytter'; bannerTime = 2;
   if (myDvSeat === 'drive') dvEngineStart(v.kind);
 }
 function dvExitLocal() {
@@ -240,6 +250,9 @@ function dvTip(v) {                                     // munningen på stridsv
 function dvShoot() {                                    // kalles først i shoot(). true = ferdig
   if (myDv === null || !desertOn()) return false;
   const v = dvMine();
+  if (v && v.kind === 'jeep' && myDvSeat === 'drive' && v.gunner && DV_SEATS_C) {   // [NY] skytteren har .50 cal – sjåføren kjører
+    fireCooldown = 0.3; bannerMsg = 'Skytteren har maskingeværet (2 = bytt hvis ledig)'; bannerTime = 1.2; return true;
+  }
   if (!v || v.kind !== 'tank' || myDvSeat === 'gun') return false;   // jeepen / skytteren / flyene: vanlig skudd med maskingeværet
   fireCooldown = 0.3;
   if (performance.now() < dvShellReady) return true;
@@ -416,6 +429,10 @@ function updateDesertVehicles(dt) {
     }
     m.userData.tur.rotation.y = c.ty - c.yaw;
     m.userData.piv.rotation.x = c.tp;
+    if (v.kind === 'jeep' && v.gunner && DV_SEATS_C) {  // [NY] jeepens .50 cal følger skytteren
+      const gy = mine && myDvSeat === 'gun' ? player.yaw : v.gy, gp = mine && myDvSeat === 'gun' ? player.pitch : v.gp;
+      m.userData.tur.rotation.y = gy - c.yaw; m.userData.piv.rotation.x = Math.max(-0.35, Math.min(0.7, gp || 0));
+    }
     if (m.userData.mg) {                              // maskingeværet på taket følger skytteren
       const gy = mine && myDvSeat === 'gun' ? player.yaw : v.gy, gp = mine && myDvSeat === 'gun' ? player.pitch : v.gp;
       m.userData.mg.rotation.y = (v.gunner ? gy : c.ty) - c.ty; m.userData.mgp.rotation.x = v.gunner ? Math.max(-0.35, Math.min(0.7, gp)) : 0;
@@ -428,12 +445,12 @@ function updateDesertVehicles(dt) {
   const v = dvMine();
   if (v) {
     const rel = Math.max(0, (dvShellReady - performance.now()) / 1000);
-    if (myDvSeat === 'gun') txt = '&#128737;&#65039; SKYTTER ' + v.hp + '% &nbsp; MG ' + tankMgW.mag + (isTouch ? '' : ' &nbsp; E = gå ut');
+    if (myDvSeat === 'gun') txt = (v.kind === 'jeep' ? '&#128665; SKYTTER ' : '&#128737;&#65039; SKYTTER ') + v.hp + '% &nbsp; ' + (v.kind === 'jeep' ? '.50 ' + jeepW.mag : 'MG ' + tankMgW.mag) + (isTouch ? '' : ' &nbsp; E = gå ut' + (DV_SEATS_C ? ' &nbsp; 1 = sjåfør' : ''));
     else if (dvIsAir(v.kind)) txt = (v.kind === 'jet' ? '&#9992;&#65039; F-16 ' : '&#128641; HELIKOPTER ') + v.hp + '% &nbsp; ' + Math.round(dvl.spd * 3.6) + ' km/t &nbsp; høyde ' + Math.round(dvl.y) + ' m &nbsp; ' +
       (v.kind === 'jet' ? '&#128640; missiler ' : '&#128640; raketter ') + (v.ammo || 0) + ' (G)' + (isTouch ? '' : ' &nbsp; E = gå ut (på bakken)');
     else txt = (v.kind === 'tank' ? '&#128737;&#65039; STRIDSVOGN ' : '&#128665; JEEP ') + v.hp + '% &nbsp; ' +
       (v.kind === 'tank' ? (rel > 0 ? '<span style="color:#ffb000">lader ' + rel.toFixed(1) + '</span>' : '<span style="color:#7dff7d">KANON KLAR</span>') : 'MG ' + jeepW.mag) +
-      (isTouch ? '' : ' &nbsp; E = gå ut');
+      (isTouch ? '' : ' &nbsp; E = gå ut' + (DV_SEATS_C ? ' &nbsp; 2 = skytter' : ''));
     btn = 'GÅ UT';
   } else {
     const n = dvNear();
