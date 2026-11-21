@@ -2126,11 +2126,18 @@ const WEATHER_MAPS = { desert: ['day', 'day', 'sunset', 'sunset', 'storm', 'nigh
   pirate: ['day', 'day', 'sunset', 'sunset', 'night'], castle: ['day', 'day', 'sunset', 'night'], temple: ['day', 'day', 'sunset', 'night'] };
 let weatherNow = process.env.WEATHER || 'day';
 function pickWeather(m) {
+  if (weatherForce) return weatherForce;              // [NY] valgt portal (ørken dag / natt)
   if (!WEATHER_ON || !WEATHER_MAPS[m]) return 'day';
   if (process.env.WEATHER) return process.env.WEATHER;
   const l = WEATHER_MAPS[m]; return l[Math.floor(Math.random() * l.length)];
 }
+// [NY] To ørken-portaler: "Ørkenkrigen" (alltid dag) og "Ørkenkrigen natt" (alltid natt). Samme kart, bare tid på døgnet.
+const DESERT_DAY_NIGHT = true;
+let weatherForce = null;
 function startMap(name) {
+  weatherForce = null;
+  if (DESERT_DAY_NIGHT && name === 'desertnight') { name = 'desert'; weatherForce = 'night'; }
+  else if (DESERT_DAY_NIGHT && name === 'desert') weatherForce = 'day';
   questResetAll();                                     // [NY] ny bane: tellingen starter på 0
   score = { bunny: 0, squirrel: 0 };
   if (worldName !== 'main') { worldName = 'main'; io.emit('world', { name: 'main' }); }
