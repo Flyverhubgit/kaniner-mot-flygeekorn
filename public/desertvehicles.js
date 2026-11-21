@@ -19,7 +19,8 @@ const DV_KINDS = ['', 'tank', 'jeep', 'jet', 'heli'];
 function dvIsAir(k) { return k === 'jet' || k === 'heli'; }
 const tankMgW = { id: 'tankmg', mag: 200, magSize: 200, reserve: Infinity, fireDelay: 0.08, reloadTime: 3, climb: 0.002 };   // [NY] nr. 2 i stridsvognen
 let myDvSeat = null, dvGunSend = 0;                    // 'drive' eller 'gun'
-const jeepW = { id: 'jeepmg', mag: 200, magSize: 200, reserve: Infinity, fireDelay: 0.08, reloadTime: 3, climb: 0.002 };
+// [NY] .50 cal (12,7 mm, som en M2): saktere (ca. 460 skudd/min), 100-belte, mer rekyl. Gammelt MG: fireDelay 0.08, 200 skudd.
+const jeepW = { id: 'jeepmg', mag: 100, magSize: 100, reserve: Infinity, fireDelay: 0.13, reloadTime: 4, climb: 0.0045 };
 let dvInfo = [], myDv = null, dvPrevWeapon = null, dvShellReady = 0, dvSendT = 0, dvRamAt = {}, dvDozeSet = new Set(), dvDozeT = 0;
 const dvl = { x: 0, y: 0, z: 0, yaw: 0, spd: 0, ty: 0, tp: 0 };   // ditt eget kjøretøy (kjøres her)
 const dvDriverIds = new Set();

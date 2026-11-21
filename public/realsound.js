@@ -126,7 +126,7 @@ function rsDistNow() { return rsAt ? Math.hypot(rsAt.x - camera.position.x, rsAt
 // Ørken-våpen (og kjøretøy-våpen)
 const RS_DESERT = {
   c7: ['c7', 0.45], minimi: ['minimi', 0.45, 1.05], mg42: ['mg42', 0.5, 0.95], pistol: ['pistol', 0.38],
-  sniper50: ['big', 0.75, 0.82], jeepmg: ['mg42', 0.55, 0.85], tankmg: ['mg42', 0.55, 0.85],
+  sniper50: ['big', 0.75, 0.82], jeepmg: ['big', 0.6, 1.05], tankmg: ['mg42', 0.55, 0.85],
   jetgun: ['minimi', 0.5, 1.25], heligun: ['minimi', 0.5, 1.15]
 };
 if (typeof playDesertShot === 'function') {
@@ -134,7 +134,7 @@ if (typeof playDesertShot === 'function') {
   playDesertShot = function (id, vol) {
     const r = RS_DESERT[id];
     if (r && rsOn()) {
-      const far = rsDistNow() > 140 && RS_BANK.ak_far && ['c7', 'minimi', 'mg42', 'jeepmg', 'tankmg'].includes(id);
+      const far = rsDistNow() > 140 && RS_BANK.ak_far && ['c7', 'minimi', 'mg42', 'tankmg'].includes(id);
       if (rsPlay(far ? 'ak_far' : r[0], r[1] * vol * (far ? 1.4 : 1), r[2])) return true;
     }
     return playDesertShotOld(id, vol);

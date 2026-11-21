@@ -1820,7 +1820,7 @@ function shoot() {
   }
   if (dart && typeof dartFx === 'function') dartFx(muzzleWorld(), end, !chick && !target, d);   // [NY] synlig pil som blir sittende fast
   else if (med && typeof medArrowFx === 'function') medArrowFx(muzzleWorld(), end, !target, sn);   // [NY] pil / armbrøstbolt
-  else addTracer(muzzleWorld(), end);
+  else if (!(typeof tracerShot === 'function' && tracerShot(muzzleWorld(), end, typeof dwCur === 'function' ? dwCur() : weapon.id, 'me'))) addTracer(muzzleWorld(), end);   // [NY] lysspor (tracerfx.js)
   if (egg && typeof eggShotFx === 'function') eggShotFx(muzzleWorld(), end);
   socket.emit('shot', { to: [+end.x.toFixed(2), +end.y.toFixed(2), +end.z.toFixed(2)], w: quiet ? 'c7s' : weapon.id });
 
@@ -2231,7 +2231,7 @@ socket.on('shot', d => {
     playTwang(Math.max(0.03, 0.22 - dist * 0.005), d.w === 'crossbow');
     return;
   }
-  addTracer(from, new THREE.Vector3(d.to[0], d.to[1], d.to[2]));
+  if (!(typeof tracerShot === 'function' && tracerShot(from, new THREE.Vector3(d.to[0], d.to[1], d.to[2]), d.w, d.id))) addTracer(from, new THREE.Vector3(d.to[0], d.to[1], d.to[2]));   // [NY] lysspor
   if (typeof rsSetPos === 'function') rsSetPos(from);   // [NY] ekte lyd: skuddet kommer fra riktig side (realsound.js)
   if (typeof playDesertShot === 'function' && playDesertShot(d.w, Math.max(0.08, 1 - dist * 0.008))) return;   // [NY] ørken-våpen høres på lang avstand
   if (d.w === 'sniper') playShot(Math.max(0.06, 0.5 - dist * 0.006), 650);   // [NY] snikskytter smeller høyere

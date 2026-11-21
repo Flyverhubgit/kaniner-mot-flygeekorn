@@ -36,13 +36,14 @@ const ROUND_SECONDS = +process.env.ROUND_SECONDS || 600;     // 10 minutter per 
 // [NY] Ørkenkrigen: lagkamp (team deathmatch) – første lag til 100 drap, eller flest drap etter 15 minutter
 const DESERT_SECONDS = +process.env.DESERT_SECONDS || 30 * 60, DESERT_KILLS = +process.env.DESERT_KILLS || 200;   // dobbelt så lang (var 15 min / 100 drap)
 // Ørken-våpen: skade i kroppen / hodet, og korteste tid mellom to treff (ms). 100 liv.
+const JEEP_50CAL = true;                             // [NY] jeepen har .50 cal (12,7 mm) i stedet for raskt MG
 const DESERT_W = {
   c7: { dmg: 20, head: 50, ms: 80 },          // C7-karabin (2 i hodet / 5 i kroppen)
   minimi: { dmg: 16, head: 40, ms: 60 },      // Minimi lett maskingevær
   mg42: { dmg: 15, head: 38, ms: 45 },        // MG42 – skyter veldig fort
   pistol: { dmg: 24, head: 55, ms: 160 },     // pistol
   sniper50: { dmg: 90, head: 200, ms: 1000 }, // .50 kaliber (12,7 mm) snikskytter: hodeskudd dreper alltid
-  jeepmg: { dmg: 18, head: 40, ms: 70 },      // [NY] maskingeværet på jeepen
+  jeepmg: JEEP_50CAL ? { dmg: 34, head: 75, ms: 120 } : { dmg: 18, head: 40, ms: 70 },   // [NY] jeepens tunge .50 cal (12,7 mm): færre, men harde treff (false = gammelt MG)
   tankmg: { dmg: 18, head: 40, ms: 70 },      // [NY] maskingeværet på taket av stridsvognen
   jetgun: { dmg: 24, head: 50, ms: 55 },      // [NY] F-16 maskinkanon
   heligun: { dmg: 20, head: 45, ms: 65 }      // [NY] helikopterets maskinkanon
@@ -2649,8 +2650,8 @@ function dvArea(pos, r, base, by, team) {          // team = laget som skjøt (h
 // Skudd mot kjøretøy: jeepen tåler litt, stridsvognen nesten alt (bare .50 riper)
 function dvBulletDmg(v, w) {
   if (v.kind === 'tank') return w === 'sniper50' ? 4 : 0;
-  if (v.kind === 'jet' || v.kind === 'heli') return { c7: 4, minimi: 4, mg42: 4, pistol: 2, sniper50: 30, jeepmg: 8, tankmg: 8, jetgun: 10, heligun: 8 }[w] || 0;   // [NY] fly og helikopter
-  return { c7: 6, minimi: 5, mg42: 5, pistol: 4, sniper50: 45, jeepmg: 7, tankmg: 7, jetgun: 12, heligun: 10 }[w] || 0;
+  if (v.kind === 'jet' || v.kind === 'heli') return { c7: 4, minimi: 4, mg42: 4, pistol: 2, sniper50: 30, jeepmg: JEEP_50CAL ? 18 : 8, tankmg: 8, jetgun: 10, heligun: 8 }[w] || 0;   // [NY] fly og helikopter
+  return { c7: 6, minimi: 5, mg42: 5, pistol: 4, sniper50: 45, jeepmg: JEEP_50CAL ? (v.kind === 'tank' ? 9 : 20) : 7, tankmg: 7, jetgun: 12, heligun: 10 }[w] || 0;
 }
 function dvState() {
   return dvList.map(v => [v.id, DV_KIND_CODE[v.kind], v.team === 'bunny' ? 1 : 2, +v.x.toFixed(2), +v.y.toFixed(2), +v.z.toFixed(2), +v.yaw.toFixed(3), +v.ty.toFixed(3), +v.tp.toFixed(3),

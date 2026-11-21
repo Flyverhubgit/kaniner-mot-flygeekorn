@@ -10,7 +10,7 @@ const DESERT_ROCKETS = 3;                  // RPG + bazooka: 3 raketter per liv 
 const minimiW = { id: 'minimi', mag: 100, magSize: 100, reserve: Infinity, fireDelay: 0.075, reloadTime: 4.5, climb: 0.006 };
 const mg42W = { id: 'mg42', mag: 50, magSize: 50, reserve: Infinity, fireDelay: 0.05, reloadTime: 4, climb: 0.008 };
 const pistolW = { id: 'pistol', mag: 12, magSize: 12, reserve: Infinity, fireDelay: 0.17, reloadTime: 1.4, climb: 0.01 };
-const DW_NAMES = { jetgun: 'KANON', heligun: 'KANON', tankmg: 'TANK-MG', jeepmg: 'JEEP-MG', c7: 'C7', minimi: 'MINIMI', mg42: 'MG42', pistol: 'PISTOL', sniper50: '.50', rpg: 'RPG', bazooka: 'BAZOOKA' };
+const DW_NAMES = { jetgun: 'KANON', heligun: 'KANON', tankmg: 'TANK-MG', jeepmg: '.50 CAL', c7: 'C7', minimi: 'MINIMI', mg42: 'MG42', pistol: 'PISTOL', sniper50: '.50', rpg: 'RPG', bazooka: 'BAZOOKA' };
 
 // ---------- Modeller (peker mot -z, samme størrelse som AK-en) ----------
 const DW_BLACK = new THREE.MeshStandardMaterial({ color: 0x1a1b1d, roughness: 0.6 });
