@@ -154,6 +154,26 @@ addEventListener('keydown', e => {
 //  ANGRE: GROUND_INSIDE = false.
 // ===================================================================
 const GROUND_INSIDE = true;
+// [FIKS] Stridsvogn innenfra: blikket fulgte tårnet (som snur sakte) -> musa føltes treg og "svømte".
+// Nå følger blikket musa, og en liten ring viser hvor kanonen peker akkurat nå. false = gammel visning.
+const TANK_MOUSE_VIEW = true;
+const gBarrel = document.createElement('div');
+gBarrel.style.cssText = 'position:fixed;left:0;top:0;width:22px;height:22px;margin:-11px 0 0 -11px;border:2px solid rgba(255,190,60,0.95);' +
+  'border-radius:50%;box-shadow:0 0 4px rgba(0,0,0,0.6);z-index:4;pointer-events:none;display:none;';
+document.body.appendChild(gBarrel);
+let gBarrelAt = 0;
+const _gB = new THREE.Vector3();
+function gBarrelShow(tx, tyy, tz, ty) {
+  // et punkt 120 m ut langs kanonløpet (tårnets retning + kanonens vinkel), vist på skjermen
+  const tp = dvl.tp || 0;
+  _gB.set(tx - Math.sin(ty) * Math.cos(tp) * 120, tyy + 0.4 + Math.sin(tp) * 120, tz - Math.cos(ty) * Math.cos(tp) * 120).project(camera);
+  const off = Math.abs(_gB.x) + Math.abs(_gB.y);
+  if (_gB.z > 1 || off < 0.012) { gBarrel.style.display = 'none'; return; }   // bak deg, eller kanonen er på målet
+  gBarrel.style.display = 'block';
+  gBarrel.style.left = ((_gB.x + 1) / 2 * innerWidth).toFixed(0) + 'px';
+  gBarrel.style.top = ((1 - _gB.y) / 2 * innerHeight).toFixed(0) + 'px';
+  gBarrelAt = performance.now();
+}
 const _gV = new THREE.Vector3(), _gE = new THREE.Euler(0, 0, 0, 'YXZ');
 const gHint = document.createElement('div');
 gHint.style.cssText = 'position:fixed;left:50%;bottom:84px;transform:translateX(-50%);z-index:4;pointer-events:none;display:none;' +
@@ -182,7 +202,12 @@ if (GROUND_INSIDE && typeof dvDrive === 'function') {
         const p = gWorld(tx, tyy, tz, 0.5, 1.78, 0.5, ty);   // over skjoldet
         camera.position.set(p.x + Math.sin(player.yaw) * 0.7, p.y, p.z + Math.cos(player.yaw) * 0.7);
         camera.rotation.set(player.pitch, player.yaw, 0);
-      } else {                                                                 // fører: opp av luka, ser langs kanonen
+      } else if (TANK_MOUSE_VIEW) {                                            // [FIKS] fører: blikket følger musa direkte,
+        const p = gWorld(tx, tyy, tz, 0, 1.3, 0.1, ty);                         // øyet midt på tårnet (svinger ikke rundt)
+        camera.position.copy(p);
+        camera.rotation.set(player.pitch, player.yaw, 0);
+        gBarrelShow(tx, tyy, tz, ty);                                           // ring der kanonen faktisk peker
+      } else {                                                                 // gammel: ser langs kanonen (henger etter musa)
         const p = gWorld(tx, tyy, tz, -0.35, 1.25, 0.3, ty);
         camera.position.copy(p);
         camera.rotation.set(Math.max(-0.3, player.pitch), ty, 0);
@@ -203,6 +228,7 @@ if (GROUND_INSIDE && typeof dvDrive === 'function') {
 (function gLoop() {
   const on = gLast > 0 && performance.now() - gLast < 250;
   gHint.style.display = on ? 'block' : 'none';
+  if (performance.now() - gBarrelAt > 400) gBarrel.style.display = 'none';
   if (!on) for (const k in (typeof dvMeshes !== 'undefined' ? dvMeshes : {})) { const w = dvMeshes[k].userData.wheel; if (w) w.visible = false; }
   requestAnimationFrame(gLoop);
 })();
