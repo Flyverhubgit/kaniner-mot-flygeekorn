@@ -8,7 +8,7 @@
 // ===================================================================
 (function (root) {
   const NX = 800, NY = 14, NZ = 800, X0 = -400, Z0 = -400, CHUNK = 50, BOUND = 395;
-  const T = { TRUNK: 1, LEAF: 2, LEAF2: 3, PALM: 4, BAMBOO: 5, HILL: 6, DIKE: 7, ROCK: 8, BAG: 9, WOOD: 10, PLANK: 11, WALL: 12, THATCH: 13, STONE: 14, METAL: 15 };
+  const T = { PLASTER: 16, TILE: 17, TRUNK: 1, LEAF: 2, LEAF2: 3, PALM: 4, BAMBOO: 5, HILL: 6, DIKE: 7, ROCK: 8, BAG: 9, WOOD: 10, PLANK: 11, WALL: 12, THATCH: 13, STONE: 14, METAL: 15 };
   const JUNGLE_BAMBOO = false;   // [NY] ingen bambusklynger (gjorde det rart å gå). ANGRE: true
   const INFO = {
     1: { color: 0x5a4228, hp: 3 },               // trestamme
@@ -25,9 +25,11 @@
     12: { color: 0xb0a060, hp: 1 },              // bambusvegg
     13: { color: 0xb89a58, hp: 1, step: true },  // stråtak
     14: { color: 0x8a8a80, hp: 0, step: true },  // steinsokkel (flagget)
-    15: { color: 0x5a6a5a, hp: 6 }               // metall (bunker-tak)
+    15: { color: 0x5a6a5a, hp: 6 },              // metall (bunker-tak)
+    16: { color: 0xcdb98a, hp: 4 },              // [NY] pussvegg (byen)
+    17: { color: 0x9a4a32, hp: 3, step: true }   // [NY] tak med takstein (byen)
   };
-  const PATTERNS = { 1: 'log', 2: 'leaf', 3: 'leaf', 4: 'leaf', 5: 'log', 6: 'speckle', 7: 'speckle', 8: 'stone', 9: 'sandbag', 10: 'log', 11: 'plank', 12: 'hay', 13: 'hay', 14: 'stone', 15: 'metal' };
+  const PATTERNS = { 1: 'log', 2: 'leaf', 3: 'leaf', 4: 'leaf', 5: 'log', 6: 'speckle', 7: 'speckle', 8: 'stone', 9: 'sandbag', 10: 'log', 11: 'plank', 12: 'hay', 13: 'hay', 14: 'stone', 15: 'metal', 16: 'stone', 17: 'plank' };
   function idx(x, y, z) { return (y * NZ + (z - Z0)) * NX + (x - X0); }
 
   // ---- ting både klient og server trenger (kaninene; flygeekornene er speilet) ----
@@ -36,17 +38,25 @@
   const HELIPAD = { x: -13, z: 244 };
   const FLAG = { x: 0.5, z: 250.5, y: 5 };                             // flaggsokkelen (steg 3: fang flagget)
   const TOWER = { x: 10, z: 258 };
-  const VILLAGES = [{ x: -170, z: 150 }, { x: 180, z: 120 }];
-  const PADDIES = [{ x: 80, z: 320, w: 110, d: 60 }, { x: -150, z: 290, w: 80, d: 70 }, { x: -40, z: 70, w: 120, d: 40 }, { x: 240, z: 220, w: 70, d: 90 }];
-  const BRIDGES = [130];                                               // x (speilet: -131)
-  function RIVER(x) { return 18 * Math.sin(x * 0.012) + 8 * Math.sin(x * 0.031); }   // elvas midtlinje (z)
+  // [NY] LAYOUT 2 (Flyvers tegning): én elv fra nord til sør, stor bro midt på, tett by rundt broa, to halvmåne-risåkre.
+  //  Ingen små landsbyer, firkant-risåkre eller elv på tvers. Speilet, så begge lag har like vei. ANGRE: JUNGLE_LAYOUT2 = false
+  const JUNGLE_LAYOUT2 = true;
+  const TOWN = { r: 100 };                                             // byen: radius rundt midten
+  const ARCS = [{ r0: 140, r1: 166, a0: 115 * Math.PI / 180, a1: 245 * Math.PI / 180 }];   // vestre risåker (østre er speilet)
+  const BIG_BRIDGE = { z0: -4, z1: 3 };                                // stor bro på tvers av elva midt på
+  const VILLAGES = JUNGLE_LAYOUT2 ? [] : [{ x: -170, z: 150 }, { x: 180, z: 120 }];
+  const PADDIES = JUNGLE_LAYOUT2 ? [] : [{ x: 80, z: 320, w: 110, d: 60 }, { x: -150, z: 290, w: 80, d: 70 }, { x: -40, z: 70, w: 120, d: 40 }, { x: 240, z: 220, w: 70, d: 90 }];
+  const BRIDGES = JUNGLE_LAYOUT2 ? [] : [130];                                               // x (speilet: -131)
+  function RIVER(v) { return JUNGLE_LAYOUT2 ? 70 * Math.sin(-v * Math.PI / 500) : 18 * Math.sin(v * 0.012) + 8 * Math.sin(v * 0.031); }   // elvas midtlinje. Layout 2: gir x for en z. Gammel: gir z for en x
+  const RIVER_AXIS = JUNGLE_LAYOUT2 ? 'z' : 'x';
   const RIVER_W = 7;                                                   // halv bredde
   const mir = (x, z) => [-1 - x, -1 - z];
   // alle rismarker og landsbyer (begge sider) – klienten bruker disse til vann og tåke
   const ALL_PADDIES = PADDIES.concat(PADDIES.map(p => ({ x: -p.x, z: -p.z, w: p.w, d: p.d })));
   const ALL_VILLAGES = VILLAGES.concat(VILLAGES.map(v => ({ x: -1 - v.x, z: -1 - v.z })));
-  function inPaddy(x, z) { return ALL_PADDIES.some(p => Math.abs(x - p.x) < p.w / 2 && Math.abs(z - p.z) < p.d / 2); }
-  function inRiver(x, z) { return Math.abs(z - RIVER(x)) < RIVER_W; }
+  function inArc(x, z) { const r = Math.hypot(x, z); if (r < ARCS[0].r0 || r > ARCS[0].r1) return false; let a = Math.atan2(z, x); if (a < 0) a += 2 * Math.PI; const A = ARCS[0]; return (a >= A.a0 && a <= A.a1) || (a + Math.PI >= A.a0 && a + Math.PI <= A.a1) || (a - Math.PI >= A.a0 && a - Math.PI <= A.a1); }
+  function inPaddy(x, z) { if (JUNGLE_LAYOUT2) return inArc(x, z); return ALL_PADDIES.some(p => Math.abs(x - p.x) < p.w / 2 && Math.abs(z - p.z) < p.d / 2); }
+  function inRiver(x, z) { return JUNGLE_LAYOUT2 ? Math.abs(x - RIVER(z)) < RIVER_W : Math.abs(z - RIVER(x)) < RIVER_W; }
 
   function rng(seed) { return function () { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
 
@@ -64,7 +74,15 @@
     const masked = (x, z) => x < X0 || x >= X0 + NX || z < Z0 || z >= Z0 + NZ || mask[(z - Z0) * NX + (x - X0)] === 1;
 
     // ---- elva + broer (hele kartet; elva er punktsymmetrisk) ----
-    for (let x = X0; x < X0 + NX; x++) {
+    if (JUNGLE_LAYOUT2) for (let z = Z0; z < Z0 + NZ; z++) {        // [NY] elv fra nord til sør
+      const xc = RIVER(z);
+      for (let x = Math.floor(xc - RIVER_W - 2); x <= Math.ceil(xc + RIVER_W + 2); x++) {
+        mk(x, z);
+        const d = Math.abs(x - xc);
+        if (d > RIVER_W - 0.5 && d < RIVER_W + 1.5 && z >= 0 && Math.abs(z) > 112 && R() < 0.07) { put(x, 0, z, T.ROCK); if (R() < 0.4) put(x, 1, z, T.ROCK); }
+      }
+    }
+    if (!JUNGLE_LAYOUT2) for (let x = X0; x < X0 + NX; x++) {
       const zc = RIVER(x);
       for (let z = Math.floor(zc - RIVER_W - 2); z <= Math.ceil(zc + RIVER_W + 2); z++) {
         mk(x, z);
@@ -155,6 +173,61 @@
       for (let z = -1; z <= 1; z++) for (let x = -1; x <= 1; x++) if (x || z) put(v.x + x, 0, v.z + z, T.STONE);   // brønn
     });
 
+    if (JUNGLE_LAYOUT2) {
+      // ---- [NY] den tette byen (bygges på sørsiden, speiles til nordsiden) ----
+      for (let z = -TOWN.r - 6; z <= TOWN.r + 6; z++) for (let x = -TOWN.r - 6; x <= TOWN.r + 6; x++) if (x * x + z * z < (TOWN.r + 6) * (TOWN.r + 6)) mk(x, z);
+      const nearRiver = (x, z, m) => Math.abs(x + 0.5 - RIVER(z + 0.5)) < RIVER_W + m;
+      function house(x0, z0, w, d, st, door) {                  // pussvegger, vinduer, dør, trapp til 2. etasje, flatt tak
+        const H = 3 * st;
+        for (let y = 0; y < H; y++) for (let z = z0; z < z0 + d; z++) for (let x = x0; x < x0 + w; x++) {
+          const edge = x === x0 || x === x0 + w - 1 || z === z0 || z === z0 + d - 1; if (!edge) continue;
+          const corner = (x === x0 || x === x0 + w - 1) && (z === z0 || z === z0 + d - 1);
+          const along = (z === z0 || z === z0 + d - 1) ? x - x0 : z - z0, mid = (z === z0 || z === z0 + d - 1) ? Math.floor(w / 2) : Math.floor(d / 2);
+          const side = z === z0 + d - 1 ? 0 : x === x0 + w - 1 ? 1 : z === z0 ? 2 : 3;
+          if (!corner && side === door && along === mid && y % 3 < 2 && y < 2) continue;              // dør (2 høy)
+          if (!corner && along % 3 === 1 && y % 3 === 1 && !(side === door && along === mid)) continue;   // vinduer
+          put(x, y, z, T.PLASTER);
+        }
+        if (st === 2) {
+          for (let z = z0 + 1; z < z0 + d - 1; z++) for (let x = x0 + 1; x < x0 + w - 1; x++) if (!(x === x0 + 1 && z <= z0 + 3)) put(x, 3, z, T.PLANK);   // golv i 2. etasje (hull over trappa)
+          for (let k = 0; k < 3; k++) for (let y = 0; y <= k; y++) put(x0 + 1, y, z0 + 1 + k, T.PLANK);   // trapp: 3 trinn opp
+        }
+        for (let z = z0; z < z0 + d; z++) for (let x = x0; x < x0 + w; x++) put(x, H, z, T.TILE);
+      }
+      for (let lz = 7; lz < TOWN.r; lz += 11) for (let lx = -TOWN.r; lx < TOWN.r; lx += 11) {
+        if (R() < 0.12) continue;                                 // en liten plass her og der
+        const w = 6 + Math.floor(R() * 3), d = 6 + Math.floor(R() * 3), x0 = lx + Math.floor(R() * (9 - w)), z0 = lz + Math.floor(R() * (9 - d));
+        const st = R() < 0.6 ? 2 : 1, door = Math.floor(R() * 4);
+        let bad = false;
+        for (const [cx, cz] of [[x0, z0], [x0 + w, z0], [x0, z0 + d], [x0 + w, z0 + d]]) if (cx * cx + cz * cz > (TOWN.r - 2) * (TOWN.r - 2) || nearRiver(cx, cz, 4)) bad = true;
+        if (bad) continue;
+        house(x0, z0, w, d, st, door);
+      }
+      // sandsekker og murstumper i smugene (dekning for bakholdsangrep)
+      for (let k = 0; k < 70; k++) {
+        const a = R() * Math.PI, r = 8 + R() * (TOWN.r - 12), x = Math.floor(Math.cos(a) * r), z = Math.floor(Math.sin(a) * r), along = R() < 0.5;
+        if (z < 6 || nearRiver(x, z, 3)) continue;
+        let free = true; for (let i = 0; i < 3; i++) if (get(along ? x + i : x, 0, along ? z : z + i)) free = false;
+        if (!free) continue;
+        for (let i = 0; i < 3; i++) { put(along ? x + i : x, 0, along ? z : z + i, T.BAG); if (R() < 0.6) put(along ? x + i : x, 1, along ? z : z + i, T.BAG); }
+      }
+      // ---- [NY] stor bro midt på (tre planker bred x 8, rekkverk med stolper) ----
+      const bx0 = Math.floor(RIVER(0) - RIVER_W - 4);
+      for (let x = bx0; x <= -1 - bx0; x++) {
+        for (let z = BIG_BRIDGE.z0; z <= BIG_BRIDGE.z1; z++) { put(x, 0, z, T.PLANK); }
+        if ((x & 1) === 0) { put(x, 0, BIG_BRIDGE.z0 - 1, T.WOOD); put(x, 1, BIG_BRIDGE.z0 - 1, T.WOOD); }
+      }
+      // ---- [NY] halvmåne-risåker (vest; østsiden speiles) med gjørmekanter ----
+      const A = ARCS[0];
+      for (let z = -A.r1 - 2; z <= A.r1 + 2; z++) for (let x = -A.r1 - 2; x <= 0; x++) {
+        if (!inArc(x + 0.5, z + 0.5)) continue;
+        forbid(x, z);
+        const r = Math.hypot(x + 0.5, z + 0.5), a = Math.atan2(z + 0.5, x + 0.5) * 180 / Math.PI;
+        const ring = Math.abs(r - A.r0) < 0.7 || Math.abs(r - A.r1) < 0.7 || Math.abs(r - (A.r0 + A.r1) / 2) < 0.6;
+        const off = ((a % 9) + 9) % 9, ray = r * Math.min(off, 9 - off) * Math.PI / 180 < 0.6;   // tvers-kanter hver 9. grad
+        if ((ring || ray) && R() > 0.05) put(x, 0, z, T.DIKE);
+      }
+    }
     // ---- store steiner ----
     for (let k = 0; k < 70; k++) {
       const x = Math.floor(X0 + 10 + R() * (NX - 20)), z = Math.floor(5 + R() * 380);
@@ -223,7 +296,7 @@
   }
 
   function masked(x, z) { if (!mask) build(); x = Math.floor(x); z = Math.floor(z); return x < X0 || x >= X0 + NX || z < Z0 || z >= Z0 + NZ || mask[(z - Z0) * NX + (x - X0)] === 1; }
-  const api = { NX, NY, NZ, X0, Z0, CHUNK, BOUND, T, INFO, PATTERNS, idx, build, undergrowth, SPAWNS, FIREBASE, HELIPAD, FLAG, TOWER, VILLAGES: ALL_VILLAGES, PADDIES: ALL_PADDIES, BRIDGES, RIVER, RIVER_W, inPaddy, inRiver, masked, SPARSE: true };
+  const api = { NX, NY, NZ, X0, Z0, CHUNK, BOUND, T, INFO, PATTERNS, idx, build, undergrowth, SPAWNS, FIREBASE, HELIPAD, FLAG, TOWER, VILLAGES: ALL_VILLAGES, PADDIES: ALL_PADDIES, BRIDGES, RIVER, RIVER_W, RIVER_AXIS, LAYOUT2: JUNGLE_LAYOUT2, TOWN, ARCS, BIG_BRIDGE, inPaddy, inRiver, masked, SPARSE: true };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.JungleMap = api;
 })(this);

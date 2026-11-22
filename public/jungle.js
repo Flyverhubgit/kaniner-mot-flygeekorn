@@ -32,8 +32,10 @@ function jungleBuild() {
   // ---- elva: et bånd som følger midtlinja ----
   const pts = [], uvs = [], ind = [], W = JUNGLE.RIVER_W + 0.6;
   let n = 0;
-  for (let x = JUNGLE.X0; x <= JUNGLE.X0 + JUNGLE.NX; x += 2) {
-    const z = JUNGLE.RIVER(x), dz = (JUNGLE.RIVER(x + 1) - JUNGLE.RIVER(x - 1)) / 2, l = Math.hypot(1, dz), nx = -dz / l, nz = 1 / l;
+  const alongZ = JUNGLE.RIVER_AXIS === 'z';                         // [NY] layout 2: elva går nord-sør
+  for (let v = JUNGLE.X0; v <= JUNGLE.X0 + JUNGLE.NX; v += 2) {
+    const c = JUNGLE.RIVER(v), dc = (JUNGLE.RIVER(v + 1) - JUNGLE.RIVER(v - 1)) / 2, l = Math.hypot(1, dc);
+    const x = alongZ ? c : v, z = alongZ ? v : c, nx = alongZ ? 1 / l : -dc / l, nz = alongZ ? -dc / l : 1 / l;
     pts.push(x + nx * W, 0.32, z + nz * W, x - nx * W, 0.32, z - nz * W); uvs.push(n * 0.25, 0, n * 0.25, 1);
     if (n) { const a = (n - 1) * 2; ind.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
     n++;
@@ -60,6 +62,17 @@ function jungleBuild() {
       jungleGroup.add(f); jungleFog.push(f);
     }
   });
+  // [NY] layout 2: halvmåne-risåkre (vest + speilet øst) med vann og tåke
+  if (JUNGLE.LAYOUT2) JUNGLE.ARCS.forEach(A => [0, Math.PI].forEach(rot => {
+    const w = new THREE.Mesh(new THREE.RingGeometry(A.r0, A.r1, 64, 1, -A.a1 - rot, A.a1 - A.a0), new THREE.MeshStandardMaterial({ color: 0x7a8a6a, roughness: 0.1, metalness: 0.2, transparent: true, opacity: 0.8 }));
+    w.rotation.x = -Math.PI / 2; w.position.y = 0.12; w.raycast = () => {}; jungleGroup.add(w);
+    for (let a = A.a0 + 0.04; a < A.a1; a += 12 / ((A.r0 + A.r1) / 2)) for (const r of [A.r0 + 6, A.r1 - 6]) for (let h = 0; h < 3; h++) {
+      const f = new THREE.Mesh(new THREE.PlaneGeometry(22, 22), fogMat);
+      f.rotation.x = -Math.PI / 2; f.position.set(Math.cos(a + rot) * r, 0.5 + h * 0.9, Math.sin(a + rot) * r);
+      f.raycast = () => {}; f.renderOrder = 2; f.userData.base = f.position.clone(); f.userData.ph = Math.random() * 6;
+      jungleGroup.add(f); jungleFog.push(f);
+    }
+  }));
   // ---- helikopterplasser ----
   const hTex = jgTex(64, 64, x => { x.fillStyle = '#4a4a44'; x.beginPath(); x.arc(32, 32, 31, 0, 7); x.fill(); x.strokeStyle = '#e8e0c0'; x.lineWidth = 3; x.beginPath(); x.arc(32, 32, 26, 0, 7); x.stroke(); x.fillStyle = '#e8e0c0'; x.fillRect(20, 18, 5, 28); x.fillRect(39, 18, 5, 28); x.fillRect(20, 30, 24, 5); });
   [[JUNGLE.HELIPAD.x, JUNGLE.HELIPAD.z], [-1 - JUNGLE.HELIPAD.x, -1 - JUNGLE.HELIPAD.z]].forEach(([x, z]) => {
@@ -168,3 +181,24 @@ let jFogK = 0;
   }
   requestAnimationFrame(jungleLoop);
 })();
+
+// [NY] SVØMMING I ELVA (layout 2): sakte (40 %), og du ligger lavt i vannet – bare hodet stikker opp. ANGRE: JUNGLE_SWIM = false
+const JUNGLE_SWIM = true, JUNGLE_SWIM_K = 0.4, JUNGLE_SWIM_SINK = 1.0;
+function jungleInWater(x, z, y) { return JUNGLE_SWIM && typeof jungleOn === 'function' && jungleOn() && y < 0.6 && JUNGLE.inRiver(x, z) && !jungleOnBridge(x, z); }
+function jungleOnBridge(x, z) { const B = JUNGLE.BIG_BRIDGE; return !!B && z >= B.z0 - 1 && z <= B.z1 + 1 && Math.abs(x) < 20; }
+if (typeof pirateSwimK === 'function') {
+  const pirateSwimKJungle = pirateSwimK;
+  pirateSwimK = function () { const k = pirateSwimKJungle.apply(this, arguments); return typeof player !== 'undefined' && jungleInWater(player.x, player.z, player.feetY) ? k * JUNGLE_SWIM_K : k; };
+}
+if (typeof renderFrame === 'function') {
+  const renderFrameSwim = renderFrame;
+  renderFrame = function () {
+    if (!JUNGLE_SWIM || typeof jungleOn !== 'function' || !jungleOn()) return renderFrameSwim.apply(this, arguments);
+    const sunk = [];
+    const me = typeof player !== 'undefined' && jungleInWater(player.x, player.z, player.feetY) && !(typeof inVehicle !== 'undefined' && inVehicle);
+    if (me) camera.position.y -= JUNGLE_SWIM_SINK;
+    if (typeof others !== 'undefined') for (const id in others) { const r = others[id], g = r && r.root; if (g && g.visible && jungleInWater(g.position.x, g.position.z, g.position.y)) { g.position.y -= JUNGLE_SWIM_SINK; sunk.push(g); } }
+    try { return renderFrameSwim.apply(this, arguments); }
+    finally { if (me) camera.position.y += JUNGLE_SWIM_SINK; sunk.forEach(g => g.position.y += JUNGLE_SWIM_SINK); }
+  };
+}
