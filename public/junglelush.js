@@ -78,6 +78,7 @@ function jungleLush() {
   leaves.forEach(l => add(l[0], l[2], l[3] ? 'palm' : 'leaf', l));
   tall.forEach(t => add(t[0], t[1], ['banana', 'bush', 'sap'][t[2]], t));
   const d = new THREE.Object3D();
+  const tInst = W.lushTrunk = {}, lInst = W.lushLeaf = {};          // [NY] så vi kan skjule et tre som faller
   for (const cid in per) {
     const grp = jungleUnder[cid] || (() => { const g = new THREE.Group(); g.visible = false; g.userData.cx = J.X0 + (cid % NCX + 0.5) * CH; g.userData.cz = J.Z0 + (Math.floor(cid / NCX) + 0.5) * CH; jungleGroup.add(g); jungleUnder[cid] = g; return g; })();
     for (const k in per[cid]) {
@@ -91,10 +92,14 @@ function jungleLush() {
         else if (k === 'leaf' || k === 'palm') { d.position.set(u[0], u[1] - 1.6, u[2]); d.rotation.set(0, r, 0); const s = k === 'palm' ? 5 : 4.4; d.scale.set(s, s * 0.85, s); }
         else { const s = u[3]; d.position.set(u[0], 0, u[1]); d.rotation.set(0, r, 0); if (k === 'banana') d.scale.set(1.8 * s, 2.3 * s, 1.8 * s); else if (k === 'bush') d.scale.set(2 * s, 1.6 * s, 2 * s); else d.scale.set(1.6 * s, 3 * s, 1.6 * s); }
         d.updateMatrix(); m.setMatrixAt(i, d.matrix);
+        if (k === 'trunk') tInst[(Math.floor(u[1]) - J.Z0) * J.NX + Math.floor(u[0]) - J.X0] = { m, i, mat: d.matrix.clone() };
+        else if (k === 'leaf' || k === 'palm') { const key = lushLeafKey(Math.floor(u[0]) - J.X0, u[1], Math.floor(u[2]) - J.Z0); (lInst[key] = lInst[key] || []).push({ m, i, mat: d.matrix.clone() }); }
       });
       grp.add(m);
     }
   }
+  for (const c in tInst) if (W.grid[c] !== J.T.TRUNK) lushShow(tInst[c], false);   // [NY] kom inn sent: trær som alt har falt
+  const resetOld = W.reset; W.reset = function () { resetOld.apply(this, arguments); lushReset(); };
   console.log('Frodig jungel:', trunks.length, 'stammer,', leaves.length, 'løvklaser,', tall.length, 'høye planter');
 }
 // koble inn: etter at jungelen er bygget, og dis i stedet for lang sikt
@@ -109,4 +114,30 @@ if (JUNGLE_LUSH && typeof applyMap === 'function') {
     if (typeof jungleOn === 'function' && jungleOn()) { scene.fog.color.setHex(0x6f8a68); scene.fog.near = 6; scene.fog.far = LUSH_FAR; scene.background.setHex(0x6f8a68); renderer.setClearColor(0x6f8a68); hemi.intensity = 0.5; }
     return r;
   };
+}
+
+// [NY] SEIGE TRÆR: når serveren sier at et tre falt, skjul den runde stammen og løvet. Ny runde: alt tilbake.
+function lushLeafKey(x, y, z) { return (Math.floor(y / 3) * 1000 + Math.floor(z / 3)) * 1000 + Math.floor(x / 3); }
+const lushZero = new THREE.Matrix4().makeScale(0, 0, 0);
+function lushShow(o, on) { o.m.setMatrixAt(o.i, on ? o.mat : lushZero); o.m.instanceMatrix.needsUpdate = true; }
+if (JUNGLE_LUSH && typeof removeCells === 'function') {
+  const removeCellsLushOld = removeCells;
+  removeCells = function (list, noDebris) {
+    const r = removeCellsLushOld.apply(this, arguments);
+    const W = typeof jungleWorld !== 'undefined' && jungleWorld;
+    if (W && W.lushTrunk && typeof jungleOn === 'function' && jungleOn()) {
+      const J = JUNGLE, A = J.NX * J.NZ;
+      list.forEach(i => {
+        const c = i % A, y = Math.floor(i / A), x = c % J.NX, z = Math.floor(c / J.NX);
+        if (W.lushTrunk[c] && W.grid[c] !== J.T.TRUNK) lushShow(W.lushTrunk[c], false);
+        (W.lushLeaf[lushLeafKey(x, y, z)] || []).forEach(o => lushShow(o, false));
+      });
+    }
+    return r;
+  };
+}
+function lushReset() {
+  const W = typeof jungleWorld !== 'undefined' && jungleWorld; if (!W || !W.lushTrunk) return;
+  for (const k in W.lushTrunk) lushShow(W.lushTrunk[k], true);
+  for (const k in W.lushLeaf) W.lushLeaf[k].forEach(o => lushShow(o, true));
 }

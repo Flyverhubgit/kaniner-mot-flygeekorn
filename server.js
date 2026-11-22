@@ -136,6 +136,7 @@ function resetVox(name) {
   V.grid.set(V.pristine);
   for (let i = 0; i < V.grid.length; i++) V.hp[i] = V.grid[i] ? V.LIB.INFO[V.grid[i]].hp : 0;
   V.gone = [];
+  if (name === 'jungle' && typeof jgTreeDmg !== 'undefined') jgTreeDmg.clear();   // [NY] ny runde: friske trær
   V.built = [];                                     // [NY] byggeklosser forsvinner ved ny runde
 }
 resetVox('castle'); resetVox('farm'); resetVox('sea'); resetVox('medieval'); resetVox('west'); resetVox('dragon'); resetVox('desert'); resetVox('pirate'); resetVox('jungle');
@@ -177,6 +178,43 @@ function blastCells(x, y, z, r) {
   destroyCells(list);
 }
 const BLOCK_DMG = { ak: 1, sniper: 4 };            // kloss-skade per skudd
+// [NY] SEIGE TRÆR (Jungelkrigen): et tre tåler 1000 skade til sammen før det faller (hele stammen + løvet).
+//  Samme skade som mot spillere: AK 10 (100 skudd), snikskytter 50 (20 skudd), granat ca. 105, bazooka ca. 120, C4 ca. 160.
+//  Vanlige sprengninger tar ikke enkelt-klosser av trærne lenger. ANGRE: JUNGLE_TOUGH_TREES = false.
+const JUNGLE_TOUGH_TREES = true, TREE_HP = 1000, TREE_SHOT = { ak: AK_BODY, sniper: SNIPER_BODY }, TREE_BLAST_PER_M = 35;
+var jgTreeDmg = new Map();                                           // stamme-søyle -> skade så langt
+function jgTreeCell(t) { const T = JGM.T; return t === T.TRUNK || t === T.LEAF || t === T.LEAF2 || t === T.PALM; }
+function jgTreeCol(i) { const V = VOX.jungle, A = JGM.NX * JGM.NZ; let c = i % A; return V.grid[c] === JGM.T.TRUNK ? c : -1; }   // søyla må stå på bakken
+function jgTreeFell(col) {                                          // stammen + løv rundt toppen forsvinner
+  const V = VOX.jungle, A = JGM.NX * JGM.NZ, x = col % JGM.NX, z = Math.floor(col / JGM.NX), out = [];
+  let h = 0; while (h < JGM.NY && V.grid[col + h * A] === JGM.T.TRUNK) { out.push(col + h * A); h++; }
+  for (let y = Math.max(2, h - 3); y < Math.min(JGM.NY, h + 3); y++) for (let dz = -3; dz <= 3; dz++) for (let dx = -3; dx <= 3; dx++) {
+    const xx = x + dx, zz = z + dz; if (xx < 0 || zz < 0 || xx >= JGM.NX || zz >= JGM.NZ) continue;
+    const c = y * A + zz * JGM.NX + xx, t = V.grid[c]; if (t && t !== JGM.T.TRUNK && jgTreeCell(t)) out.push(c);
+  }
+  jgTreeDmg.delete(col);
+  jgFelling = true; destroyCells(out); jgFelling = false;
+}
+function jgTreeHurt(col, dmg) { if (col < 0) return; const d = (jgTreeDmg.get(col) || 0) + dmg; if (d >= TREE_HP) jgTreeFell(col); else jgTreeDmg.set(col, d); }
+function jungleTreeHit(i, w) {                                      // et skudd traff en kloss: er det et tre, tar treet skaden
+  if (!JUNGLE_TOUGH_TREES || mapName !== 'jungle') return false;
+  const t = VOX.jungle.grid[i]; if (!jgTreeCell(t)) return false;
+  if (t === JGM.T.TRUNK) { const A = JGM.NX * JGM.NZ; let c = i; while (c >= A && VOX.jungle.grid[c - A] === JGM.T.TRUNK) c -= A; jgTreeHurt(jgTreeCol(c), TREE_SHOT[w] || AK_BODY); }
+  return true;                                                      // løv: tar ingen skade av skudd
+}
+let jgFelling = false, jgBlastR = 0;
+{
+  const destroyCellsOld = destroyCells;
+  destroyCells = function (list) {
+    if (!JUNGLE_TOUGH_TREES || mapName !== 'jungle' || jgFelling) return destroyCellsOld(list);
+    const V = VOX.jungle, A = JGM.NX * JGM.NZ, hit = new Set(), keep = [];
+    list.forEach(i => { const t = V.grid[i]; if (!jgTreeCell(t)) { keep.push(i); return; } if (t === JGM.T.TRUNK) hit.add(jgTreeCol(i % A)); });
+    if (keep.length) destroyCellsOld(keep);
+    if (jgBlastR > 0) hit.forEach(col => jgTreeHurt(col, TREE_BLAST_PER_M * jgBlastR));
+  };
+  const blastCellsOld = blastCells;
+  blastCells = function (x, y, z, r) { jgBlastR = r; try { blastCellsOld(x, y, z, r); } finally { jgBlastR = 0; } };
+}
 
 // Morterer: én i hver slottsgård. Skuddet flyr i 3 sek, så BOOM. 5 sek mellom hvert skudd.
 const MORTARS = { bunny: { x: 0, y: 2, z: 34 }, squirrel: { x: 0, y: 2, z: -34 } };
@@ -2070,6 +2108,7 @@ io.on('connection', socket => {
     const now = Date.now(), sniper = d.w === 'sniper';
     if (now - (sniper ? (p.lastBlockSniper || 0) : (p.lastBlockHit || 0)) < (sniper ? SNIPER_MIN_MS : MIN_HIT_MS)) return;
     if (sniper) p.lastBlockSniper = now; else p.lastBlockHit = now;
+    if (jungleTreeHit(i, sniper ? 'sniper' : 'ak')) return;          // [NY] seige trær i jungelen
     const dmg = BLOCK_DMG[sniper ? 'sniper' : 'ak'];
     V.hp[i] = Math.max(0, V.hp[i] - dmg);
     if (V.hp[i] === 0) destroyCells([i]);

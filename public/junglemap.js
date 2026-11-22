@@ -9,6 +9,7 @@
 (function (root) {
   const NX = 800, NY = 14, NZ = 800, X0 = -400, Z0 = -400, CHUNK = 50, BOUND = 395;
   const T = { TRUNK: 1, LEAF: 2, LEAF2: 3, PALM: 4, BAMBOO: 5, HILL: 6, DIKE: 7, ROCK: 8, BAG: 9, WOOD: 10, PLANK: 11, WALL: 12, THATCH: 13, STONE: 14, METAL: 15 };
+  const JUNGLE_BAMBOO = false;   // [NY] ingen bambusklynger (gjorde det rart å gå). ANGRE: true
   const INFO = {
     1: { color: 0x5a4228, hp: 3 },               // trestamme
     2: { color: 0x2f6b2a, hp: 1 },               // løv (mørkt)
@@ -197,8 +198,9 @@
         for (let i = 0; i < n; i++) {
           const bx = x + Math.floor(R() * 4) - 2, bz = z + Math.floor(R() * 4) - 2, h = 5 + Math.floor(R() * 4);
           if (masked(bx, bz)) continue;
+          const leaf = R() < 0.6; if (!JUNGLE_BAMBOO) continue;            // [NY] uten bambus: samme tilfeldige tall, men ingen klosser
           for (let y = 0; y < h; y++) put(bx, y, bz, T.BAMBOO);
-          if (R() < 0.6) put(bx, h, bz, T.LEAF2);
+          if (leaf) put(bx, h, bz, T.LEAF2);
         }
       }
     }
