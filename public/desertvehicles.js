@@ -21,6 +21,7 @@ const tankMgW = { id: 'tankmg', mag: 200, magSize: 200, reserve: Infinity, fireD
 let myDvSeat = null, dvGunSend = 0;                    // 'drive' eller 'gun'
 // [NY] BYTT SETE i stridsvogn og jeep: 1 = sjåfør, 2 = skytter (bare til et ledig sete). DV_SEATS_C = false: som før
 const DV_SEATS_C = true;
+const DV_EXIT_CORNER = true;                           // [NY] GÅ UT (og bytt sete) øverst til venstre på mobil
 const JEEP_50C = true;                                 // [NY] jeepens våpen heter .50 i teksten
 addEventListener('keydown', e => {
   if (!DV_SEATS_C || e.repeat || myDv === null || (e.code !== 'Digit1' && e.code !== 'Digit2')) return;
@@ -460,11 +461,18 @@ function updateDesertVehicles(dt) {
   dvHud.style.display = txt ? 'block' : 'none';
   dvHud.innerHTML = txt;
   if (dvBtn) { dvBtn.style.display = btn ? 'block' : 'none'; dvBtn.textContent = btn; }
+  // [NY] GÅ UT øverst i venstre hjørne (midten av skjermen blir fri). KJØR/FLY/SKYTTER (gå inn) står fortsatt i midten.
+  if (dvBtn && DV_EXIT_CORNER) {
+    const corner = myDv !== null;
+    dvBtn.style.left = corner ? '12px' : '50%'; dvBtn.style.top = corner ? '12px' : '84px';
+    dvBtn.style.transform = corner ? 'none' : 'translateX(-50%)';
+    dvBtn.style.padding = corner ? '9px 16px' : '12px 22px'; dvBtn.style.fontSize = corner ? '15px' : '17px';
+  }
   // [NY] mobil: knapp for å bytte sete (sjåfør <-> skytter) i stridsvogn og jeep, ved siden av GÅ UT
   if (isTouch && DV_SEATS_C) {
     if (!dvSeatBtn) {
       dvSeatBtn = document.createElement('div');
-      dvSeatBtn.style.cssText = 'position:fixed;left:calc(50% + 92px);top:84px;padding:12px 18px;border-radius:30px;background:rgba(40,70,110,0.85);border:2px solid #fff;color:#fff;font:bold 17px Fredoka, sans-serif;z-index:6;display:none;user-select:none;';
+      dvSeatBtn.style.cssText = 'position:fixed;left:' + (DV_EXIT_CORNER ? '12px' : 'calc(50% + 92px)') + ';top:' + (DV_EXIT_CORNER ? '60px' : '84px') + ';padding:' + (DV_EXIT_CORNER ? '9px 14px' : '12px 18px') + ';border-radius:30px;background:rgba(40,70,110,0.85);border:2px solid #fff;color:#fff;font:bold 17px Fredoka, sans-serif;z-index:6;display:none;user-select:none;';
       dvSeatBtn.addEventListener('touchstart', e => {
         e.preventDefault();
         const mv = dvMine(); if (!mv) return;
@@ -486,13 +494,26 @@ function updateDesertVehicles(dt) {
 //  Innstillinger-tannhjulet skjules også. ANGRE: DV_TOUCH_CLEAN = false.
 // ===================================================================
 const DV_TOUCH_CLEAN = true;
-let dvTouchWas = null, heliDownHeld = false;
+let dvTouchWas = null, heliDownHeld = false, dvTouchPosWas = null, dvTouchHome = null;
 function dvTouchButtons() {
   const b = window.__mobBtns;
   if (!DV_TOUCH_CLEAN || !isTouch || !b || !desertOn()) return;
   const v = myDv !== null ? dvMine() : null, k = v ? v.kind + ':' + myDvSeat : '';
   if (!v && dvTouchWas === '') return;              // til fots og allerede tilbakestilt: la resten av spillet styre
   dvTouchWas = k;
+  // [NY] i kjøretøy: knappene samlet helt ute til høyre (mer av skjermen fri). Til fots: tilbake der de var.
+  if (k !== dvTouchPosWas) {
+    dvTouchPosWas = k;
+    if (!dvTouchHome) { dvTouchHome = {}; for (const n in b) if (b[n]) dvTouchHome[n] = [b[n].style.right, b[n].style.bottom]; }
+    for (const n in dvTouchHome) { b[n].style.right = dvTouchHome[n][0]; b[n].style.bottom = dvTouchHome[n][1]; }
+    const put = (n, r, bt) => { if (b[n]) { b[n].style.right = r + 'px'; b[n].style.bottom = bt + 'px'; } };
+    if (typeof killfeed !== 'undefined') killfeed.style.marginTop = v && DV_EXIT_CORNER ? (v.kind === 'tank' || v.kind === 'jeep' ? '96px' : '50px') : '';   // [NY] drapslista under GÅ UT
+    if (v && DV_EXIT_CORNER) {
+      put('fireBtn', 16, 36);
+      if (v.kind === 'heli') { put('jumpBtn', 124, 140); put('crouchBtn', 132, 50); put('nadeBtn', 32, 150); put('reloadBtn', 32, 230); }
+      else { put('reloadBtn', 32, 150); put('nadeBtn', 32, 228); put('scopeBtn', 32, 228); }
+    }
+  }
   const show = (el, on, label) => { if (!el) return; el.style.visibility = on ? '' : 'hidden'; if (label !== undefined) el.textContent = label; };
   const heli = v && v.kind === 'heli', jet = v && v.kind === 'jet';
   show(b.swapBtn, !v); show(b.slideBtn, !v); show(b.scopeBtn, !v || (v.kind === 'tank' && myDvSeat === 'drive'));
