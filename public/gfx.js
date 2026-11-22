@@ -23,7 +23,10 @@ window.addEventListener('DOMContentLoaded', () => {
   sb.onclick = () => { try { localStorage.setItem('kmf-shadows', GFX_SHADOWS ? 'off' : 'on'); } catch (e) {} location.reload(); };
   row.appendChild(sb);
 });
-const GFX_SHADOWS = (() => { try { return localStorage.getItem('kmf-shadows') !== 'off'; } catch (e) { return true; } })();
+// [NY] SKYGGER AV SOM STANDARD: skyggene så rare ut (store mørke flekker med taggete kant, særlig om natta).
+//  Kan fortsatt slås på i innstillingene (Skygger: På). ANGRE: SHADOWS_DEFAULT_OFF = false
+const SHADOWS_DEFAULT_OFF = true;
+const GFX_SHADOWS = (() => { try { const v = localStorage.getItem('kmf-shadows'); return SHADOWS_DEFAULT_OFF ? v === 'on' : v !== 'off'; } catch (e) { return !SHADOWS_DEFAULT_OFF; } })();
 if (!GFX_SHADOWS) { renderer.shadowMap.enabled = false; sun.castShadow = false; }
 
 // ---------- Klosse-teksturer (tegnes i koden, ingen bildefiler) ----------
