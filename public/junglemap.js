@@ -41,7 +41,8 @@
   // [NY] LAYOUT 2 (Flyvers tegning): én elv fra nord til sør, stor bro midt på, tett by rundt broa, to halvmåne-risåkre.
   //  Ingen små landsbyer, firkant-risåkre eller elv på tvers. Speilet, så begge lag har like vei. ANGRE: JUNGLE_LAYOUT2 = false
   const JUNGLE_LAYOUT2 = true;
-  const TOWN = { r: 100 };                                             // byen: radius rundt midten
+  const TOWN = { r: 100 };
+  const TOWN_CROOKED = true, TOWN_ROOFS = true;                     // [NY] skjeve gater + trapp opp på taket. ANGRE: false                                             // byen: radius rundt midten
   const ARCS = [{ r0: 140, r1: 166, a0: 115 * Math.PI / 180, a1: 245 * Math.PI / 180 }];   // vestre risåker (østre er speilet)
   const BIG_BRIDGE = { z0: -4, z1: 3 };                                // stor bro på tvers av elva midt på
   const VILLAGES = JUNGLE_LAYOUT2 ? [] : [{ x: -170, z: 150 }, { x: 180, z: 120 }];
@@ -192,12 +193,33 @@
           for (let z = z0 + 1; z < z0 + d - 1; z++) for (let x = x0 + 1; x < x0 + w - 1; x++) if (!(x === x0 + 1 && z <= z0 + 3)) put(x, 3, z, T.PLANK);   // golv i 2. etasje (hull over trappa)
           for (let k = 0; k < 3; k++) for (let y = 0; y <= k; y++) put(x0 + 1, y, z0 + 1 + k, T.PLANK);   // trapp: 3 trinn opp
         }
-        for (let z = z0; z < z0 + d; z++) for (let x = x0; x < x0 + w; x++) put(x, H, z, T.TILE);
+        // [NY] trapp opp på taket (fra 2. etasje, eller fra bakken i lave hus) + hull i taket over den
+        const sx = x0 + w - 2, base = st === 2 ? 4 : 0, steps = st === 2 ? 3 : 4, hole = new Set();
+        if (TOWN_ROOFS) for (let k = 0; k < steps; k++) { for (let y = base; y <= base + k; y++) put(sx, y, z0 + 1 + k, T.PLANK); if (k < steps - 1) hole.add(z0 + 1 + k); }
+        for (let z = z0; z < z0 + d; z++) for (let x = x0; x < x0 + w; x++) if (!(x === sx && hole.has(z))) put(x, H, z, T.TILE);
+        // [NY] lav brystning rundt taket med åpninger (dekning når du ligger på lur)
+        if (TOWN_ROOFS) for (let z = z0; z < z0 + d; z++) for (let x = x0; x < x0 + w; x++) {
+          const edge = x === x0 || x === x0 + w - 1 || z === z0 || z === z0 + d - 1; if (!edge) continue;
+          if (((x - x0) + (z - z0)) % 4 !== 2) put(x, H + 1, z, T.PLASTER);
+        }
       }
-      for (let lz = 7; lz < TOWN.r; lz += 11) for (let lx = -TOWN.r; lx < TOWN.r; lx += 11) {
+      // [NY] skjeve gater: hver rad har egen bredde og start, husene står litt hulter til bulter, og gatene bukter seg
+      const lots = [];
+      if (TOWN_CROOKED) for (let rz = 7; rz < TOWN.r;) {
+        const rowD = 8 + Math.floor(R() * 3), bend = Math.round(6 * Math.sin(rz * 0.09));
+        for (let rx = -TOWN.r + Math.floor(R() * 7) + bend; rx < TOWN.r;) {
+          const w = 6 + Math.floor(R() * 4), d = Math.max(6, rowD - Math.floor(R() * 3));
+          lots.push([rx, rz + Math.floor(R() * (rowD - d + 2)), w, d]);
+          rx += w + 2 + Math.floor(R() * 3);                       // smug 2-4 m
+        }
+        rz += rowD + 3 + Math.floor(R() * 2);
+      }
+      else for (let lz = 7; lz < TOWN.r; lz += 11) for (let lx = -TOWN.r; lx < TOWN.r; lx += 11) { const w = 6 + Math.floor(R() * 3), d = 6 + Math.floor(R() * 3); lots.push([lx + Math.floor(R() * (9 - w)), lz + Math.floor(R() * (9 - d)), w, d]); }
+      for (const [x0, z0, w, d] of lots) {
         if (R() < 0.12) continue;                                 // en liten plass her og der
-        const w = 6 + Math.floor(R() * 3), d = 6 + Math.floor(R() * 3), x0 = lx + Math.floor(R() * (9 - w)), z0 = lz + Math.floor(R() * (9 - d));
-        const st = R() < 0.6 ? 2 : 1, door = Math.floor(R() * 4);
+        const st = R() < 0.6 ? 2 : 1; let door = Math.floor(R() * 4);
+        if (TOWN_ROOFS && st === 2 && door === 3) door = 1;          // [NY] døra skal ikke gå rett inn i trappa
+        if (TOWN_ROOFS && st === 1 && door === 1) door = 3;
         let bad = false;
         for (const [cx, cz] of [[x0, z0], [x0 + w, z0], [x0, z0 + d], [x0 + w, z0 + d]]) if (cx * cx + cz * cz > (TOWN.r - 2) * (TOWN.r - 2) || nearRiver(cx, cz, 4)) bad = true;
         if (bad) continue;
