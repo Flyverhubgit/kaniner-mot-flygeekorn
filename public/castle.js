@@ -48,36 +48,58 @@ function makeVoxelWorld(LIB, group) {
   if (!LIB.INFO[BUILT_T]) LIB.INFO[BUILT_T] = { color: 0xc8955a, hp: 8, step: true };
   const W = { LIB, group, pristine: LIB.build(), typeMeshes: {} };
   W.grid = W.pristine.slice();
-  W.instIndex = new Int32Array(W.grid.length).fill(-1);
+  // [NY] Store kart (jungelen): klossene deles i ruter (LIB.CHUNK m), én mesh per type per rute, og bare ruter nær deg vises.
+  // SPARSE: instIndex som Map (sparer ~36 MB på et 800 x 800-kart). Vanlige kart: som før (én mesh per type).
+  const CH = LIB.CHUNK || 0, NCX = CH ? Math.ceil(LIB.NX / CH) : 1;
+  W.keyOf = (t, i) => {
+    if (!CH) return t;
+    const x = i % LIB.NX, z = ((i - x) / LIB.NX) % LIB.NZ;
+    return t * 100000 + Math.floor(z / CH) * NCX + Math.floor(x / CH);
+  };
+  if (LIB.SPARSE) { const M = new Map(); W.instIndex = new Proxy({}, { get: (o, k) => { const v = M.get(+k); return v === undefined ? -1 : v; }, set: (o, k, v) => { M.set(+k, v); return true; } }); W.instIndex.length = LIB.NX * LIB.NY * LIB.NZ; }
+  else W.instIndex = new Int32Array(W.grid.length).fill(-1);
+  W.chunkGroups = {};
   // [NY] Ytelse: klosser som ALDRI kan synes (uknuselige, og bare omgitt av uknuselige klosser,
   // f.eks. inni bakkene) tegnes ikke. Ridderborgen: ca. 5000 færre klosser å tegne.
   const P = W.pristine, hard = t => t && LIB.INFO[t].hp === 0;
   const hidden = new Uint8Array(P.length);
-  for (let y = 0; y < LIB.NY; y++) for (let z = LIB.Z0 + 1; z < LIB.Z0 + LIB.NZ - 1; z++) for (let x = LIB.X0 + 1; x < LIB.X0 + LIB.NX - 1; x++) {
+  if (!LIB.SPARSE) for (let y = 0; y < LIB.NY; y++) for (let z = LIB.Z0 + 1; z < LIB.Z0 + LIB.NZ - 1; z++) for (let x = LIB.X0 + 1; x < LIB.X0 + LIB.NX - 1; x++) {
     const i = LIB.idx(x, y, z);
     if (!hard(P[i]) || y + 1 >= LIB.NY) continue;
     if (hard(P[LIB.idx(x, y + 1, z)]) && (y === 0 || hard(P[LIB.idx(x, y - 1, z)])) && hard(P[LIB.idx(x + 1, y, z)]) && hard(P[LIB.idx(x - 1, y, z)]) &&
         hard(P[LIB.idx(x, y, z + 1)]) && hard(P[LIB.idx(x, y, z - 1)])) hidden[i] = 1;
   }
   const counts = {};
-  for (let i = 0; i < P.length; i++) { const t = P[i]; if (t && !hidden[i]) counts[t] = (counts[t] || 0) + 1; }
-  for (const t in counts) {
+  for (let i = 0; i < P.length; i++) { const t = P[i]; if (t && !hidden[i]) { const k = W.keyOf(t, i); counts[k] = (counts[k] || 0) + 1; } }
+  const typeMat = {};
+  for (const key in counts) {
+    const t = CH ? Math.floor(key / 100000) : key;
     const info = LIB.INFO[t];
-    const mat = new THREE.MeshStandardMaterial({ color: info.color, roughness: 0.85, emissive: info.emissive || ((LIB === CM && t == CM.T.GLASS) ? 0x224466 : 0) });
-    // [NY] Grafikk Høy: tekstur på klossene (stein, planker, murstein ...). Lav = flate farger som før.
-    if (typeof GFX_HIGH !== 'undefined' && GFX_HIGH) mat.map = gfxBlockTex(gfxPatternFor(LIB, t));
-    const mesh = new THREE.InstancedMesh(boxGeo, mat, counts[t]);
+    let mat = typeMat[t];
+    if (!mat) {
+      mat = typeMat[t] = new THREE.MeshStandardMaterial({ color: info.color, roughness: 0.85, emissive: info.emissive || ((LIB === CM && t == CM.T.GLASS) ? 0x224466 : 0) });
+      // [NY] Grafikk Høy: tekstur på klossene (stein, planker, murstein ...). Lav = flate farger som før.
+      if (typeof GFX_HIGH !== 'undefined' && GFX_HIGH) mat.map = gfxBlockTex(gfxPatternFor(LIB, t));
+    }
+    const mesh = new THREE.InstancedMesh(boxGeo, mat, counts[key]);
     mesh.castShadow = !isTouch;          // skygger koster mye på mobil
     mesh.receiveShadow = true;
     mesh.frustumCulled = false;
     mesh.raycast = () => {};             // kuler sjekkes i rutenettet i stedet (mye raskere)
     mesh.userData.next = 0;
-    group.add(mesh);
-    W.typeMeshes[t] = mesh;
+    if (CH) {                                       // [NY] i sin rute
+      const cid = key % 100000;
+      let cg = W.chunkGroups[cid];
+      if (!cg) { cg = W.chunkGroups[cid] = new THREE.Group(); cg.visible = false; cg.userData.cx = LIB.X0 + (cid % NCX + 0.5) * CH; cg.userData.cz = LIB.Z0 + (Math.floor(cid / NCX) + 0.5) * CH; group.add(cg); }
+      cg.add(mesh);
+    } else group.add(mesh);
+    W.typeMeshes[key] = mesh;
   }
+  // [NY] vis bare ruter innenfor r meter (kalles hver frame av kartet som bruker ruter)
+  W.cull = (px, pz, r) => { const lim = (r + CH * 0.71) * (r + CH * 0.71); for (const k in W.chunkGroups) { const g = W.chunkGroups[k]; const dx = g.userData.cx - px, dz = g.userData.cz - pz; g.visible = dx * dx + dz * dz < lim; } };
   for (let i = 0; i < W.pristine.length; i++) {
     const t = W.pristine[i];
-    if (t && !hidden[i]) W.instIndex[i] = W.typeMeshes[t].userData.next++;
+    if (t && !hidden[i]) W.instIndex[i] = W.typeMeshes[W.keyOf(t, i)].userData.next++;
   }
   // [NY] Grafikk Høy: hver kloss får litt ulik lysstyrke, og klosser med noe over seg er litt mørkere
   // (som skygge under tak og inni hjørner). Gjør at vegger og bakker ser mindre "flate" ut.
@@ -90,7 +112,7 @@ function makeVoxelWorld(LIB, group) {
       let v = 0.93 + (((x * 73856093) ^ (y * 19349663) ^ (z * 83492791)) >>> 0) % 1000 / 1000 * 0.12;
       if (y + 1 < LIB.NY && P[i + LIB.NX * LIB.NZ]) v *= 0.9;
       col.setRGB(v, v, v);
-      W.typeMeshes[t].setColorAt(W.instIndex[i], col);
+      W.typeMeshes[W.keyOf(t, i)].setColorAt(W.instIndex[i], col);
     }
     for (const t in W.typeMeshes) if (W.typeMeshes[t].instanceColor) W.typeMeshes[t].instanceColor.needsUpdate = true;
   }
@@ -105,7 +127,7 @@ function makeVoxelWorld(LIB, group) {
     dummyObj.position.set(x + 0.5, y + 0.5, z + 0.5);
     dummyObj.scale.setScalar(on ? 1 : 0.0001);
     dummyObj.updateMatrix();
-    W.typeMeshes[t].setMatrixAt(W.instIndex[i], dummyObj.matrix);
+    W.typeMeshes[W.keyOf(t, i)].setMatrixAt(W.instIndex[i], dummyObj.matrix);
   };
   // [NY] Byggeklosser: én egen mesh med ledige plasser
   const bm = new THREE.InstancedMesh(boxGeo, new THREE.MeshStandardMaterial({ map: builtTex, roughness: 0.8 }), BUILT_CAP);

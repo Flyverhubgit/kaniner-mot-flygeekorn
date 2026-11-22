@@ -14,7 +14,8 @@ const MM = require('./public/medievalmap.js'); // [NY] Ridderborgen (middelalder
 const WM = require('./public/westmap.js');
 const PM = require('./public/piratemap.js');   // [NY] Piratbukta (øyer og piratskip)     // [NY] Ville Vesten (cowboybyen)
 const JM = require('./public/japanmap.js');    // [NY] Dragetempelet (japansk tempel, drager)
-const DM = require('./public/desertmap.js');   // [NY] Ørkenkrigen (stort slagfelt, 16 mot 16)
+const DM = require('./public/desertmap.js');
+const JGM = require('./public/junglemap.js');   // [NY] Jungelkrigen (svær jungel)   // [NY] Ørkenkrigen (stort slagfelt, 16 mot 16)
 
 const app = express();
 app.use(require('compression')());                // [NY] pakker filene (ca. 1 MB -> 250 KB) – raskere lasting på mobil
@@ -100,7 +101,7 @@ let foamHoles = [];            // [x, z] for hvert granat-hull (til nye spillere
 // Underverdenen: et skjult håndtak sender alle ned til lava-arenaen til neste runde
 let worldName = 'main';        // 'main' eller 'underworld'
 // Baner byttes hver runde: tempelet og det kjempestore barnerommet (snikskytterbane)
-const MAPS = ['temple', 'room', 'castle', 'space', 'farm', 'sea', 'medieval', 'west', 'dragon', 'desert', 'pirate']       // rekkefølgen banene byttes i
+const MAPS = ['temple', 'room', 'castle', 'space', 'farm', 'sea', 'medieval', 'west', 'dragon', 'desert', 'pirate', 'jungle']       // rekkefølgen banene byttes i
   .filter(m => !LM.HIDDEN_MAPS.includes(m) || process.env.START_MAP === m);   // [NY] zombie-kyllinger og dyphavet er tatt bort (se lobbymap.js)
 // [NY] Alle starter i LOUNGEN ('lobby'). Der stemmer man ved å stå i en portal. (START_MAP er for testing)
 let mapName = MAPS.includes(process.env.START_MAP) || process.env.START_MAP === 'lobby' ? process.env.START_MAP : 'lobby';
@@ -128,7 +129,7 @@ function makeVox(LIB) {
   const pristine = LIB.build();
   return { LIB, pristine, grid: pristine.slice(), hp: new Uint8Array(pristine.length), gone: [], built: [] };
 }
-const VOX = { castle: makeVox(CM), farm: makeVox(FM), sea: makeVox(SM), medieval: makeVox(MM), west: makeVox(WM), dragon: makeVox(JM), desert: makeVox(DM), pirate: makeVox(PM) };
+const VOX = { castle: makeVox(CM), farm: makeVox(FM), sea: makeVox(SM), medieval: makeVox(MM), west: makeVox(WM), dragon: makeVox(JM), desert: makeVox(DM), pirate: makeVox(PM), jungle: makeVox(JGM) };
 function resetVox(name) {
   const V = VOX[name];
   if (!V) return;
@@ -137,7 +138,7 @@ function resetVox(name) {
   V.gone = [];
   V.built = [];                                     // [NY] byggeklosser forsvinner ved ny runde
 }
-resetVox('castle'); resetVox('farm'); resetVox('sea'); resetVox('medieval'); resetVox('west'); resetVox('dragon'); resetVox('desert'); resetVox('pirate');
+resetVox('castle'); resetVox('farm'); resetVox('sea'); resetVox('medieval'); resetVox('west'); resetVox('dragon'); resetVox('desert'); resetVox('pirate'); resetVox('jungle');
 // [NY] "Horde"-baner: alle spillerne sammen mot monstre (kyllingfarmen og dyphavsbasen)
 function hordeMap() { return mapName === 'farm' || mapName === 'sea'; }
 function HL() { return mapName === 'sea' ? SM : FM; }          // kartet til horde-banen
@@ -2911,8 +2912,9 @@ setInterval(() => {
 // Bare på klosse-banene (Klosseslottet og Ridderborgen) der serveren vet hvor veggene er.
 // De er med vilje ganske dårlige: treg reaksjon, bommer mye, går saktere enn deg.
 // ===================================================================
-const BOT_MAPS = ['castle', 'medieval', 'room', 'temple', 'west', 'desert', 'pirate'];
+const BOT_MAPS = ['castle', 'medieval', 'room', 'temple', 'west', 'desert', 'pirate', 'jungle'];
 const PIRATE_TEAM = 5;                       // [NY] Piratbukta: robotene fyller hvert lag opp til 5
+const JUNGLE_TEAM = 10;                       // [NY] Jungelkrigen: 10 mot 10 (stort kart, færre roboter)
 const DESERT_TEAM = 16;                      // [NY] Ørkenkrigen: robotene fyller hvert lag opp til 16 (16 mot 16)
 const DESERT_BOT_W = ['c7', 'c7', 'c7', 'minimi', 'mg42', 'sniper50'];   // robotenes våpen (tilfeldig)
 const DESERT_BOT_MS = { c7: 330, minimi: 230, mg42: 170, sniper50: 1700 };   // tid mellom robot-skudd
@@ -3021,9 +3023,14 @@ const BOT_OUT = {
   room: [], temple: [],                       // åpne baner: rett ut på gulvet
   west: [[0, 47], [0, 30]],                   // Ville Vesten: ut av innhegningen og ned hovedgata
   desert: [[0, 206], [0, 194]],               // [NY] Ørkenkrigen: ut sørporten av basen
+  jungle: [[0, 229], [0, 210]],               // [NY] Jungelkrigen: ned av høyden (søråpningen i sandsekkene)
   pirate: []                                  // [NY] Piratbukta: robotene er på skipet (egen kode)
 };
 function botField() {                        // tilfeldig ledig punkt ute på slagmarka
+  if (mapName === 'jungle') {                // [NY] Jungelkrigen: hvor som helst i jungelen
+    for (let k = 0; k < 40; k++) { const x = (Math.random() * 2 - 1) * 330, z = (Math.random() * 2 - 1) * 300; if (freeSpot(x, z) >= 0) return [x, z]; }
+    return [0, 120];
+  }
   if (mapName === 'desert') {                // [NY] Ørkenkrigen: oftest mot midten (landsbyen), ellers hvor som helst
     for (let k = 0; k < 40; k++) {
       const mid = Math.random() < 0.55, x = (Math.random() * 2 - 1) * (mid ? 110 : 215), z = (Math.random() * 2 - 1) * (mid ? 70 : 185);
@@ -3072,7 +3079,7 @@ function balanceBots() {
   if (!botOn() || humans.length === 0) { bots.forEach(b => removeBot(b.id)); return; }
   const h = { bunny: 0, squirrel: 0 };
   humans.forEach(p => h[p.team]++);
-  const want = mapName === 'desert' ? { bunny: Math.max(0, DESERT_TEAM - h.bunny), squirrel: Math.max(0, DESERT_TEAM - h.squirrel) }   // [NY] 16 mot 16
+  const want = mapName === 'desert' || mapName === 'jungle' ? { bunny: Math.max(0, (mapName === 'jungle' ? JUNGLE_TEAM : DESERT_TEAM) - h.bunny), squirrel: Math.max(0, (mapName === 'jungle' ? JUNGLE_TEAM : DESERT_TEAM) - h.squirrel) }   // [NY] 16 mot 16
     : mapName === 'pirate' ? { bunny: Math.max(0, PIRATE_TEAM - h.bunny), squirrel: Math.max(0, PIRATE_TEAM - h.squirrel) }   // [NY] 5 mot 5
     : { bunny: Math.max(0, h.squirrel - h.bunny), squirrel: Math.max(0, h.bunny - h.squirrel) };
   TEAMS.forEach(team => {
@@ -3234,7 +3241,7 @@ const BOT_SMART = true;
 let nav = null, navDirty = true, navAt = 0, navMapName = '';
 function navBuild() {
   const bm = boxMap(), L = bm ? null : BV().LIB;
-  const cs = mapName === 'desert' ? 2 : 1;                       // rutestørrelse (meter)
+  const cs = mapName === 'desert' || mapName === 'jungle' ? 2 : 1;   // rutestørrelse (meter)
   const x0 = bm ? -bm.xMax - 2 : L.X0 + 1, x1 = bm ? bm.xMax + 2 : L.X0 + L.NX - 1;
   const z0 = bm ? -bm.zMax - 2 : L.Z0 + 1, z1 = bm ? bm.zMax + 2 : L.Z0 + L.NZ - 1;
   const W = Math.floor((x1 - x0) / cs), H = Math.floor((z1 - z0) / cs);
@@ -3587,3 +3594,13 @@ io.on('connection', socket => {
     if (snailOn === socket.id) snailOn = null;
   });
 });
+
+// [NY] JUNGELKRIGEN: start i egen firebase (steg 1 – senere: helikopter + fallskjerm)
+const spawnForJungleOld = spawnFor;
+spawnFor = function (team) {
+  if (mapName !== 'jungle' || (team !== 'bunny' && team !== 'squirrel')) return spawnForJungleOld(team);
+  const S = JGM.SPAWNS.bunny;
+  let x = S.x0 + Math.random() * (S.x1 - S.x0), z = S.z0 + Math.random() * (S.z1 - S.z0);
+  for (let k = 0; k < 20 && (bSolid(x, S.y + 0.2, z) || bSolid(x, S.y + 1.2, z)); k++) { x = S.x0 + Math.random() * (S.x1 - S.x0); z = S.z0 + Math.random() * (S.z1 - S.z0); }
+  return team === 'bunny' ? { x, y: S.y, z, yaw: 0 } : { x: -x, y: S.y, z: -z, yaw: Math.PI };
+};

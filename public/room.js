@@ -155,7 +155,7 @@ function applyMap() {
   if (big) setFoam(false);
 }
 
-function mapFromName(n) { return ['room', 'castle', 'space', 'farm', 'sea', 'lobby', 'medieval', 'west', 'dragon', 'desert', 'pirate'].includes(n) ? n : 'temple'; }
+function mapFromName(n) { return ['room', 'castle', 'space', 'farm', 'sea', 'lobby', 'medieval', 'west', 'dragon', 'desert', 'pirate', 'jungle'].includes(n) ? n : 'temple'; }   // [NY] jungle
 socket.on('map', d => {
   currentMap = mapFromName(d.name);
   applyMap();

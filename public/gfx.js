@@ -159,6 +159,7 @@ function gfxBlockTex(pattern) {
 function gfxPatternFor(LIB, t) {
   t = +t;
   let tbl = {};
+  if (LIB.PATTERNS) return LIB.PATTERNS[t] || 'speckle';   // [NY] kartet har egne mønstre (jungelen)
   if (typeof CM !== 'undefined' && LIB === CM) tbl = { 1: 'grass', 3: 'stone', 4: 'brick', 5: 'log', 6: 'leaf', 7: 'roof', 8: 'cloth', 9: 'cloth', 10: 'plank', 11: 'glass', 12: 'stone', 13: 'marble' };
   else if (typeof MED !== 'undefined' && LIB === MED) tbl = { 1: 'grass', 2: 'stone', 3: 'brick', 4: 'stone', 5: 'log', 6: 'plank', 7: 'roof', 8: 'cloth', 9: 'cloth', 10: 'log', 11: 'hay', 12: 'cloth', 13: 'stone', 14: 'plank', 15: 'flat', 16: 'metal', 17: 'cloth', 18: 'leaf' };
   else if (typeof WEST !== 'undefined' && LIB === WEST) tbl = { 1: 'plank', 2: 'plank', 3: 'log', 4: 'roof', 5: 'brick', 6: 'stone', 7: 'plank', 8: 'log', 9: 'plank', 10: 'hay', 11: 'leaf', 12: 'sand', 13: 'cloth', 14: 'cloth', 15: 'plank', 16: 'plank', 17: 'plank', 18: 'plaster', 19: 'metal' };
