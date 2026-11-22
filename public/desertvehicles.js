@@ -498,7 +498,7 @@ function dvTouchButtons() {
   show(b.swapBtn, !v); show(b.slideBtn, !v); show(b.scopeBtn, !v || (v.kind === 'tank' && myDvSeat === 'drive'));
   show(b.jumpBtn, !v || heli, heli ? 'OPP' : 'HOPP');
   show(b.crouchBtn, !v || heli, heli ? 'NED' : 'DUKK');
-  show(b.nadeBtn, !v || heli || jet, heli ? 'RAKETT' : jet ? 'MISSIL' : 'GRANAT');
+  show(b.nadeBtn, !v || heli || jet || (v.kind === 'jeep' && myDvSeat === 'gun'), heli ? 'RAKETT' : jet ? 'MISSIL' : 'GRANAT');   // jeep-skytteren kan kaste granat
   if (typeof setBtn !== 'undefined') setBtn.style.visibility = v ? 'hidden' : '';
   if (v && typeof touchCrouch !== 'undefined' && touchCrouch) { touchCrouch = false; b.crouchBtn.style.background = 'rgba(255,255,255,0.3)'; }
 }
@@ -508,8 +508,34 @@ if (DV_TOUCH_CLEAN) setTimeout(() => {
   b.crouchBtn.addEventListener('touchstart', () => { const v = myDv !== null ? dvMine() : null; if (v && v.kind === 'heli') { heliDownHeld = true; setTimeout(() => { if (typeof touchCrouch !== 'undefined') touchCrouch = false; }, 0); } });
   b.crouchBtn.addEventListener('touchend', () => { heliDownHeld = false; });
 }, 0);
+// [NY] Granat i kjøretøy: bare jeep-skytteren (står bak på jeepen og kan kaste). Fly/helikopter bruker G til missil/rakett.
+function dvNadeBlocked() {
+  if (!DV_TOUCH_CLEAN || myDv === null) return false;
+  const v = dvMine(); if (!v) return false;
+  return !(v.kind === 'jeep' && myDvSeat === 'gun');
+}
+// [NY] Kjøretøyets liv-boks flyttes dit livet ditt står (nede til venstre) – kjøretøyet ER livet ditt til du går ut
+const DV_HUD_AS_HEALTH = true;
+let dvHudMoved = false;
+function dvHudPlace() {
+  if (!DV_HUD_AS_HEALTH) return;
+  const inV = myDv !== null && dvHud.style.display !== 'none';
+  if (inV) { healthEl.style.visibility = 'hidden'; const h0 = document.getElementById('hpbar'); if (h0) h0.style.visibility = 'hidden'; }   // hver frame (space.js setter den også)
+  if (inV === dvHudMoved) return;
+  dvHudMoved = inV;
+  const hb = document.getElementById('hpbar');
+  if (inV) {
+    dvHud.style.left = '20px'; dvHud.style.bottom = '18px'; dvHud.style.transform = 'none';
+    dvHud.style.fontSize = '17px'; dvHud.style.padding = '9px 16px'; dvHud.style.borderRadius = '14px';
+    healthEl.style.visibility = 'hidden'; if (hb) hb.style.visibility = 'hidden';
+  } else {
+    dvHud.style.left = '50%'; dvHud.style.bottom = '118px'; dvHud.style.transform = 'translateX(-50%)';
+    dvHud.style.fontSize = '15px'; dvHud.style.padding = '6px 14px'; dvHud.style.borderRadius = '10px';
+    healthEl.style.visibility = ''; if (hb) hb.style.visibility = '';
+  }
+}
 // kjøres til slutt i hver frame (etter game.js og space.js, som også setter knappene)
 if (typeof renderFrame === 'function') {
   const renderFrameOld = renderFrame;
-  renderFrame = function () { const r = renderFrameOld.apply(this, arguments); try { dvTouchButtons(); } catch (e) {} return r; };
+  renderFrame = function () { const r = renderFrameOld.apply(this, arguments); try { dvTouchButtons(); } catch (e) {} try { dvHudPlace(); } catch (e) {} return r; };
 }
