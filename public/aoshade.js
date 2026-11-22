@@ -5,7 +5,7 @@
 //  Sjekker PAR av punkter rundt hver piksel: på en flat flate tar de hverandre ut, i et hjørne gjør de ikke det.
 //  ANGRE: sett AO_ON = false.
 // ===================================================================
-const AO_ON = true;
+const AO_ON = false;                                    // [NY] AV: ga kornete "piksel-støy" på store flater (taket i loungen). ANGRE: true
 const AO_STRENGTH = 0.8;                                // hvor mørke hjørnene blir (0..1)
 const AO_RADIUS = 0.7;                                  // meter rundt hvert punkt
 let aoRT = null, aoPass = null, aoMatP = null, aoMatI = null, aoHide = [], aoSolid = [], aoHideAt = 0, aoFail = false;
