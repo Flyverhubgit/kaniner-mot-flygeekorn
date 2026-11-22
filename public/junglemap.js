@@ -220,7 +220,8 @@
     return out;
   }
 
-  const api = { NX, NY, NZ, X0, Z0, CHUNK, BOUND, T, INFO, PATTERNS, idx, build, undergrowth, SPAWNS, FIREBASE, HELIPAD, FLAG, TOWER, VILLAGES: ALL_VILLAGES, PADDIES: ALL_PADDIES, BRIDGES, RIVER, RIVER_W, inPaddy, inRiver, SPARSE: true };
+  function masked(x, z) { if (!mask) build(); x = Math.floor(x); z = Math.floor(z); return x < X0 || x >= X0 + NX || z < Z0 || z >= Z0 + NZ || mask[(z - Z0) * NX + (x - X0)] === 1; }
+  const api = { NX, NY, NZ, X0, Z0, CHUNK, BOUND, T, INFO, PATTERNS, idx, build, undergrowth, SPAWNS, FIREBASE, HELIPAD, FLAG, TOWER, VILLAGES: ALL_VILLAGES, PADDIES: ALL_PADDIES, BRIDGES, RIVER, RIVER_W, inPaddy, inRiver, masked, SPARSE: true };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.JungleMap = api;
 })(this);
