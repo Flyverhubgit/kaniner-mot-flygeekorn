@@ -1143,6 +1143,7 @@ function num(v, lo, hi) {
 // Skade fra skudd eller granat. weapon = 'gun' eller 'nade'
 function applyDamage(p, t, dmg, head, weapon) {
   if (Date.now() < (t.protectedUntil || 0)) return;   // nettopp startet på nytt: beskyttet
+  if (t.team === 'snail' && typeof SNAIL_ON !== 'undefined' && SNAIL_ON && p !== t) dmg *= SNAIL_DMG_TAKEN;   // [NY] sneglehuset: tar halv skade
   if (t.vehicle === 'dv') {                            // [NY] ørken-kjøretøy: kjøretøyet tar støyten
     const v = dvOf(t);
     if (v && !['rocket', 'nade', 'firepot', 'dvshell', 'holy', 'crash'].includes(weapon)) dvDamage(v, dvBulletDmg(v, weapon === 'sniper' ? 'sniper50' : 'c7'), p);   // smell tas av dvArea
@@ -1162,7 +1163,7 @@ function applyDamage(p, t, dmg, head, weapon) {
     questDied(t);                                      // [NY] døde: oppdraget starter på nytt
     t.streak = 0;
     p.kills++;
-    score[p.team]++;
+    score[p.team] = (score[p.team] || 0) + 1;   // [NY] (sneglen har egen poengsum)
     if (mapName === 'desert' && score[p.team] >= DESERT_KILLS && roundEndsAt > Date.now() + 4000) roundEndsAt = Date.now() + 4000;   // [NY] første lag til 100 drap vinner
     // Drap på rad: KILLINGSPREE (3), USTOPPELIG (5), LEGENDARISK (10), så hver 5.
     p.streak = (p.streak || 0) + 1;
@@ -1872,6 +1873,7 @@ io.on('connection', socket => {
     if (!GM_ON || !GM_CARRY || !p || !p.alive || intermission || mapName !== 'desert' || p.vehicle || !d || !d.ok) return;
     const R = gmSide(p.team, { x: DM.RADIO.x + 0.5, z: DM.RADIO.z + 0.5 });
     if (Math.hypot(p.x - R.x, p.z - R.z) > 5 || p.y < 10) return;
+    if (p.team === 'snail') return;                                    // [NY] sneglen har ikke radio
     if (gmCarrier[p.team]) return;                                     // noen på laget har den allerede
     gmCarrier[p.team] = p.id; gmSendHolders();
   });
@@ -3512,4 +3514,76 @@ server.listen(PORT, () => {
   console.log('  Kaniner mot Flygeekorn kjorer!');
   console.log('  Pa denne PC-en:  http://localhost:' + PORT);
   console.log('');
+});
+
+
+// ===================================================================
+// [NY] SNEGLEN 🐌 (hemmelig): bak sofaen i loungen ligger en liten grønn snegle. Trykk E = du er sneglen NESTE runde.
+// Bare én per runde. Sneglen er alene mot ALLE (begge lag + roboter), er halvparten så stor, tar halv skade
+// og starter alltid på et tilfeldig, gjemt sted (langt fra fiender, helst under tak og uten fri sikt).
+// Bare på kampkart med lag: ørkenen, Ville Vesten, Tempelet, Barnerommet. ANGRE: SNAIL_ON = false.
+// ===================================================================
+const SNAIL_ON = true;
+const SNAIL_MAPS = ['desert', 'west', 'temple', 'room'];
+const SNAIL_DMG_TAKEN = 0.5;
+const SNAIL_SPOT = { x: 3, z: 14.2 };                 // bak sofaen i loungen (lobby.js tegner sneglen der)
+let snailId = null, snailOn = null;                   // snailId = har funnet sneglen (neste runde), snailOn = er sneglen nå
+function snailState() { const p = snailId && players[snailId]; return { claimed: !!p, name: p ? p.name : '', active: snailOn && players[snailOn] ? snailOn : null }; }
+function snailSpot() {
+  let N; try { N = navGet(); } catch (e) { return null; }
+  if (!N) return null;
+  const foes = Object.values(players).filter(o => o.alive && o.team !== 'snail');
+  let best = null, bs = -1e9;
+  for (let k = 0; k < 140; k++) {
+    const i = Math.floor(Math.random() * N.W), j = Math.floor(Math.random() * N.H);
+    if (N.ok[j * N.W + i] !== 1) continue;
+    const x = N.x0 + (i + 0.5) * N.cs, z = N.z0 + (j + 0.5) * N.cs, y = N.hy[j * N.W + i];
+    let dmin = 1e9, seen = 0;
+    for (const e of foes) {
+      const d = Math.hypot(e.x - x, e.z - z); if (d < dmin) dmin = d;
+      if (d < 70 && losClear({ x, y: y + 0.5, z }, { x: e.x, y: (e.y || 0) + 1.6, z: e.z })) seen++;
+    }
+    let roof = false; try { roof = bSolid(x, y + 2.6, z) || bSolid(x, y + 3.6, z); } catch (e) {}
+    const sc = Math.min(dmin, 110) - seen * 90 + (roof ? 30 : 0) - (dmin < 25 ? 200 : 0) + Math.random() * 10;
+    if (sc > bs) { bs = sc; best = { x, y, z, yaw: Math.random() * 6.28 }; }
+  }
+  return best;
+}
+const spawnForSnailOld = spawnFor;
+spawnFor = function (team) {
+  if (SNAIL_ON && team === 'snail') { const sp = snailSpot(); if (sp) return sp; }
+  return spawnForSnailOld(team === 'snail' ? 'squirrel' : team);
+};
+const startMapSnailOld = startMap;
+startMap = function (name) {
+  const real = name === 'desertnight' ? 'desert' : name;
+  const changed = [];
+  // forrige snegl blir vanlig igjen (og får vite hvor mange drap den fikk)
+  Object.values(players).forEach(p => { if (p.team === 'snail') { io.emit('snailOff', { id: p.id, kills: p.kills, deaths: p.deaths }); p.team = p.homeTeam || 'bunny'; changed.push(p); } });
+  snailOn = null;
+  if (SNAIL_ON && SNAIL_MAPS.includes(real) && snailId && players[snailId]) {
+    const p = players[snailId]; p.homeTeam = p.team; p.team = 'snail'; snailOn = p.id; changed.push(p);
+  }
+  if (real !== 'lobby') snailId = null;               // brukt (eller kartet passet ikke): ledig igjen
+  const r = startMapSnailOld(name);
+  changed.forEach(p => io.emit('teamSet', { id: p.id, team: p.team, name: p.name }));
+  if (snailOn) io.emit('snailOn', { id: snailOn, name: players[snailOn].name });
+  io.emit('snail', snailState());
+  return r;
+};
+io.on('connection', socket => {
+  socket.emit('snail', snailState());
+  socket.on('snailAsk', () => socket.emit('snail', snailState()));
+  socket.on('snailClaim', () => {
+    const p = players[socket.id];
+    if (!SNAIL_ON || !p || mapName !== 'lobby' || Math.hypot(p.x - SNAIL_SPOT.x, p.z - SNAIL_SPOT.z) > 2.6) return;
+    if (snailId && players[snailId]) { socket.emit('snailNo', { name: players[snailId].name }); return; }
+    snailId = p.id;
+    io.emit('snail', snailState());
+    io.emit('snailClaimed', { id: p.id, name: p.name });
+  });
+  socket.on('disconnect', () => {
+    if (snailId === socket.id) { snailId = null; io.emit('snail', snailState()); }
+    if (snailOn === socket.id) snailOn = null;
+  });
 });

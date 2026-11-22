@@ -595,7 +595,7 @@ function updatePlayer(dt) {
   crouching = !!(keys['KeyQ'] || (SHIFT_CROUCH ? (keys['ShiftLeft'] || keys['ShiftRight']) : (CTRL_CROUCH && (keys['ControlLeft'] || keys['ControlRight']))) || touchCrouch);   // [NY] Ctrl = dukk (hold)
   const speed = gliding ? GLIDE_SPEED : (crouching ? WALK * 0.5 : (SHIFT_CROUCH || keys['ShiftLeft'] || keys['ShiftRight']) ? SPRINT : WALK);   // [NY] løper alltid
   const sin = Math.sin(player.yaw), cos = Math.cos(player.yaw);
-  const wireK = (typeof wireSlow === 'function' ? wireSlow(player.x, player.z) : 1) * (typeof pirateSwimK === 'function' ? pirateSwimK() : 1);   // [NY] piggtråd = halv fart, svømming = sakte
+  const wireK = (typeof wireSlow === 'function' ? wireSlow(player.x, player.z) : 1) * (typeof pirateSwimK === 'function' ? pirateSwimK() : 1) * (typeof slimeSlow === 'function' ? slimeSlow() : 1);   // [NY] sneglens slim = sakte   // [NY] piggtråd = halv fart, svømming = sakte
   let dx = (-sin * fwd + cos * strafe) * speed * wireK * dt;
   let dz = (-cos * fwd - sin * strafe) * speed * wireK * dt;
 
@@ -620,7 +620,7 @@ function updatePlayer(dt) {
     }
   }
   // Kameraet glir ned under sliden og opp igjen etterpå
-  slide.eye += ((slide.active ? SLIDE_EYE : (crouching ? CROUCH_EYE : EYE)) - slide.eye) * Math.min(1, 12 * dt);
+  slide.eye += ((slide.active ? SLIDE_EYE : (crouching ? CROUCH_EYE : (typeof snailMe === 'function' && snailMe() ? SNAIL_EYE : EYE))) - slide.eye) * Math.min(1, 12 * dt);   // [NY] sneglen er lav
 
   // Flytt x og z hver for seg, så man sklir langs vegger
   if (!blocked(player.x + dx, player.z, player.feetY)) player.x += dx;
@@ -1768,10 +1768,11 @@ function shoot() {
     const p = r.cur;
     // [NY] Hele figuren = kroppstreff. Bare midten av hodet = hodeskudd (dreper med én kule).
     // Dukket = alt er lavere.
-    const top = r.crouch ? 0.78 : 1.5;
-    const h0 = r.crouch ? 0.56 : 1.12, h1 = r.crouch ? 0.74 : 1.45;
+    const sk = r.team === 'snail' ? 0.55 : 1;      // [NY] sneglen er halvparten så stor
+    const top = (r.crouch ? 0.78 : 1.5) * sk;
+    const h0 = (r.crouch ? 0.56 : 1.12) * sk, h1 = (r.crouch ? 0.74 : 1.45) * sk;
     const tb = rayBox(o, d, p.x - 0.33, p.y, p.z - 0.33, p.x + 0.33, p.y + top, p.z + 0.33);
-    const th = rayBox(o, d, p.x - 0.2, p.y + h0, p.z - 0.2, p.x + 0.2, p.y + h1, p.z + 0.2);
+    const th = rayBox(o, d, p.x - 0.2 * sk, p.y + h0, p.z - 0.2 * sk, p.x + 0.2 * sk, p.y + h1, p.z + 0.2 * sk);
     if (th !== null && th < bestT) { bestT = tb !== null ? Math.min(tb, th) : th; target = id; head = true; }
     else if (tb !== null && tb < bestT) { bestT = tb; target = id; head = false; }
   }
