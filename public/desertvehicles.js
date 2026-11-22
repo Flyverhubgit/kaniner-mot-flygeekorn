@@ -479,3 +479,37 @@ function updateDesertVehicles(dt) {
     if (show) dvSeatBtn.textContent = myDvSeat === 'gun' ? '🚗 SJÅFØR' : '🎯 SKYTTER';
   }
 }
+
+// ===================================================================
+//  [NY] MOBIL: færre knapper i kjøretøy. Stridsvogn/jeep: bare SKYT og LADE (+ GÅ UT/SKYTTER).
+//  Jetfly: GRANAT = MISSIL. Helikopter: HOPP = OPP (hold), DUKK = NED (hold), GRANAT = RAKETT.
+//  Innstillinger-tannhjulet skjules også. ANGRE: DV_TOUCH_CLEAN = false.
+// ===================================================================
+const DV_TOUCH_CLEAN = true;
+let dvTouchWas = null, heliDownHeld = false;
+function dvTouchButtons() {
+  const b = window.__mobBtns;
+  if (!DV_TOUCH_CLEAN || !isTouch || !b || !desertOn()) return;
+  const v = myDv !== null ? dvMine() : null, k = v ? v.kind + ':' + myDvSeat : '';
+  if (!v && dvTouchWas === '') return;              // til fots og allerede tilbakestilt: la resten av spillet styre
+  dvTouchWas = k;
+  const show = (el, on, label) => { if (!el) return; el.style.visibility = on ? '' : 'hidden'; if (label !== undefined) el.textContent = label; };
+  const heli = v && v.kind === 'heli', jet = v && v.kind === 'jet';
+  show(b.swapBtn, !v); show(b.slideBtn, !v); show(b.scopeBtn, !v || (v.kind === 'tank' && myDvSeat === 'drive'));
+  show(b.jumpBtn, !v || heli, heli ? 'OPP' : 'HOPP');
+  show(b.crouchBtn, !v || heli, heli ? 'NED' : 'DUKK');
+  show(b.nadeBtn, !v || heli || jet, heli ? 'RAKETT' : jet ? 'MISSIL' : 'GRANAT');
+  if (typeof setBtn !== 'undefined') setBtn.style.visibility = v ? 'hidden' : '';
+  if (v && typeof touchCrouch !== 'undefined' && touchCrouch) { touchCrouch = false; b.crouchBtn.style.background = 'rgba(255,255,255,0.3)'; }
+}
+// NED i helikopteret: hold DUKK-knappen (den er av/på til fots, men holdes inne i helikopteret)
+if (DV_TOUCH_CLEAN) setTimeout(() => {
+  const b = window.__mobBtns; if (!b || !b.crouchBtn) return;
+  b.crouchBtn.addEventListener('touchstart', () => { const v = myDv !== null ? dvMine() : null; if (v && v.kind === 'heli') { heliDownHeld = true; setTimeout(() => { if (typeof touchCrouch !== 'undefined') touchCrouch = false; }, 0); } });
+  b.crouchBtn.addEventListener('touchend', () => { heliDownHeld = false; });
+}, 0);
+// kjøres til slutt i hver frame (etter game.js og space.js, som også setter knappene)
+if (typeof renderFrame === 'function') {
+  const renderFrameOld = renderFrame;
+  renderFrame = function () { const r = renderFrameOld.apply(this, arguments); try { dvTouchButtons(); } catch (e) {} return r; };
+}

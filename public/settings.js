@@ -4,6 +4,7 @@
 //  Lagres i nettleseren ('kmf-settings'). ANGRE: SETTINGS_MENU = false.
 // ===================================================================
 const SETTINGS_MENU = true;
+const SETTINGS_LOUNGE_ONLY = true;                       // [NY] knappen vises bare i loungen (ikke i kamp). false = overalt
 const SET = (() => { try { return Object.assign({ vol: 0.8, music: true, fov: 75, killcam: true }, JSON.parse(localStorage.getItem('kmf-settings') || '{}')); } catch (e) { return { vol: 0.8, music: true, fov: 75, killcam: true }; } })();
 let SET_FOV = SET.fov;
 function setSave() { try { localStorage.setItem('kmf-settings', JSON.stringify(SET)); } catch (e) {} }
@@ -84,7 +85,9 @@ setBtn.addEventListener('touchstart', e => { e.stopPropagation(); }, { passive: 
 document.body.appendChild(setBtn);
 (function setLoop() {
   const paused = !isTouch && joined && overlay.style.display === 'flex';
-  setBtn.style.display = SETTINGS_MENU && joined && (isTouch || paused) ? 'block' : 'none';
+  const inLounge = !SETTINGS_LOUNGE_ONLY || (typeof currentMap !== 'undefined' && currentMap === 'lobby');   // [NY] bare i loungen
+  setBtn.style.display = SETTINGS_MENU && joined && inLounge && (isTouch || paused) ? 'block' : 'none';
+  if (!inLounge && setPanel.style.display === 'block') setOpen(false);
   if (!paused && !isTouch && setPanel.style.display === 'block' && document.pointerLockElement) setOpen(false);
   requestAnimationFrame(setLoop);
 })();

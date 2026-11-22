@@ -137,7 +137,8 @@ function dvFly(dt, v) {
     const yawWas = dvl.yaw;
     dvl.yaw = turnTo(dvl.yaw, player.yaw, S.turn);
     const yawRate = Math.atan2(Math.sin(dvl.yaw - yawWas), Math.cos(dvl.yaw - yawWas)) / Math.max(dt, 0.001);   // [NY] hvor fort den svinger
-    const up = (keys['Space'] ? 1 : 0) - (keys['ShiftLeft'] || keys['ShiftRight'] || keys['KeyC'] ? 1 : 0) + (jumpQueued ? 1 : 0);   // Shift (eller C) = ned
+    const up = (keys['Space'] ? 1 : 0) - (keys['ShiftLeft'] || keys['ShiftRight'] || keys['KeyC'] ? 1 : 0) + (jumpQueued || (typeof touchJumpHeld !== 'undefined' && touchJumpHeld) ? 1 : 0)
+      - (typeof heliDownHeld !== 'undefined' && heliDownHeld ? 1 : 0);   // Shift (eller C) = ned. [NY] mobil: hold OPP / NED
     jumpQueued = false;
     const fx = -Math.sin(dvl.yaw), fz = -Math.cos(dvl.yaw), rx = Math.cos(dvl.yaw), rz = -Math.sin(dvl.yaw);
     const wantX = fx * fwd * S.fwd + rx * side * S.side, wantZ = fz * fwd * S.fwd + rz * side * S.side;
