@@ -21,6 +21,7 @@ const tankMgW = { id: 'tankmg', mag: 200, magSize: 200, reserve: Infinity, fireD
 let myDvSeat = null, dvGunSend = 0;                    // 'drive' eller 'gun'
 // [NY] BYTT SETE i stridsvogn og jeep: 1 = sjåfør, 2 = skytter (bare til et ledig sete). DV_SEATS_C = false: som før
 const DV_SEATS_C = true;
+const JEEP_50C = true;                                 // [NY] jeepens våpen heter .50 i teksten
 addEventListener('keydown', e => {
   if (!DV_SEATS_C || e.repeat || myDv === null || (e.code !== 'Digit1' && e.code !== 'Digit2')) return;
   const v = dvMine(); if (!v || (v.kind !== 'tank' && v.kind !== 'jeep')) return;
@@ -356,7 +357,7 @@ function dvAction() {
   return false;
 }
 addEventListener('keydown', e => { if (e.code === 'KeyE' && !(document.activeElement && document.activeElement.tagName === 'INPUT')) dvAction(); });
-let dvBtn = null;
+let dvBtn = null, dvSeatBtn = null;                  // [NY] dvSeatBtn: bytt sete på mobil
 if (isTouch) {
   dvBtn = document.createElement('div');
   dvBtn.style.cssText = 'position:fixed;left:50%;top:84px;transform:translateX(-50%);padding:12px 22px;border-radius:30px;background:rgba(90,80,40,0.85);border:2px solid #fff;color:#fff;font:bold 17px Fredoka, sans-serif;z-index:6;display:none;user-select:none;';
@@ -398,7 +399,7 @@ function updateDesertVehicles(dt) {
   dvGroup.visible = on;
   if (!on) {
     if (dvWasOn) { for (const id in others) others[id].root.visible = true; for (const k in dvMeshes) { dvGroup.remove(dvMeshes[k]); delete dvMeshes[k]; } dvWasOn = false; }
-    dvHud.style.display = 'none'; if (dvBtn) dvBtn.style.display = 'none';
+    dvHud.style.display = 'none'; if (dvBtn) dvBtn.style.display = 'none'; if (dvSeatBtn) dvSeatBtn.style.display = 'none';
     return;
   }
   dvWasOn = true;
@@ -449,7 +450,7 @@ function updateDesertVehicles(dt) {
     else if (dvIsAir(v.kind)) txt = (v.kind === 'jet' ? '&#9992;&#65039; F-16 ' : '&#128641; HELIKOPTER ') + v.hp + '% &nbsp; ' + Math.round(dvl.spd * 3.6) + ' km/t &nbsp; høyde ' + Math.round(dvl.y) + ' m &nbsp; ' +
       (v.kind === 'jet' ? '&#128640; missiler ' : '&#128640; raketter ') + (v.ammo || 0) + ' (G)' + (isTouch ? '' : ' &nbsp; E = gå ut (på bakken)');
     else txt = (v.kind === 'tank' ? '&#128737;&#65039; STRIDSVOGN ' : '&#128665; JEEP ') + v.hp + '% &nbsp; ' +
-      (v.kind === 'tank' ? (rel > 0 ? '<span style="color:#ffb000">lader ' + rel.toFixed(1) + '</span>' : '<span style="color:#7dff7d">KANON KLAR</span>') : 'MG ' + jeepW.mag) +
+      (v.kind === 'tank' ? (rel > 0 ? '<span style="color:#ffb000">lader ' + rel.toFixed(1) + '</span>' : '<span style="color:#7dff7d">KANON KLAR</span>') : (JEEP_50C ? '.50 ' : 'MG ') + jeepW.mag) +
       (isTouch ? '' : ' &nbsp; E = gå ut' + (DV_SEATS_C ? ' &nbsp; 2 = skytter' : ''));
     btn = 'GÅ UT';
   } else {
@@ -459,4 +460,22 @@ function updateDesertVehicles(dt) {
   dvHud.style.display = txt ? 'block' : 'none';
   dvHud.innerHTML = txt;
   if (dvBtn) { dvBtn.style.display = btn ? 'block' : 'none'; dvBtn.textContent = btn; }
+  // [NY] mobil: knapp for å bytte sete (sjåfør <-> skytter) i stridsvogn og jeep, ved siden av GÅ UT
+  if (isTouch && DV_SEATS_C) {
+    if (!dvSeatBtn) {
+      dvSeatBtn = document.createElement('div');
+      dvSeatBtn.style.cssText = 'position:fixed;left:calc(50% + 92px);top:84px;padding:12px 18px;border-radius:30px;background:rgba(40,70,110,0.85);border:2px solid #fff;color:#fff;font:bold 17px Fredoka, sans-serif;z-index:6;display:none;user-select:none;';
+      dvSeatBtn.addEventListener('touchstart', e => {
+        e.preventDefault();
+        const mv = dvMine(); if (!mv) return;
+        const want = myDvSeat === 'gun' ? 'drive' : 'gun';
+        if ((want === 'drive' && mv.driver) || (want === 'gun' && mv.gunner)) { bannerMsg = 'Setet er opptatt'; bannerTime = 1; return; }
+        socket.emit('dvSeat', { seat: want });
+      }, { passive: false });
+      document.body.appendChild(dvSeatBtn);
+    }
+    const mv = myDv !== null ? dvMine() : null, show = mv && (mv.kind === 'tank' || mv.kind === 'jeep');
+    dvSeatBtn.style.display = show ? 'block' : 'none';
+    if (show) dvSeatBtn.textContent = myDvSeat === 'gun' ? '🚗 SJÅFØR' : '🎯 SKYTTER';
+  }
 }

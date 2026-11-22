@@ -28,7 +28,7 @@ airHud.innerHTML =
   '</g><circle cx="110" cy="110" r="3" fill="#4dff7a"/></svg>' +
   '<div id="airHudL" style="position:absolute;left:-70px;top:100px;color:#4dff7a;font:bold 15px Fredoka, sans-serif;text-shadow:0 0 4px #1a6b30"></div>' +
   '<div id="airHudR" style="position:absolute;right:-70px;top:100px;color:#4dff7a;font:bold 15px Fredoka, sans-serif;text-shadow:0 0 4px #1a6b30;text-align:right"></div>' +
-  '<div style="position:absolute;left:0;right:0;top:232px;text-align:center;color:#4dff7a;font:bold 13px Fredoka, sans-serif;opacity:0.85">V = utsikt utenfra</div>';
+  (isTouch ? '' : '<div style="position:absolute;left:0;right:0;top:232px;text-align:center;color:#4dff7a;font:bold 13px Fredoka, sans-serif;opacity:0.85">V = utsikt utenfra</div>');
 document.body.appendChild(airHud);
 const airHudL = airHud.querySelector('#airHudL'), airHudR = airHud.querySelector('#airHudR');
 
@@ -231,7 +231,7 @@ if (GROUND_INSIDE && typeof dvDrive === 'function') {
 }
 (function gLoop() {
   const on = gLast > 0 && performance.now() - gLast < 250;
-  gHint.style.display = on ? 'block' : 'none';
+  gHint.style.display = on && !isTouch ? 'block' : 'none';   // mobil har ingen V-tast
   if (performance.now() - gBarrelAt > 400) gBarrel.style.display = 'none';
   if (!on) for (const k in (typeof dvMeshes !== 'undefined' ? dvMeshes : {})) { const w = dvMeshes[k].userData.wheel; if (w) w.visible = false; }
   requestAnimationFrame(gLoop);
