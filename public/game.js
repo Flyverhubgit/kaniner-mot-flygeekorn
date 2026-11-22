@@ -488,8 +488,10 @@ if (isTouch) {
   document.addEventListener('touchstart', e => {
     if (!joined) return;                   // [NY] la menyen virke normalt
     if (inShop(e)) return;
+    if (typeof layoutEditing !== 'undefined' && layoutEditing) return;   // [NY] knapp-redigering (touchlayout.js) tar over
     e.preventDefault();
     for (const t of e.changedTouches) {
+      if (t.target && t.target.dataset && t.target.dataset.ownTouch) continue;   // [NY] knapper med egen håndtering (venstre SKYT)
       if (t.target === jumpBtn) { jumpQueued = true; touchJumpHeld = true; jumpId = t.identifier; continue; }   // [NY] hold = sveve
       if (t.target === slideBtn) { slideQueued = true; continue; }
       // [FIKS] Dra fingeren på SKYT-knappen for å sikte mens du skyter
@@ -1853,7 +1855,7 @@ document.addEventListener('wheel', e => {
 
 function updateWeapon(dt) {
   fireCooldown -= dt;
-  const wantFire = joined && alive && (fireHeld || touchFire || lookFire || keys['KeyF']);   // [NY] ikke skyt i menyen eller når du er død
+  const wantFire = joined && alive && (fireHeld || touchFire || lookFire || keys['KeyF'] || (typeof leftFireHeld !== 'undefined' && leftFireHeld));   // [NY] venstre SKYT   // [NY] ikke skyt i menyen eller når du er død
 
   if (reloading > 0) {
     reloading -= dt;
@@ -1889,7 +1891,7 @@ function updateWeapon(dt) {
   scopeEl.style.display = scoped && !bazScopeOk() ? 'block' : 'none';
   updateBazScope(scoped && bazScopeOk());   // [NY] bazooka-siktet
   crosshairEl.style.display = scoped ? 'none' : 'block';
-  crosshairEl.style.background = lookFire || touchFire ? '#ff3b30' : '#fff';   // [NY] rødt sikte = du skyter
+  crosshairEl.style.background = lookFire || touchFire || (typeof leftFireHeld !== 'undefined' && leftFireHeld) ? '#ff3b30' : '#fff';   // [NY] rødt sikte = du skyter
   if (window.__scopeBtn) {
     window.__scopeBtn.style.display = canScope() && joined ? 'flex' : 'none';
     window.__scopeBtn.style.background = scoped ? 'rgba(255,150,205,0.6)' : 'rgba(255,255,255,0.3)';

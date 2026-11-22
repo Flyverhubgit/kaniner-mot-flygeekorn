@@ -504,9 +504,10 @@ function dvTouchButtons() {
   // [NY] i kjøretøy: knappene samlet helt ute til høyre (mer av skjermen fri). Til fots: tilbake der de var.
   if (k !== dvTouchPosWas) {
     dvTouchPosWas = k;
-    if (!dvTouchHome) { dvTouchHome = {}; for (const n in b) if (b[n]) dvTouchHome[n] = [b[n].style.right, b[n].style.bottom]; }
-    for (const n in dvTouchHome) { b[n].style.right = dvTouchHome[n][0]; b[n].style.bottom = dvTouchHome[n][1]; }
-    const put = (n, r, bt) => { if (b[n]) { b[n].style.right = r + 'px'; b[n].style.bottom = bt + 'px'; } };
+    const P4 = ['left', 'top', 'right', 'bottom', 'transform'];
+    if (!dvTouchHome) { dvTouchHome = {}; for (const n in b) if (b[n]) dvTouchHome[n] = P4.map(q => b[n].style[q]); }
+    for (const n in dvTouchHome) P4.forEach((q, i) => { b[n].style[q] = dvTouchHome[n][i]; });
+    const put = (n, r, bt) => { if (b[n]) { b[n].style.left = ''; b[n].style.top = ''; b[n].style.transform = ''; b[n].style.right = r + 'px'; b[n].style.bottom = bt + 'px'; } };
     if (typeof killfeed !== 'undefined') killfeed.style.marginTop = v && DV_EXIT_CORNER ? (v.kind === 'tank' || v.kind === 'jeep' ? '96px' : '50px') : '';   // [NY] drapslista under GÅ UT
     if (v && DV_EXIT_CORNER) {
       put('fireBtn', 16, 36);
