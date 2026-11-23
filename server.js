@@ -1157,7 +1157,7 @@ function publicPlayer(p) {
 }
 // [NY] Nivå og utstyr kommer fra spilleren (lagret i nettleseren). Bare lovlige verdier slipper gjennom.
 const GEAR_IDS = ['shades', 'cap', 'pirate', 'goldband', 'mask', 'viking', 'tophat', 'crown', 'halo', 'goldfur', 'dinohat', 'sharkhat', 'unihat', 'froggles', 'duckhat', 'kit', 'nobelt', 'norway', 'nor10', 'nor9', 'nor20'];
-const SKIN_IDS = ['camo', 'pink', 'tiger', 'ice', 'lava', 'rainbow', 'galaxy', 'gold', 'diamond', 'dino', 'shark', 'unicorn', 'butterfly', 'soccer'];   // [NY] dinosaur   // [NY] våpen-skins fra butikken
+const SKIN_IDS = ['camo', 'pink', 'tiger', 'ice', 'lava', 'rainbow', 'galaxy', 'gold', 'diamond', 'dino', 'shark', 'unicorn', 'butterfly', 'soccer', 'tigerstripe', 'woodland', 'mudleaf', 'junglelegend'];   // [NY] jungel-kamuflasje   // [NY] dinosaur   // [NY] våpen-skins fra butikken
 function cleanProfile(d) {
   const level = Math.max(1, Math.min(99, (d && d.level) | 0));
   const wear = Array.isArray(d && d.wear) ? d.wear.filter(w => GEAR_IDS.includes(w)).slice(0, 6) : [];
@@ -3882,3 +3882,106 @@ setInterval(() => { if (ctfOn() && ctf.bunny) ctfSend(); }, 250);
   const startMapCtf = startMap;
   startMap = function (name) { const r = startMapCtf.apply(this, arguments); if (ctfOn()) { ctfReset(); ctfSend(); } return r; };
 }
+
+// ===================================================================
+// [NY] ROBOTER SER IKKE GJENNOM TETTE PLANTER (Jungelkrigen) 🌿
+//  Sikten gjennom krattet i øyehøyde er bare ca. 10 m. Ute på åpne plasser (byen, risåkrene, basen, elva) og
+//  fra tak/tårn ser de like langt som før. ANGRE: JUNGLE_PLANTS_BLOCK = false
+// ===================================================================
+const JUNGLE_PLANTS_BLOCK = true, JG_SEE_PLANTS = 10, JG_PLANT_TOP = 2.8;
+function jgPlantLen(a, b) {                                     // hvor mange meter av sikt-linja går gjennom krattet?
+  const dx = b.x - a.x, dy = b.y - a.y, dz = b.z - a.z, d = Math.hypot(dx, dz), n = Math.ceil(d);
+  let len = 0;
+  for (let i = 0; i < n; i++) {
+    const k = (i + 0.5) / n, x = a.x + dx * k, z = a.z + dz * k, y = a.y + dy * k;
+    if (y - jgGround(x, z) > JG_PLANT_TOP) continue;            // over plantetoppene
+    if (!JGM.masked(x, z) && !JGM.inRiver(x, z)) len += d / n;
+  }
+  return len;
+}
+{
+  const losClearPlants = losClear;
+  losClear = function (a, b) {
+    if (!losClearPlants(a, b)) return false;
+    if (JUNGLE_PLANTS_BLOCK && mapName === 'jungle' && jgPlantLen(a, b) > JG_SEE_PLANTS) return false;
+    return true;
+  };
+}
+
+// ===================================================================
+// [NY] SNUBLETRÅD (Jungelkrigen) 🪤
+//  B = spenn en snubletråd tvers over stien foran deg (2 per liv). Laget ditt ser et merke over tråden, fiender
+//  ser bare en tynn tråd. Går en fiende over den: SMELL. En fiende som står helt inntil (1 m) og ser den, kan
+//  holde E i 2 sek for å klippe den. Roboter går i trådene, men klipper dem ikke. ANGRE: JUNGLE_WIRES = false
+// ===================================================================
+const JUNGLE_WIRES = true, WIRES_PER_LIFE = 2, WIRE_MAX_PER_PLAYER = 4, WIRE_R = 5, WIRE_DMG = 110, WIRE_DISARM_MS = 1800;
+const wires = new Map(); let wireSeq = 0;
+function wireOn() { return JUNGLE_WIRES && mapName === 'jungle'; }
+function wireSend() { io.emit('wires', [...wires.values()].map(w => [w.id, w.team, +w.ax.toFixed(2), +w.az.toFixed(2), +w.bx.toFixed(2), +w.bz.toFixed(2), +w.y.toFixed(2), w.owner])); }
+function segDist(px, pz, ax, az, bx, bz) { const dx = bx - ax, dz = bz - az, L = dx * dx + dz * dz || 1, t = Math.max(0, Math.min(1, ((px - ax) * dx + (pz - az) * dz) / L)); return Math.hypot(px - ax - dx * t, pz - az - dz * t); }
+function segCross(p1x, p1z, p2x, p2z, q1x, q1z, q2x, q2z) {
+  const d = (p2x - p1x) * (q2z - q1z) - (p2z - p1z) * (q2x - q1x); if (Math.abs(d) < 1e-9) return false;
+  const t = ((q1x - p1x) * (q2z - q1z) - (q1z - p1z) * (q2x - q1x)) / d, u = ((q1x - p1x) * (p2z - p1z) - (q1z - p1z) * (p2x - p1x)) / d;
+  return t >= 0 && t <= 1 && u >= 0 && u <= 1;
+}
+function wireBoom(w, victim) {
+  wires.delete(w.id);
+  const cx = (w.ax + w.bx) / 2, cz = (w.az + w.bz) / 2;
+  io.emit('boom', { id: 'wire' + w.id, p: [cx, w.y + 0.3, cz], big: 1.3 });
+  io.emit('wireBoom', { id: w.id, name: victim ? victim.name : '' });
+  const owner = players[w.owner] || { id: 'wire', name: w.ownerName, team: w.team, kills: 0, streak: 0, isBot: true, x: cx, z: cz };
+  Object.values(players).forEach(t => {
+    if (!t.alive || t.team === w.team || t.huey) return;
+    const d = t === victim ? 0 : Math.hypot(t.x - cx, (t.y || 0) - w.y, t.z - cz);   // den som gikk i tråden får hele smellet
+    if (d < WIRE_R) applyDamage(owner, t, Math.round(WIRE_DMG * (1 - d / WIRE_R * 0.7)), false, 'nade');
+  });
+  wireSend();
+}
+setInterval(() => {
+  if (!wireOn()) { if (wires.size) { wires.clear(); wireSend(); } return; }
+  for (const id in players) {
+    const p = players[id];
+    const px = p._wx, pz = p._wz; p._wx = p.x; p._wz = p.z;
+    if (!p.alive || p.huey || p.chute || px === undefined || intermission) continue;
+    for (const w of wires.values()) {
+      if (w.team === p.team || Math.abs((p.y || 0) - w.y) > 1.2) continue;
+      if (segCross(px, pz, p.x, p.z, w.ax, w.az, w.bx, w.bz) || segDist(p.x, p.z, w.ax, w.az, w.bx, w.bz) < 0.25) { wireBoom(w, p); break; }
+    }
+  }
+}, 100);
+{
+  const respawnWire = respawn;
+  respawn = function (p) { p.wiresLeft = WIRES_PER_LIFE; return respawnWire.apply(this, arguments); };
+  const startMapWire = startMap;
+  startMap = function () { wires.clear(); const r = startMapWire.apply(this, arguments); wireSend(); return r; };
+}
+io.on('connection', socket => {
+  socket.on('wirePlace', d => {
+    const p = players[socket.id];
+    if (!wireOn() || !p || !p.alive || p.huey || p.chute || intermission || !d || !Array.isArray(d.a) || !Array.isArray(d.b)) return;
+    if (p.wiresLeft === undefined) p.wiresLeft = WIRES_PER_LIFE;
+    if (p.wiresLeft <= 0) return;
+    const ax = num(d.a[0], -400, 400), az = num(d.a[1], -400, 400), bx = num(d.b[0], -400, 400), bz = num(d.b[1], -400, 400), y = num(d.y, -2, 30);
+    if ([ax, az, bx, bz, y].includes(null)) return;
+    const L = Math.hypot(bx - ax, bz - az);
+    if (L < 1 || L > 3.5 || segDist(p.x, p.z, ax, az, bx, bz) > 4 || Math.abs(y - (p.y || 0)) > 1.5) return;
+    p.wiresLeft--;
+    const mine = [...wires.values()].filter(w => w.owner === p.id);
+    if (mine.length >= WIRE_MAX_PER_PLAYER) wires.delete(mine[0].id);
+    const w = { id: ++wireSeq, team: p.team, owner: p.id, ownerName: p.name, ax, az, bx, bz, y, at: Date.now() };
+    wires.set(w.id, w);
+    p.protectedUntil = 0;
+    wireSend();
+    socket.emit('wireLeft', p.wiresLeft);
+  });
+  socket.on('wireDisarmStart', id => { const p = players[socket.id]; if (p) { p.disarmId = id; p.disarmAt = Date.now(); } });
+  socket.on('wireDisarm', id => {
+    const p = players[socket.id], w = wires.get(id);
+    if (!p || !w || !p.alive || w.team === p.team || p.disarmId !== id || Date.now() - p.disarmAt < WIRE_DISARM_MS) return;
+    if (segDist(p.x, p.z, w.ax, w.az, w.bx, w.bz) > 1.6) return;   // 1 m + litt slingringsmonn for nett-forsinkelse
+    wires.delete(id);
+    io.emit('wireCut', { id, name: p.name, team: p.team });
+    wireSend();
+  });
+  socket.on('wireAsk', () => { if (wireOn()) wireSend(); });
+});

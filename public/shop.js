@@ -30,7 +30,12 @@ const SKINS = [
   { id: 'shark', name: 'Hai', icon: '🦈', price: 1750 },       // [NY] haihode med løpet ut av gapet
   { id: 'unicorn', name: 'Enhjørning', icon: '🦄', price: 500 },  // [NY] enhjørning med regnbuemanke og gullhorn
   { id: 'butterfly', name: 'Sommerfugl', icon: '🦋', price: 200 },  // [NY] rosa og blå, med vinger som blafrer
-  { id: 'soccer', name: 'MIL Fotball', icon: '⚽', price: 500, quest: true }  // [NY] grønn bane, fotball på munningen, mål oppå. Fås fra treneren (oppdrag), kan ikke kjøpes
+  { id: 'soccer', name: 'MIL Fotball', icon: '⚽', price: 500, quest: true },  // [NY] grønn bane, fotball på munningen, mål oppå. Fås fra treneren (oppdrag), kan ikke kjøpes
+  // [NY] JUNGEL-KAMUFLASJE (nye bak i lista, så den hemmelige koden virker som før)
+  { id: 'tigerstripe', name: 'Tigerstripe', icon: '🐅', price: 300 },
+  { id: 'woodland', name: 'Woodland', icon: '🌲', price: 300 },
+  { id: 'mudleaf', name: 'Gjørme og blader', icon: '🍂', price: 350 },
+  { id: 'junglelegend', name: 'Jungellegende', icon: '🏆', price: 0, quest: true, how: '🚩 Vinn 3 runder med fang flagget i Jungelkrigen' }
 ];
 const WEAPON_SLOTS = [['ak', 'AK'], ['sniper', 'Snikskytter'], ['baz', 'Bazooka']];
 function skinBits() { let b = 0; SKINS.forEach((s, i) => { if (profile.owned.includes(s.id)) b |= 1 << i; }); return b; }
@@ -63,6 +68,25 @@ const SKIN_TEX = {
     x.fillStyle = '#140a2e'; x.fillRect(0, 0, 64, 64);
     x.fillStyle = '#3a1a6a'; for (let i = 0; i < 6; i++) x.fillRect(rnd() * 56, rnd() * 56, 10, 8);
     x.fillStyle = '#ffffff'; for (let i = 0; i < 26; i++) x.fillRect(rnd() * 64, rnd() * 64, rnd() < 0.2 ? 2 : 1, rnd() < 0.2 ? 2 : 1);
+  }),
+  tigerstripe: patternTex(x => {                  // [NY] Vietnam-tigerstripe: oliven med svarte penselstrøk
+    x.fillStyle = '#6b7a3c'; x.fillRect(0, 0, 64, 64);
+    x.fillStyle = '#8b7a46'; for (let i = 0; i < 6; i++) x.fillRect(0, rnd() * 64, 64, 3 + rnd() * 3);
+    x.fillStyle = '#141810'; for (let i = 0; i < 9; i++) { let px = -4, py = rnd() * 64; while (px < 68) { const w = 4 + rnd() * 7; x.fillRect(px, py, w, 2 + rnd() * 3); px += w + rnd() * 6; py += (rnd() - 0.5) * 4; } }
+  }),
+  woodland: patternTex(x => {                     // [NY] klassisk woodland: grønn, brun, sand og svart i store flekker
+    x.fillStyle = '#5b6b3a'; x.fillRect(0, 0, 64, 64);
+    [['#7a5a36', 7], ['#2c2a1e', 6], ['#b5a272', 4]].forEach(([col, n]) => { x.fillStyle = col; for (let i = 0; i < n; i++) { const cx = rnd() * 64, cy = rnd() * 64; for (let k = 0; k < 5; k++) x.fillRect(cx + (rnd() - 0.5) * 14, cy + (rnd() - 0.5) * 10, 7 + rnd() * 8, 5 + rnd() * 6); } });
+  }),
+  mudleaf: patternTex(x => {                      // [NY] brun gjørme med grønne blader
+    x.fillStyle = '#5a4128'; x.fillRect(0, 0, 64, 64);
+    x.fillStyle = '#4a3420'; for (let i = 0; i < 20; i++) x.fillRect(rnd() * 64, rnd() * 64, 4 + rnd() * 6, 3 + rnd() * 4);
+    for (let i = 0; i < 11; i++) { x.fillStyle = rnd() < 0.5 ? '#4f7a2a' : '#6d9a38'; const lx = rnd() * 60, ly = rnd() * 60; x.fillRect(lx, ly + 2, 8, 3); x.fillRect(lx + 2, ly, 4, 7); x.fillStyle = '#2f4a18'; x.fillRect(lx, ly + 3, 8, 1); }
+  }),
+  junglelegend: patternTex(x => {                 // [NY] mørk tigerstripe med gull-blader (belønning for 3 seire)
+    x.fillStyle = '#1f2a16'; x.fillRect(0, 0, 64, 64);
+    x.fillStyle = '#0c100a'; for (let i = 0; i < 8; i++) x.fillRect(0, rnd() * 64, 64, 2 + rnd() * 3);
+    for (let i = 0; i < 9; i++) { x.fillStyle = rnd() < 0.5 ? '#f2c230' : '#ffdf6a'; const lx = rnd() * 58, ly = rnd() * 58; x.fillRect(lx, ly + 2, 7, 3); x.fillRect(lx + 2, ly, 3, 7); }
   }),
   unicorn: patternTex(x => {                      // [NY] hvit med pastell-regnbuestriper og glitter
     x.fillStyle = '#fbf7ff'; x.fillRect(0, 0, 64, 64);
@@ -124,7 +148,11 @@ const SKIN_MAT = {
   shark: { map: SKIN_TEX.shark, roughness: 0.45 },
   unicorn: { map: SKIN_TEX.unicorn, roughness: 0.5, emissive: 0x2a1a30 },
   butterfly: { map: SKIN_TEX.butterfly, roughness: 0.5, emissive: 0x1a1030 },
-  soccer: SOCCER_STRIPES ? { map: SKIN_TEX.soccer, roughness: 0.55 } : { color: 0x2fa33a, roughness: 0.55 }      // [NY] gressbane med striper
+  soccer: SOCCER_STRIPES ? { map: SKIN_TEX.soccer, roughness: 0.55 } : { color: 0x2fa33a, roughness: 0.55 },      // [NY] gressbane med striper
+  tigerstripe: { map: SKIN_TEX.tigerstripe, roughness: 0.85 },
+  woodland: { map: SKIN_TEX.woodland, roughness: 0.85 },
+  mudleaf: { map: SKIN_TEX.mudleaf, roughness: 0.95 },
+  junglelegend: { map: SKIN_TEX.junglelegend, emissiveMap: SKIN_TEX.junglelegend, emissive: 0x6a5010, roughness: 0.5, metalness: 0.3 }
 };
 // To materialer per skin: lys (de fleste delene) og mørk (delene som var mørke fra før – grep, løp)
 const skinMatCache = {};
@@ -819,7 +847,7 @@ function renderShop() {
       h += '<button class="shopS" data-s="' + s.id + '" ' + (cant && !SHOP_PREVIEW_ON ? 'disabled' : '') + ' style="' + btnStyle(on || look, owned || !cant || SHOP_PREVIEW_ON) + (cant && !look ? 'opacity:.5;' : '') + (confirmBuy === s.id ? 'background:rgba(60,160,60,.6);' : '') + '">' + label + '</button>';
     });
     const ps = SHOP_PREVIEW_ON && shopPrevId ? SKINS.find(x => x.id === shopPrevId) : null;
-    const pmsg = ps && !profile.owned.includes(ps.id) ? (ps.quest ? '⚽ Få den hos treneren i loungen' : ps.level && L < ps.level ? 'Låses opp på nivå ' + ps.level : profile.coins < ps.price ? 'Du trenger 🪙' + ps.price + ' (mangler ' + Math.ceil(ps.price - profile.coins) + ')' : 'Trykk igjen for å kjøpe') : 'Kjøp en skin én gang – bruk den på alle våpen';
+    const pmsg = ps && !profile.owned.includes(ps.id) ? (ps.quest ? (ps.how || '⚽ Få den hos treneren i loungen') : ps.level && L < ps.level ? 'Låses opp på nivå ' + ps.level : profile.coins < ps.price ? 'Du trenger 🪙' + ps.price + ' (mangler ' + Math.ceil(ps.price - profile.coins) + ')' : 'Trykk igjen for å kjøpe') : 'Kjøp en skin én gang – bruk den på alle våpen';
     h += '</div><div id="shopMsg" style="font-size:12px;opacity:.8;margin-top:4px">' + pmsg + '</div>';
   }
   shopBox.innerHTML = h;
@@ -855,3 +883,14 @@ renderShop();
 applyMySkins();
 
 window.__shop = { profile, SKINS, gainCoins, skinize, applyMySkins, skinBits };
+
+// [NY] JUNGELLEGENDE: vinn 3 runder med fang flagget i Jungelkrigen -> gratis skin (telles i nettleseren)
+socket.on('roundOver', d => {
+  if (typeof currentMap === 'undefined' || currentMap !== 'jungle' || !d || d.winner !== myTeam) return;
+  profile.ctfWins = (profile.ctfWins || 0) + 1;
+  if (profile.ctfWins >= 3 && !profile.owned.includes('junglelegend')) {
+    profile.owned.push('junglelegend');
+    if (typeof showToast === 'function') showToast('🏆 Du låste opp skinnet Jungellegende!');
+  } else if (profile.ctfWins < 3 && typeof showToast === 'function') showToast('🚩 Jungelseier: ' + profile.ctfWins + ' av 3 for Jungellegende-skinnet');
+  try { localStorage.setItem('kmf-profile', JSON.stringify(profile)); } catch (e) {}
+});
