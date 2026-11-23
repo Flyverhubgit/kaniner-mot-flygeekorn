@@ -35,6 +35,7 @@ const PORT = process.env.PORT || 3000;
 // ---------- Regler ----------
 const ROUND_SECONDS = +process.env.ROUND_SECONDS || 600;     // 10 minutter per runde (var 5; kan endres for testing)
 // [NY] Ørkenkrigen: lagkamp (team deathmatch) – første lag til 100 drap, eller flest drap etter 15 minutter
+const JUNGLE_CTF = true, CTF_SECONDS = +process.env.CTF_SECONDS || 20 * 60;   // [NY] Jungelkrigen: fang flagget, 20 min runde (se FANG FLAGGET nederst). ANGRE: false
 const DESERT_SECONDS = +process.env.DESERT_SECONDS || 30 * 60, DESERT_KILLS = +process.env.DESERT_KILLS || 200;   // dobbelt så lang (var 15 min / 100 drap)
 // Ørken-våpen: skade i kroppen / hodet, og korteste tid mellom to treff (ms). 100 liv.
 const JEEP_50CAL = true;
@@ -1044,7 +1045,7 @@ setInterval(farmTick, 100);
 
 const HANDLE = { x: -25, z: -3 };   // håndtaket i bakre hjørne av venstre hus
 const UNDER_HANDLES = [{ x: 0, z: 24 }, { x: 0, z: -24 }];   // skyll-håndtak i underverdenen (ett per lag)
-let roundEndsAt = mapName === 'lobby' ? Infinity : Date.now() + (mapName === 'desert' ? DESERT_SECONDS : ROUND_SECONDS) * 1000;   // [NY] ingen klokke i loungen
+let roundEndsAt = mapName === 'lobby' ? Infinity : Date.now() + (mapName === 'desert' ? DESERT_SECONDS : mapName === 'jungle' && JUNGLE_CTF ? CTF_SECONDS : ROUND_SECONDS) * 1000;   // [NY] ingen klokke i loungen
 let intermission = false;
 if (hordeMap()) { resetFarm(); roundEndsAt = Date.now() + FARM_SECONDS * 1000; }   // [NY] start rett på kyllingfarmen (testing)
 
@@ -1202,7 +1203,7 @@ function applyDamage(p, t, dmg, head, weapon) {
     questDied(t);                                      // [NY] døde: oppdraget starter på nytt
     t.streak = 0;
     p.kills++;
-    score[p.team] = (score[p.team] || 0) + 1;   // [NY] (sneglen har egen poengsum)
+    if (!(mapName === 'jungle' && JUNGLE_CTF)) score[p.team] = (score[p.team] || 0) + 1;   // [NY] (sneglen har egen poengsum)   // [NY] Jungelkrigen: bare flagg teller
     if (mapName === 'desert' && score[p.team] >= DESERT_KILLS && roundEndsAt > Date.now() + 4000) roundEndsAt = Date.now() + 4000;   // [NY] første lag til 100 drap vinner
     // Drap på rad: KILLINGSPREE (3), USTOPPELIG (5), LEGENDARISK (10), så hver 5.
     p.streak = (p.streak || 0) + 1;
@@ -2216,7 +2217,7 @@ function startMap(name) {
   weatherNow = pickWeather(mapName); io.emit('weather', { m: weatherNow });   // [NY] vær og tid på døgnet (weather.js)
   balanceBots();                                                   // [NY] roboter inn/ut med en gang
   Object.values(players).forEach(p => { leaveVehicle(p); p.kills = 0; p.deaths = 0; p.streak = 0; respawn(p); });
-  roundEndsAt = mapName === 'lobby' ? Infinity : Date.now() + (hordeMap() ? FARM_SECONDS : mapName === 'dragon' ? DRAGON_SECONDS : mapName === 'desert' ? DESERT_SECONDS : ROUND_SECONDS) * 1000;
+  roundEndsAt = mapName === 'lobby' ? Infinity : Date.now() + (hordeMap() ? FARM_SECONDS : mapName === 'dragon' ? DRAGON_SECONDS : mapName === 'desert' ? DESERT_SECONDS : mapName === 'jungle' && JUNGLE_CTF ? CTF_SECONDS : ROUND_SECONDS) * 1000;
   if (mapName === 'dragon') resetDragons(); else dragonGame = null;   // [NY] dragebølgene
   dvReset();                                                       // [NY] ørken-kjøretøy på plass
   shipReset();                                                     // [NY] piratskipene tilbake til start
@@ -3448,11 +3449,12 @@ function botSmart(b, best, bestD, now, dt) {
   if (!b.route || !b.route.length) {
     const r = Math.random();
     let g = null;
-    if (r < 0.4) {                                   // gå dit en fiende omtrent er (litt unøyaktig – de "hører" deg)
+    if (r < 0.4 && !(mapName === 'jungle' && JUNGLE_CTF)) {        // gå dit en fiende omtrent er (litt unøyaktig – de "hører" deg)
       let best = null, bd = mapName === 'desert' ? 160 : 90;
       for (const id in players) { const t = players[id]; if (!t.alive || t.team === b.team || t.vehicle) continue; const d = Math.hypot(t.x - b.x, t.z - b.z); if (d < bd) { bd = d; best = t; } }
       if (best) { const j = Math.min(12, bd * 0.15); g = [best.x + (Math.random() - 0.5) * j, best.z + (Math.random() - 0.5) * j]; }   // nærmere = mer nøyaktig
     }
+    if (typeof ctfBotGoal === 'function') g = ctfBotGoal(b, r);    // [NY] fang flagget: angrep / forsvar / jakt på flaggbæreren
     if (!g && r < 0.6 && BOT_OUT[mapName] && BOT_OUT[mapName].length) g = mir(b.team === 'bunny' ? 'squirrel' : 'bunny', BOT_OUT[mapName][BOT_OUT[mapName].length - 1]);
     if (!g) g = botField();
     botGo(b, g[0], g[1]);
@@ -3803,3 +3805,77 @@ io.on('connection', socket => {
   socket.on('chuteLand', () => { const p = players[socket.id]; if (p && p.chute) { p.chute = false; io.emit('chute', { id: p.id, on: false }); } });
   socket.on('disconnect', () => { for (const h of hueys.values()) { h.pax.delete(socket.id); if (h.gunner === socket.id) h.gunner = null; } });
 });
+
+// ===================================================================
+// [NY] FANG FLAGGET (Jungelkrigen) 🚩
+//  Hvert lag har et flagg på toppen av basen sin. Gå bort til fiendens flagg for å ta det, og løp hjem med det.
+//  Du får poeng bare hvis ditt eget flagg står hjemme. Første lag til 3 vinner. Dør du, faller flagget ned;
+//  eget lag kan røre det for å sende det hjem, ellers går det hjem selv etter 30 sek. Drap gir ikke poeng her.
+//  ANGRE: JUNGLE_CTF = false
+// ===================================================================
+const CTF_WIN = +process.env.CTF_WIN || 3, CTF_RETURN_MS = 30000, CTF_TOUCH = 2.2;   // JUNGLE_CTF og CTF_SECONDS står øverst (brukes tidlig)
+const ctf = {};
+function ctfOther(t) { return t === 'bunny' ? 'squirrel' : 'bunny'; }
+function ctfHome(team) { const s = team === 'bunny' ? 1 : -1, x = JGM.FLAG.x * s, z = JGM.FLAG.z * s; return { x, z, y: jgGround(x, z) }; }
+function ctfReset() { ['bunny', 'squirrel'].forEach(t => { const h = ctfHome(t); ctf[t] = { state: 'home', x: h.x, y: h.y, z: h.z, carrier: null, at: 0 }; }); }
+function ctfOn() { return JUNGLE_CTF && mapName === 'jungle'; }
+function ctfSend() { io.emit('flags', ['bunny', 'squirrel'].map(t => { const f = ctf[t]; return [t, f.state, +f.x.toFixed(2), +f.y.toFixed(2), +f.z.toFixed(2), f.carrier || '']; })); }
+function ctfEv(ev, team, p) { io.emit('ctf', { ev, team, name: p ? p.name : '', by: p ? p.team : '', capId: p ? p.id : '' }); ctfSend(); }
+function ctfBotsRethink() { Object.values(players).forEach(b => { if (b.isBot && b.state === 'roam') b.route = null; }); }
+function ctfBotGoal(b, r) {                                 // lange turer deles opp i etapper på ca. 90 m (veisøket klarer ikke hele kartet på en gang)
+  const g = ctfBotGoalFar(b, r);
+  if (!g) return null;
+  const dx = g[0] - b.x, dz = g[1] - b.z, d = Math.hypot(dx, dz);
+  if (d <= 110) return g;
+  return [b.x + dx / d * 90 + (Math.random() - 0.5) * 24, b.z + dz / d * 90 + (Math.random() - 0.5) * 24];
+}
+function ctfBotGoalFar(b, r) {
+  if (!ctfOn() || !ctf.bunny) return null;
+  if (!b.ctfRole) b.ctfRole = Math.random() < 0.5 ? 'attack' : Math.random() < 0.6 ? 'defend' : 'roam';
+  const mine = ctf[b.team], theirs = ctf[ctfOther(b.team)], home = ctfHome(b.team);
+  if (theirs.carrier === b.id) return [home.x, home.z];                                    // har flagget: hjem!
+  if (mine.state === 'carried' && r < 0.7) { const c = players[mine.carrier]; if (c) return [c.x, c.z]; }   // jakt på den som tok flagget vårt
+  if (mine.state === 'dropped' && Math.hypot(mine.x - b.x, mine.z - b.z) < 140) return [mine.x, mine.z];   // send flagget vårt hjem
+  if (b.ctfRole === 'attack') { if (theirs.state === 'carried') { const c = players[theirs.carrier]; if (c) return [c.x + (Math.random() - 0.5) * 16, c.z + (Math.random() - 0.5) * 16]; } return [theirs.x, theirs.z]; }
+  if (b.ctfRole === 'defend') { const a = Math.random() * Math.PI * 2, d = 8 + Math.random() * 28; return [home.x + Math.cos(a) * d, home.z + Math.sin(a) * d]; }
+  return null;
+}
+setInterval(() => {
+  if (!ctfOn()) return;
+  if (!ctf.bunny) ctfReset();
+  if (intermission) return;
+  const now = Date.now();
+  for (const t of ['bunny', 'squirrel']) {
+    const f = ctf[t];
+    if (f.state === 'carried') {
+      const c = players[f.carrier];
+      if (!c || !c.alive || c.huey) { f.state = 'dropped'; f.carrier = null; f.at = now; f.y = jgGround(f.x, f.z); ctfEv('drop', t, c); ctfBotsRethink(); }
+      else { f.x = c.x; f.z = c.z; f.y = c.y; }
+    } else if (f.state === 'dropped' && now - f.at > CTF_RETURN_MS) { const h = ctfHome(t); Object.assign(f, { state: 'home', x: h.x, y: h.y, z: h.z }); ctfEv('auto', t, null); }
+  }
+  for (const id in players) {
+    const p = players[id];
+    if (!p.alive || p.huey || p.chute || (p.team !== 'bunny' && p.team !== 'squirrel')) continue;
+    const ef = ctf[ctfOther(p.team)], of = ctf[p.team];
+    if (ef.state !== 'carried' && Math.hypot(p.x - ef.x, p.z - ef.z) < CTF_TOUCH && Math.abs(p.y - ef.y) < 3) {
+      ef.state = 'carried'; ef.carrier = p.id; if (p.isBot) p.route = null;
+      ctfEv('take', ctfOther(p.team), p); ctfBotsRethink();
+    }
+    if (of.state === 'dropped' && Math.hypot(p.x - of.x, p.z - of.z) < CTF_TOUCH && Math.abs(p.y - of.y) < 3) {
+      const h = ctfHome(p.team); Object.assign(of, { state: 'home', x: h.x, y: h.y, z: h.z, carrier: null }); ctfEv('return', p.team, p); ctfBotsRethink();
+    }
+    if (ef.carrier === p.id && of.state === 'home' && Math.hypot(p.x - of.x, p.z - of.z) < 3 && Math.abs(p.y - of.y) < 3) {
+      score[p.team] = (score[p.team] || 0) + 1;
+      const h = ctfHome(ctfOther(p.team)); Object.assign(ef, { state: 'home', x: h.x, y: h.y, z: h.z, carrier: null });
+      p.caps = (p.caps || 0) + 1;
+      ctfEv('cap', ctfOther(p.team), p); ctfBotsRethink();
+      io.emit('tick', { timeLeft: Math.max(0, Math.ceil((roundEndsAt - now) / 1000)), score, intermission, board: board() });
+      if (score[p.team] >= CTF_WIN && roundEndsAt > now + 4000) roundEndsAt = now + 4000;   // første til 3 vinner
+    }
+  }
+}, 100);
+setInterval(() => { if (ctfOn() && ctf.bunny) ctfSend(); }, 250);
+{
+  const startMapCtf = startMap;
+  startMap = function (name) { const r = startMapCtf.apply(this, arguments); if (ctfOn()) { ctfReset(); ctfSend(); } return r; };
+}
