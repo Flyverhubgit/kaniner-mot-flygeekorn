@@ -3451,7 +3451,7 @@ function botSmart(b, best, bestD, now, dt) {
     const r = Math.random();
     let g = null;
     if (typeof squadGoal === 'function') g = squadGoal(b);          // [NY] troppens mål (lytt, jakt, angrip, forsvar)
-    if (r < 0.4 && !(mapName === 'jungle' && JUNGLE_CTF)) {        // gå dit en fiende omtrent er (litt unøyaktig – de "hører" deg)
+    if (r < 0.4 && !(mapName === 'jungle' && JUNGLE_CTF) && !squadsOn()) {        // gå dit en fiende omtrent er ([NY] ikke med tropper: de må se eller høre deg) (litt unøyaktig – de "hører" deg)
       let best = null, bd = mapName === 'desert' ? 160 : 90;
       for (const id in players) { const t = players[id]; if (!t.alive || t.team === b.team || t.vehicle) continue; const d = Math.hypot(t.x - b.x, t.z - b.z); if (d < bd) { bd = d; best = t; } }
       if (best) { const j = Math.min(12, bd * 0.15); g = [best.x + (Math.random() - 0.5) * j, best.z + (Math.random() - 0.5) * j]; }   // nærmere = mer nøyaktig
@@ -4019,7 +4019,8 @@ io.on('connection', socket => {
 const JUNGLE_SQUADS = true, SQUAD_SIZE = 4, NOISE_SHOT = 90, NOISE_RUN = 18, NOISE_WALK = 7;
 const squads = new Map(); let squadSeq = 0;
 const noises = [];                                               // { x, z, team, t, r }
-function squadsOn() { return JUNGLE_SQUADS && mapName === 'jungle'; }
+const SQUAD_MAPS = ['jungle', 'castle', 'medieval', 'room', 'temple', 'west', 'desert'];   // [NY] alle robot-baner (ikke Piratbukta – egen robot-kode på skipene)
+function squadsOn() { return JUNGLE_SQUADS && SQUAD_MAPS.includes(mapName); }
 function noiseAdd(x, z, team, r) { if (!squadsOn()) return; noises.push({ x, z, team, t: Date.now(), r }); if (noises.length > 200) noises.splice(0, noises.length - 200); }
 {
   const ioEmitSquad = io.emit.bind(io);                          // robotenes skudd lager lyd
@@ -4075,6 +4076,7 @@ function squadGoal(b) {
   if (q.contact && now - q.contact.t < 12000) return leg([q.contact.x, q.contact.z]);   // en i troppen så fienden: alle dit
   if (q.invest && now < q.invest.until) return leg([q.invest.x, q.invest.z]);           // hørte noe: gå og let
   if (q.role === 'hunt') {                                       // jegerne leter i krattet midt på kartet
+    if (mapName !== 'jungle') return leg(botField());           // andre baner: et tilfeldig sted på slagmarka
     const a = Math.random() * Math.PI * 2, d = 60 + Math.random() * 180; return leg([Math.cos(a) * d, Math.sin(a) * d]);
   }
   return null;                                                   // angrep/forsvar: fang-flagget-logikken (ctfBotGoal)
@@ -4087,7 +4089,8 @@ setInterval(() => {                                              // hver halve s
     if (!p.alive || p.huey || p.chute) { p._nx = undefined; continue; }
     if (p._nx !== undefined) {
       const sp = Math.hypot(p.x - p._nx, p.z - p._nz) / 0.5;
-      if (!p.crouch && sp > 0.8 && !JGM.masked(p.x, p.z) && !JGM.inRiver(p.x, p.z)) noiseAdd(p.x, p.z, p.team, sp > 4.5 ? NOISE_RUN : NOISE_WALK);
+      const jg = mapName === 'jungle', loud = jg ? !JGM.masked(p.x, p.z) && !JGM.inRiver(p.x, p.z) : true;   // andre baner: fottrinn høres overalt (litt kortere)
+      if (!p.crouch && sp > 0.8 && loud) noiseAdd(p.x, p.z, p.team, sp > 4.5 ? (jg ? NOISE_RUN : 14) : (jg ? NOISE_WALK : 5));
     }
     p._nx = p.x; p._nz = p.z;
     if (p.isBot && p.target) { const q = squadOf(p), t = players[p.target]; if (q && t) q.contact = { x: t.x, z: t.z, t: now }; }   // kontakt: si fra til troppen
