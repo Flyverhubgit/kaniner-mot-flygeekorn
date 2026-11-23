@@ -88,13 +88,17 @@ function ctfFrame() {
     const el = ctfMark(t);
     if (f.carrier === myId) { el.style.display = 'none'; continue; }
     const v = new THREE.Vector3(px, py + 4.6, pz).project(camera);
-    const behind = v.z > 1;
-    let sx = (v.x * 0.5 + 0.5) * innerWidth, sy = (-v.y * 0.5 + 0.5) * innerHeight;
-    if (behind) { sx = innerWidth - sx; sy = innerHeight - 40; }
-    sx = Math.max(30, Math.min(innerWidth - 30, sx)); sy = Math.max(70, Math.min(innerHeight - 40, sy));
+    let sx = (v.x * 0.5 + 0.5) * innerWidth, sy = (-v.y * 0.5 + 0.5) * innerHeight, edgeAng = null;
+    const onScreen = v.z < 1 && sx > 30 && sx < innerWidth - 30 && sy > 70 && sy < innerHeight - 40;
+    if (!onScreen) {                                            // [FIKS] bak deg / utenfor skjermen: legg merket på kanten i riktig retning (ikke speilet)
+      const dx = px - player.x, dz = pz - player.z, syw = Math.sin(player.yaw), cyw = Math.cos(player.yaw);
+      edgeAng = Math.atan2(dx * cyw - dz * syw, -dx * syw - dz * cyw);   // 0 = rett frem, + = til høyre
+      const rx = innerWidth / 2 - 50, ry = innerHeight / 2 - 60;
+      sx = innerWidth / 2 + Math.sin(edgeAng) * rx; sy = innerHeight / 2 - Math.cos(edgeAng) * ry;
+    }
     const dist = Math.round(Math.hypot(px - player.x, pz - player.z));
     const ours = t === myTeam, what = f.state === 'home' ? (ours ? 'Vårt' : 'Ta') : f.state === 'dropped' ? (ours ? 'Send hjem' : 'Ta') : (ours ? 'Stopp!' : 'Hjelp');
-    el.innerHTML = '<span style="font-size:20px">' + (ours ? '🏠' : '🚩') + '</span><br>' + what + ' ' + dist + ' m';
+    el.innerHTML = (edgeAng !== null ? '<span style="display:inline-block;transform:rotate(' + edgeAng + 'rad);font-size:14px">▲</span> ' : '') + '<span style="font-size:20px">' + (ours ? '🏠' : '🚩') + '</span><br>' + what + ' ' + dist + ' m';
     el.style.color = ours ? '#ffd2d2' : '#d8ffd2'; el.style.color = '#' + ctfTeamColor(t).toString(16).padStart(6, '0');
     el.style.left = sx + 'px'; el.style.top = sy + 'px'; el.style.display = 'block';
   }

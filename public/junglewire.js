@@ -14,7 +14,7 @@ function buildWire(team, ax, az, bx, bz, y, mine) {
   const stakeM = new THREE.MeshStandardMaterial({ color: 0x5a4630, roughness: 1 });
   [[ax, az], [bx, bz]].forEach(([x, z]) => { const s = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.4, 0.05), stakeM); s.position.set(x, y + 0.2, z); g.add(s); });
   const L = Math.hypot(bx - ax, bz - az);
-  const wire = new THREE.Mesh(new THREE.CylinderGeometry(0.007, 0.007, L, 4), new THREE.MeshBasicMaterial({ color: 0x8f8a70 }));
+  const wire = new THREE.Mesh(new THREE.CylinderGeometry(0.007, 0.007, L, 4), new THREE.MeshStandardMaterial({ color: 0xa8b0b8, metalness: 0.7, roughness: 0.35 }));
   wire.position.set((ax + bx) / 2, y + 0.25, (az + bz) / 2); wire.rotation.z = Math.PI / 2; wire.rotation.y = -Math.atan2(bz - az, bx - ax); g.add(wire);
   const can = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.14, 8), new THREE.MeshStandardMaterial({ color: 0x3f4a2a, roughness: 0.7 }));
   can.position.set(ax, y + 0.1, az); g.add(can);
@@ -23,7 +23,7 @@ function buildWire(team, ax, az, bx, bz, y, mine) {
     const x = c.getContext('2d'); x.font = '48px sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText('⚠️', 32, 34);
     const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), depthTest: false, transparent: true }));
     sp.scale.set(0.7, 0.7, 0.7); sp.position.set((ax + bx) / 2, y + 1.3, (az + bz) / 2); sp.renderOrder = 5; g.add(sp);
-    const line = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, L, 4), new THREE.MeshBasicMaterial({ color: team === 'bunny' ? 0xff6060 : 0x60ff70, transparent: true, opacity: 0.6, depthTest: false }));
+    const line = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, L, 4), new THREE.MeshBasicMaterial({ color: 0xc8d0d8, transparent: true, opacity: 0.55, depthTest: false }));   // [NY] stålfarget (var rød/grønn)
     line.position.copy(wire.position); line.rotation.copy(wire.rotation); line.renderOrder = 5; g.add(line);
   }
   g.traverse(o => { o.raycast = () => {}; });
@@ -44,18 +44,50 @@ socket.on('wireLeft', n => { wiresLeftC = n; });
 socket.on('wireCut', d => { if (wireMapOn() && typeof showToast === 'function') showToast(d.team === myTeam ? '✂️ ' + d.name + ' klippet en snubletråd' : '✂️ ' + d.name + ' klippet tråden vår!'); });
 socket.on('wireBoom', d => { if (wireMapOn() && d.name && typeof showToast === 'function') showToast('🪤 ' + d.name + ' gikk i en snubletråd!'); });
 socket.on('respawn', () => { wiresLeftC = 2; });
-socket.on('map', () => { for (const w of wireObjs.values()) scene.remove(w.g); wireObjs.clear(); wiresLeftC = 2; });
+socket.on('map', () => { for (const w of wireObjs.values()) scene.remove(w.g); wireObjs.clear(); wiresLeftC = 2; wireStageClear(); });
 socket.emit('wireAsk');
 
+// [NY] TO STEG: 1) B = sett sprengladningen ved føttene dine. 2) Gå bort mens du drar tråden etter deg (1,5–6 m),
+//  og trykk B igjen der tråden skal festes. Esc / død / 30 sek = avbrutt.
+const WIRE_TWO_STEP = true, WIRE_MIN = 1.5, WIRE_MAX = 6;
+let wireStage = null;
+function wireStageClear() { if (wireStage) { scene.remove(wireStage.g); wireStage = null; } }
 function placeWire() {
   if (!wireMapOn() || !alive || wireBusy()) return;
-  if (wiresLeftC <= 0) { bannerMsg = '🪤 Ingen snubletråder igjen (2 per liv)'; bannerTime = 1.4; return; }
-  const sy = Math.sin(player.yaw), cy = Math.cos(player.yaw);
-  const cx = player.x - sy * 1.4, cz = player.z - cy * 1.4, rx = cy, rz = -sy;   // 1,4 m foran deg, tvers over
-  socket.emit('wirePlace', { a: [+(cx - rx * 1.25).toFixed(2), +(cz - rz * 1.25).toFixed(2)], b: [+(cx + rx * 1.25).toFixed(2), +(cz + rz * 1.25).toFixed(2)], y: +player.feetY.toFixed(2) });
-  wiresLeftC--;
+  if (!wireStage && wiresLeftC <= 0) { bannerMsg = '🪤 Ingen snubletråder igjen (2 per liv)'; bannerTime = 1.4; return; }
+  if (!WIRE_TWO_STEP) {
+    const sy = Math.sin(player.yaw), cy = Math.cos(player.yaw);
+    const cx = player.x - sy * 1.4, cz = player.z - cy * 1.4, rx = cy, rz = -sy;   // 1,4 m foran deg, tvers over
+    socket.emit('wirePlace', { a: [+(cx - rx * 1.25).toFixed(2), +(cz - rz * 1.25).toFixed(2)], b: [+(cx + rx * 1.25).toFixed(2), +(cz + rz * 1.25).toFixed(2)], y: +player.feetY.toFixed(2) });
+    wiresLeftC--; bannerMsg = '🪤 Snubletråd satt ut (' + wiresLeftC + ' igjen)'; bannerTime = 1.4; return;
+  }
+  if (!wireStage) {                                            // steg 1: sprengladningen
+    const g = new THREE.Group();
+    const can = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.14, 8), new THREE.MeshStandardMaterial({ color: 0x3f4a2a, roughness: 0.7 })); g.add(can);
+    const stake = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.4, 0.05), new THREE.MeshStandardMaterial({ color: 0x5a4630 })); stake.position.y = 0.1; g.add(stake);
+    const line = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 1, 4), new THREE.MeshStandardMaterial({ color: 0xa8b0b8, metalness: 0.7, roughness: 0.35 }));
+    const lg = new THREE.Group(); lg.add(line); line.rotation.x = Math.PI / 2; line.position.z = 0.5; g.add(lg);
+    g.position.set(player.x, player.feetY + 0.07, player.z); g.traverse(o => { o.raycast = () => {}; }); scene.add(g);
+    wireStage = { ax: player.x, az: player.z, y: player.feetY, t: performance.now(), g, lg };
+    bannerMsg = '🧨 Ladning satt! Gå bort og trykk B igjen for å feste tråden'; bannerTime = 2.2;
+    return;
+  }
+  const L = Math.hypot(player.x - wireStage.ax, player.z - wireStage.az);   // steg 2: fest tråden der du står
+  if (L < WIRE_MIN) { bannerMsg = 'Tråden er for kort – gå litt lenger bort'; bannerTime = 1.2; return; }
+  if (L > WIRE_MAX) { bannerMsg = 'Tråden er for lang (maks 6 m) – gå nærmere'; bannerTime = 1.2; return; }
+  socket.emit('wirePlace', { a: [+wireStage.ax.toFixed(2), +wireStage.az.toFixed(2)], b: [+player.x.toFixed(2), +player.z.toFixed(2)], y: +wireStage.y.toFixed(2) });
+  wiresLeftC--; wireStageClear();
   bannerMsg = '🪤 Snubletråd satt ut (' + wiresLeftC + ' igjen)'; bannerTime = 1.4;
 }
+function wireStageFrame() {
+  if (!wireStage) return;
+  if (!wireMapOn() || !alive || wireBusy() || performance.now() - wireStage.t > 30000) { wireStageClear(); return; }
+  const dx = player.x - wireStage.ax, dz = player.z - wireStage.az, L = Math.hypot(dx, dz);
+  wireStage.lg.rotation.y = Math.atan2(dx, dz); wireStage.lg.scale.z = Math.max(0.01, L); wireStage.lg.position.y = 0.18;
+  wireStage.lg.children[0].material.color.setHex(L > WIRE_MAX || L < WIRE_MIN ? 0xd08070 : 0xa8b0b8);
+  if (wireUi) { wireUi.textContent = '🧵 Tråd: ' + L.toFixed(1) + ' m (1,5–6) · trykk B for å feste'; wireUi.style.display = 'block'; }
+}
+addEventListener('keydown', e => { if (e.code === 'Escape' && wireStage) wireStageClear(); });
 addEventListener('keydown', e => {
   if (!wireMapOn() || (document.activeElement && document.activeElement.tagName === 'INPUT')) return;
   if (e.code === 'KeyB' && !e.repeat) placeWire();
@@ -111,7 +143,7 @@ if (JUNGLE_WIRES_C && typeof renderFrame === 'function') {
   const renderFrameWire = renderFrame;
   renderFrame = function () {
     const now = performance.now(), dt = Math.min(0.1, (now - (wireLastT || now)) / 1000); wireLastT = now;
-    try { wireFrame(dt); } catch (e) { console.warn('wire', e); }
+    try { wireFrame(dt); wireStageFrame(); } catch (e) { console.warn('wire', e); }
     return renderFrameWire.apply(this, arguments);
   };
 }

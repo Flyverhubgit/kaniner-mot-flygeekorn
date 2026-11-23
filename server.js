@@ -3663,7 +3663,9 @@ spawnFor = function (team) {
 //  da hopper alle ut. Roboter flyr med og hopper i fallskjerm de også. ANGRE: JUNGLE_HUEY = false
 // ===================================================================
 const JUNGLE_HUEY = true;
-const HUEY_MESSY = true;   // [NY] rotete innsetting: færre per helikopter, inn fra alle kanter, roboter hopper på ulike steder underveis. ANGRE: false
+const HUEY_MESSY = true;
+const HUEY_LOW = true;   // [NY] taktisk lavflyging: rett over trærne, svinger fra side til side, bremser ned før slipp. ANGRE: false
+const HUEY_LOW_ALT = 20, HUEY_DROP_ALT = 17;   // [NY] rotete innsetting: færre per helikopter, inn fra alle kanter, roboter hopper på ulike steder underveis. ANGRE: false
 const HUEY = { alt: 42, speed: 34, hover: +process.env.HUEY_HOVER || 6000, eject: +process.env.HUEY_EJECT || 15000,   // test: HUEY_EJECT / HUEY_HOVER
   hp: 700, rocket: 350, seats: 6, out: 12000, fall: 5 };
 const HUEY_M60 = { dmg: 85, head: 100 };
@@ -3696,7 +3698,13 @@ function hueyNew(team) {
   const a = HUEY_MESSY ? Math.random() * Math.PI * 2 : Math.atan2(0, side) + (Math.random() - 0.5) * 1.6;   // kommer inn fra egen side av kartet ([NY] rotete: fra hvor som helst)
   let sx = dz.x + Math.sin(a) * 300, sz = dz.z + Math.cos(a) * 300;
   sx = Math.max(-395, Math.min(395, sx)); sz = Math.max(-395, Math.min(395, sz));
-  const h = { id: ++hueySeq, team, x: sx, y: HUEY.alt, z: sz, yaw: Math.atan2(dz.x - sx, dz.z - sz), dz, phase: 'in', born: Date.now(), hoverAt: 0, hp: HUEY.hp, gunner: null, pax: new Set(), boardAt: {} };
+  const h = { id: ++hueySeq, team, x: sx, y: HUEY_LOW ? jgGround(sx, sz) + HUEY_LOW_ALT : HUEY.alt, z: sz, yaw: Math.atan2(dz.x - sx, dz.z - sz), dz, phase: 'in', born: Date.now(), hoverAt: 0, hp: HUEY.hp, gunner: null, pax: new Set(), boardAt: {} };
+  if (HUEY_LOW) {                                            // to-tre svingete etapper på vei inn (ikke rett linje)
+    const n = 2 + Math.floor(Math.random() * 2), px = -(dz.z - sz), pz = dz.x - sx, pl = Math.hypot(px, pz) || 1;
+    h.wps = [];
+    for (let k = 1; k <= n; k++) { const t = k / (n + 1), off = (k % 2 ? 1 : -1) * (25 + Math.random() * 30); h.wps.push({ x: sx + (dz.x - sx) * t + px / pl * off, z: sz + (dz.z - sz) * t + pz / pl * off }); }
+    h.wps.push({ x: dz.x, z: dz.z });
+  }
   hueys.set(h.id, h);
   return h;
 }
@@ -3750,7 +3758,19 @@ setInterval(() => {
   if (mapName !== 'jungle') { if (hueys.size) hueys.clear(); return; }
   const now = Date.now(), dt = 0.1;
   for (const h of hueys.values()) {
-    if (h.phase === 'in') {
+    if (h.phase === 'in' && HUEY_LOW && h.wps && h.wps.length) {   // [NY] lavt og svingete, sakte ned mot slippet
+      const wp = h.wps[0], last = h.wps.length === 1, dx = wp.x - h.x, dz = wp.z - h.z, d = Math.hypot(dx, dz);
+      const v = last ? Math.min(30, Math.max(5, d * 0.7)) : 30;
+      const passed = d < 30 && (Math.sin(h.yaw) * dx + Math.cos(h.yaw) * dz) < 0 && !last;   // fløy forbi: ta neste
+      if (d < (last ? 2 : 8) || passed) { h.wps.shift(); if (last) { h.phase = 'hover'; h.hoverAt = now; } }
+      else {
+        const want = Math.atan2(dx, dz); let dy = want - h.yaw; while (dy > Math.PI) dy -= Math.PI * 2; while (dy < -Math.PI) dy += Math.PI * 2;
+        h.yaw += Math.max(-1.1 * dt, Math.min(1.1 * dt, dy));   // svinger mykt, som et ekte helikopter
+        h.x += Math.sin(h.yaw) * v * dt; h.z += Math.cos(h.yaw) * v * dt;
+      }
+      const gy = jgGround(h.x, h.z) + (last && d < 60 ? HUEY_DROP_ALT : HUEY_LOW_ALT) + Math.sin(now / 900 + h.id) * 1.2;
+      h.y += (gy - h.y) * Math.min(1, dt * 1.5);
+    } else if (h.phase === 'in') {
       const dx = h.dz.x - h.x, dz = h.dz.z - h.z, d = Math.hypot(dx, dz), v = Math.min(HUEY.speed, Math.max(6, d * 0.8));
       if (d < 2) { h.phase = 'hover'; h.hoverAt = now; }
       else { h.x += dx / d * v * dt; h.z += dz / d * v * dt; h.yaw = Math.atan2(dx, dz); }
@@ -3774,7 +3794,7 @@ setInterval(() => {
     if (!b.chute) continue;
     if (!b.alive) { b.chute = false; io.emit('chute', { id: b.id, on: false }); continue; }
     if (!b.isBot) { if (now - b.chuteT > 40000) { b.chute = false; io.emit('chute', { id: b.id, on: false }); } continue; }   // menneske: klienten sier fra når hen lander
-    const free = now - b.chuteT < 1000;
+    const free = now - b.chuteT < (HUEY_LOW ? 700 : 1000);
     b.y -= (free ? 9 : HUEY.fall) * dt;
     b.x += Math.sin(b.yaw || 0) * 2 * dt; b.z += Math.cos(b.yaw || 0) * 2 * dt;
     const g = jgGround(b.x, b.z);
@@ -3965,7 +3985,7 @@ io.on('connection', socket => {
     const ax = num(d.a[0], -400, 400), az = num(d.a[1], -400, 400), bx = num(d.b[0], -400, 400), bz = num(d.b[1], -400, 400), y = num(d.y, -2, 30);
     if ([ax, az, bx, bz, y].includes(null)) return;
     const L = Math.hypot(bx - ax, bz - az);
-    if (L < 1 || L > 3.5 || segDist(p.x, p.z, ax, az, bx, bz) > 4 || Math.abs(y - (p.y || 0)) > 1.5) return;
+    if (L < 1 || L > 6.5 || segDist(p.x, p.z, ax, az, bx, bz) > 4 || Math.abs(y - (p.y || 0)) > 2) return;   // [NY] tråden kan være opptil 6 m (dras ut i to steg)
     p.wiresLeft--;
     const mine = [...wires.values()].filter(w => w.owner === p.id);
     if (mine.length >= WIRE_MAX_PER_PLAYER) wires.delete(mine[0].id);

@@ -47,21 +47,24 @@ function buildHuey(team) {
   // M60 på dørstativ (høyre dør) – peker dit dørskytteren sikter
   const gunPivot = new THREE.Group(); gunPivot.position.set(1.15, 1.75, 0.35); g.add(gunPivot);
   const stand = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.8, 6), dark); stand.position.set(1.15, 1.35, 0.35); g.add(stand);
-  const gb = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.16, 0.75), dark); gb.position.z = 0.1; gunPivot.add(gb);
-  const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.75, 6), dark); barrel.rotation.x = Math.PI / 2; barrel.position.z = 0.8; gunPivot.add(barrel);
-  const belt = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.18, 0.16), olive); belt.position.set(-0.13, -0.05, 0.05); gunPivot.add(belt);
+  // [NY] M2 .50 (12,7 mm) i stedet for M60: tykk kasse, langt løp med kjølehylse, spadehåndtak bak, ammokasse
+  const gb = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.18, 0.6), dark); gb.position.z = 0.05; gunPivot.add(gb);
+  const jacket = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.22, 8), dark); jacket.rotation.x = Math.PI / 2; jacket.position.z = 0.46; gunPivot.add(jacket);
+  const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.028, 1.0, 8), dark); barrel.rotation.x = Math.PI / 2; barrel.position.z = 1.0; gunPivot.add(barrel);
+  [-1, 1].forEach(sx => { const gr = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.14, 6), dark); gr.position.set(sx * 0.08, -0.02, -0.3); gunPivot.add(gr); });
+  const belt = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.2, 0.3), olive); belt.position.set(-0.17, -0.08, 0.05); gunPivot.add(belt);
   gunPivot.rotation.y = Math.PI / 2;                     // ut av døra
   g.userData = { rotor, tail, gunPivot };
   g.traverse(o => { if (o.isMesh) { o.castShadow = true; o.raycast = () => {}; } });
   return g;
 }
-function buildChute(team) {
+function buildChute(team, noLines) {
   const g = new THREE.Group();
   const can = new THREE.Mesh(new THREE.SphereGeometry(2.6, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2.6), new THREE.MeshStandardMaterial({ color: team === 'bunny' ? 0x6b7a3a : 0x55663a, roughness: 0.9, side: THREE.DoubleSide }));
   can.scale.set(1, 0.6, 1); can.position.y = 4.2; g.add(can);
   const lm = new THREE.LineBasicMaterial({ color: 0x333333 }), pts = [];
   for (let i = 0; i < 8; i++) { const a = i / 8 * Math.PI * 2; pts.push(new THREE.Vector3(0, 1.2, 0), new THREE.Vector3(Math.cos(a) * 2.1, 4.6, Math.sin(a) * 2.1)); }
-  g.add(new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(pts), lm));
+  if (!noLines) g.add(new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(pts), lm));   // [FIKS] din egen: ingen snorer foran øynene
   g.traverse(o => { o.raycast = () => {}; });
   return g;
 }
@@ -140,7 +143,7 @@ function hueyUiFrame() {
   }
   const h = hueyAboard() && hueyMap.get(hueyMineId);
   if (h) {
-    const tip = hueyIsGunner ? 'Du er dørskytter – klikk = M60' : !h.gunner ? (isTouch ? '' : 'F = ta M60-en') : '';
+    const tip = hueyIsGunner ? 'Du er dørskytter – klikk = .50 (M2)' : !h.gunner ? (isTouch ? '' : 'F = ta M60-en') : '';
     hueyUi.textContent = '🚁 ' + (isTouch ? 'Trykk 🪂 HOPP' : 'E = hopp ut') + ' · ut om ' + (h.ejectIn || 0) + ' s' + (tip ? ' · ' + tip : '');
     hueyUi.style.display = 'block';
   } else if (chuteMe) { hueyUi.textContent = '🪂 W/A/S/D styrer fallskjermen'; hueyUi.style.display = 'block'; }
@@ -151,8 +154,8 @@ function hueyUiFrame() {
 // ---------- M60 fra døra ----------
 function hueyFire() {
   const h = hueyMap.get(hueyMineId);
-  fireCooldown = 0.09;
-  recoil = Math.min(recoil + 0.35, 1);
+  fireCooldown = 0.11;                                       // M2: ca. 9 skudd i sekundet
+  if (m2View) { m2View.userData.kick = 0.045; m2View.userData.flashT = 0.05; }
   camera.updateMatrixWorld(true);
   raycaster.setFromCamera({ x: (Math.random() - 0.5) * 0.025, y: (Math.random() - 0.5) * 0.025 }, camera);
   const o = raycaster.ray.origin, d = raycaster.ray.direction, RANGE = 320;
@@ -170,9 +173,9 @@ function hueyFire() {
   const end = o.clone().addScaledVector(d, bestT);
   if (target) { socket.emit('hit', { target, head, weapon: 'm60' }); addStuffing(end); try { hitmarkTime = 0.06; } catch (e) {} }
   else if (vox) { addImpact(end, vox.normal); socket.emit('blockHit', { i: vox.i, w: 'ak' }); }
-  const from = new THREE.Vector3(); h.g.userData.gunPivot.localToWorld(from.set(0, 0, 1.2));
-  if (!(typeof tracerShot === 'function' && tracerShot(from, end, 'mg42', 'me'))) addTracer(from, end);
-  if (typeof playDesertShot === 'function') playDesertShot('mg42', 1); else playShot();
+  const from = new THREE.Vector3(); if (m2View) m2View.userData.muzzle.getWorldPosition(from); else h.g.userData.gunPivot.localToWorld(from.set(0, 0, 1.2));
+  if (!(typeof tracerShot === 'function' && tracerShot(from, end, 'jeepmg', 'me'))) addTracer(from, end);
+  if (typeof playDesertShot === 'function') playDesertShot('m60', 1); else playShot();
   socket.emit('shot', { to: [+end.x.toFixed(2), +end.y.toFixed(2), +end.z.toFixed(2)], w: 'm60' });
 }
 const hueyIdsAboard = new Set();
@@ -239,9 +242,10 @@ function hueyFrame() {
     const seat = hueyIsGunner ? HUEY_GUN_SEAT : HUEY_SEATS[i % HUEY_SEATS.length];
     const w = hueyLocal(h, seat[0], 1.0, seat[1]);
     player.x = w.x; player.z = w.z; player.feetY = w.y; player.vy = 0;
-    const eye = hueyIsGunner ? hueyLocal(h, 0.35, 2.15, 0.35) : { x: w.x, y: w.y + 0.75, z: w.z };   // dørskytteren sitter litt bak og over M60-en
+    const eye = hueyIsGunner ? hueyLocal(h, 0.8, 1.95, 0.35) : { x: w.x, y: w.y + 0.75, z: w.z };   // dørskytteren står i døra bak M2-en
     camera.position.set(eye.x, eye.y, eye.z);
-    if (hueyIsGunner) {                                       // M60-en peker dit du ser
+    h.g.userData.gunPivot.visible = !hueyIsGunner;            // du ser din egen M2 i hendene i stedet
+    if (hueyIsGunner) {
       const dir = new THREE.Vector3(); camera.getWorldDirection(dir);
       h.g.userData.gunPivot.lookAt(camera.position.clone().addScaledVector(dir, 30));
     }
@@ -249,7 +253,7 @@ function hueyFrame() {
   // meg i fallskjerm
   if (chuteMe && !h) {
     const c = chuteMe; c.t += dt;
-    if (c.t < 1.0) c.vy -= 9.8 * dt; else c.vy += (-5 - c.vy) * Math.min(1, dt * 3);   // 1 sek fritt fall, så åpner skjermen seg
+    if (c.t < 0.7) c.vy -= 9.8 * dt; else c.vy += (-5 - c.vy) * Math.min(1, dt * 3);   // kort fritt fall (helikopteret flyr lavt), så åpner skjermen seg
     c.y += c.vy * dt;
     c.vx *= 1 - dt * 0.6; c.vz *= 1 - dt * 0.6;
     player.x += c.vx * dt; player.z += c.vz * dt;
@@ -261,7 +265,7 @@ function hueyFrame() {
       const eyeOff = camera.position.y - player.feetY;
       player.feetY = c.y; player.vy = 0; player.onGround = false;
       camera.position.y = c.y + (eyeOff > 0.3 && eyeOff < 2.5 ? eyeOff : EYE);
-      if (c.t >= 1.0) { if (!c.mesh) { c.mesh = buildChute(myTeam); scene.add(c.mesh); } c.mesh.position.set(player.x, c.y, player.z); }
+      if (c.t >= 0.7) { if (!c.mesh) { c.mesh = buildChute(myTeam, true); scene.add(c.mesh); } c.mesh.position.set(player.x, c.y, player.z); }
     }
   }
   // andres fallskjermer
@@ -284,4 +288,76 @@ if (HUEY_ON && typeof renderFrame === 'function') {
     try { return renderFrameHuey.apply(this, arguments); }
     finally { hidden.forEach(g => g.visible = true); }
   };
+}
+
+// [NY] M2 .50 (12,7 mm BMG) I HENDENE TIL DØRSKYTTEREN: spadehåndtak med begge potene, tommeltrykker,
+//  jernsikte (bakre ring + fremre korn) som ligger rett på midten av skjermen, rekyl og munningsflamme.
+const HUEY_M2_VIEW = true;
+let m2View = null;
+if (typeof RS_DESERT !== 'undefined') RS_DESERT.m60 = ['big', 0.62, 1.0];   // dørgeværet høres ut som en tung .50 (også hos de andre)
+function buildM2View() {
+  const g = new THREE.Group();
+  const metal = new THREE.MeshStandardMaterial({ color: 0x5a5e62, roughness: 0.4, metalness: 0.35, emissive: 0x111214 });
+  const dark = new THREE.MeshStandardMaterial({ color: 0x33363a, roughness: 0.45, metalness: 0.35, emissive: 0x08090a });
+  const olive = new THREE.MeshStandardMaterial({ color: 0x4a5330, roughness: 0.85 });
+  const box = (w, h, d, x, y, z, m) => { const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); b.position.set(x, y, z); g.add(b); return b; };
+  const cyl = (r, len, x, y, z, m, seg) => { const c = new THREE.Mesh(new THREE.CylinderGeometry(r, r, len, seg || 10), m); c.rotation.x = Math.PI / 2; c.position.set(x, y, z); g.add(c); return c; };
+  box(0.17, 0.17, 0.55, 0, -0.16, -0.62, metal);                       // kassen
+  box(0.172, 0.02, 0.5, 0, -0.07, -0.62, dark);                        // lokket
+  [-0.5, -0.62, -0.74].forEach(z => box(0.175, 0.02, 0.02, 0, -0.16, z, dark));   // nagler / riller
+  box(0.2, 0.04, 0.06, 0, -0.16, -0.9, metal);                         // fronten av kassa
+  const jk = cyl(0.045, 0.22, 0, -0.14, -1.0, metal);                  // kjølehylse
+  for (let i = 0; i < 4; i++) { const r = new THREE.Mesh(new THREE.TorusGeometry(0.046, 0.006, 4, 12), dark); r.position.set(0, -0.14, -0.92 - i * 0.05); g.add(r); }
+  cyl(0.022, 0.95, 0, -0.14, -1.55, dark);                             // løpet
+  const hider = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.022, 0.08, 10), dark); hider.rotation.x = -Math.PI / 2; hider.position.set(0, -0.14, -2.05); g.add(hider);
+  const muzzle = new THREE.Object3D(); muzzle.position.set(0, -0.14, -2.1); g.add(muzzle);
+  // jernsikte: bakre ramme med ring (på kassa, bak) + fremre korn (på kjølehylsa)
+  [-1, 1].forEach(sx => box(0.008, 0.075, 0.012, sx * 0.022, -0.035, -0.4, dark));
+  box(0.052, 0.008, 0.012, 0, 0.003, -0.4, dark);
+  box(0.052, 0.01, 0.03, 0, -0.072, -0.4, dark);
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(0.011, 0.0035, 6, 16), dark); ring.position.set(0, 0, -0.4); g.add(ring);
+  box(0.008, 0.115, 0.01, 0, -0.06, -1.08, dark);                      // fremre korn (toppen i y = 0)
+  box(0.04, 0.02, 0.04, 0, -0.115, -1.08, metal);
+  // spadehåndtak + tommeltrykker
+  box(0.24, 0.05, 0.05, 0, -0.18, -0.34, metal);
+  [-1, 1].forEach(sx => { const gr = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.13, 8), dark); gr.position.set(sx * 0.11, -0.22, -0.31); g.add(gr); });
+  box(0.07, 0.03, 0.02, 0, -0.205, -0.315, new THREE.MeshStandardMaterial({ color: 0x6a5a3a, roughness: 0.7 }));   // sommerfugl-trykkeren
+  // ammokasse og belte på venstre side
+  box(0.13, 0.17, 0.28, -0.2, -0.26, -0.66, olive);
+  box(0.06, 0.03, 0.12, -0.12, -0.17, -0.66, new THREE.MeshStandardMaterial({ color: 0xb8902a, metalness: 0.6, roughness: 0.4 }));
+  // stativet under
+  const post = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.5, 8), dark); post.position.set(0, -0.5, -0.66); g.add(post);
+  // munningsflamme
+  const fl = new THREE.Mesh(new THREE.PlaneGeometry(0.35, 0.35), new THREE.MeshBasicMaterial({ color: 0xffe08a, transparent: true, opacity: 0.9, depthWrite: false, side: THREE.DoubleSide }));
+  fl.position.set(0, -0.14, -2.15); fl.visible = false; g.add(fl);
+  // begge potene på spadehåndtakene
+  if (typeof limb === 'function' && typeof ARM_FUR !== 'undefined') {
+    [-1, 1].forEach(sx => {
+      limb(g, [sx * 0.11, -0.22, -0.31], [sx * 0.3, -0.55, 0.05], 0.085, ARM_FUR);
+      limb(g, [sx * 0.15, -0.28, -0.24], [sx * 0.17, -0.31, -0.2], 0.098, ARM_BAND);
+      const paw = new THREE.Mesh(typeof softBox === 'function' ? softBox(0.09, 0.09, 0.09) : new THREE.BoxGeometry(0.09, 0.09, 0.09), ARM_PAW); paw.position.set(sx * 0.11, -0.22, -0.31); g.add(paw);
+    });
+  }
+  g.traverse(o => { o.layers.set(2); o.castShadow = false; o.receiveShadow = false; o.raycast = () => {}; });
+  g.userData = { muzzle, flash: fl, kick: 0, flashT: 0 };
+  g.scale.setScalar(0.85); g.position.y = -0.02;
+  g.visible = false;
+  camera.add(g);
+  return g;
+}
+function m2Frame(dt) {
+  const on = HUEY_M2_VIEW && hueyAboard() && hueyIsGunner;
+  if (on && !m2View) m2View = buildM2View();
+  if (!m2View) return;
+  m2View.visible = on;
+  if (!on) return;
+  const u = m2View.userData;
+  u.kick *= Math.max(0, 1 - dt * 14); u.flashT -= dt;
+  m2View.position.set((Math.random() - 0.5) * u.kick * 0.15, (Math.random() - 0.5) * u.kick * 0.1, u.kick);   // (sikte-linja ligger i y = 0, så skalering endrer ikke siktet)
+  u.flash.visible = u.flashT > 0; if (u.flash.visible) u.flash.rotation.z = Math.random() * 3;
+}
+let m2LastT = 0;
+if (HUEY_M2_VIEW && typeof renderFrame === 'function') {
+  const renderFrameM2 = renderFrame;
+  renderFrame = function () { const now = performance.now(), dt = Math.min(0.1, (now - (m2LastT || now)) / 1000); m2LastT = now; try { m2Frame(dt); } catch (e) { console.warn('m2', e); } return renderFrameM2.apply(this, arguments); };
 }
