@@ -3495,6 +3495,7 @@ setInterval(() => {
         const t = players[oid];
         if (!t.alive || t.team === b.team || (t.vehicle && !(desert && t.vehicle === 'dv'))) continue;   // [NY] ørkenen: skyter også på kjøretøy
         const d = Math.hypot(t.x - b.x, t.z - b.z);
+        if (mapName === 'jungle' && t.weapon === 1 && t.crouch && d > 6 && !JGM.masked(t.x, t.z)) continue;   // [NY] ghilliedrakt: dukket snikskytter i krattet er nesten usynlig
         if (d < bestD && losClear(eye, { x: t.x, y: t.y + 1.2, z: t.z })) { best = t; bestD = d; }
       }
     }

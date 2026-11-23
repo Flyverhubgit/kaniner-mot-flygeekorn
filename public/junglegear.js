@@ -73,3 +73,46 @@ if (JUNGLE_GEAR_ON && typeof renderFrame === 'function') {
   const renderFrameJGear = renderFrame;
   renderFrame = function () { try { refreshJungleGear(); } catch (e) {} return renderFrameJGear.apply(this, arguments); };
 }
+
+// [NY] GHILLIEDRAKT 🌿🎯: holder du snikskytteren i Jungelkrigen, får du en ghilliedrakt – hundrevis av
+//  blad-filler over hele kroppen og hodet. Du smelter inn i krattet. Robotene ser deg bare på kort hold når
+//  du dukker i krattet med snikskytteren (serveren). ANGRE: GHILLIE_ON = false
+const GHILLIE_ON = true;
+const GH_COLS = [0x3f5426, 0x55662e, 0x6b6a38, 0x4a3f26, 0x2f4020, 0x7a7a46];
+let ghMats = null;
+function buildGhillie(team) {
+  if (!ghMats) ghMats = GH_COLS.map(c => new THREE.MeshStandardMaterial({ color: c, roughness: 1, side: THREE.DoubleSide }));
+  const H = HEAD[team] || HEAD.bunny, sq = team === 'squirrel', g = new THREE.Group();
+  const W = sq ? 0.56 : 0.66, D = sq ? 0.44 : 0.52, geo = new THREE.PlaneGeometry(0.1, 0.36);
+  let seed = 3; const R = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+  const strip = (x, y, z, ry, len) => { const m = new THREE.Mesh(geo, ghMats[Math.floor(R() * ghMats.length)]); m.position.set(x, y, z); m.rotation.set((R() - 0.5) * 0.5, ry, (R() - 0.5) * 0.6); m.scale.y = len; m.raycast = () => {}; g.add(m); };
+  // kroppen: filler rundt hele overkroppen og ned over beina
+  for (let i = 0; i < 300; i++) {
+    const a = R() * Math.PI * 2, y = 0.2 + R() * 1.05;
+    strip(Math.cos(a) * W / 2 * (1.0 + R() * 0.15), y, Math.sin(a) * D / 2 * (1.0 + R() * 0.15), -a + Math.PI / 2, 1 + R() * 0.9);
+  }
+  // hette: filler over og rundt hodet (ansiktet litt fritt)
+  for (let i = 0; i < 170; i++) {
+    const a = R() * Math.PI * 2, front = Math.sin(a) > 0.55 && R() < 0.75;
+    if (front) continue;
+    const y = H.top - 0.25 + R() * 0.32;
+    strip(Math.cos(a) * (H.w / 2 + 0.05), y, Math.sin(a) * (H.d / 2 + 0.05), -a + Math.PI / 2, 0.8 + R() * 0.7);
+  }
+  [-1, 1].forEach(sx => { for (let i = 0; i < 40; i++) { const a = R() * Math.PI * 2; strip(sx * (sq ? 0.17 : 0.12) + Math.cos(a) * 0.07, H.top + 0.05 + R() * 0.4, Math.sin(a) * 0.07, -a + Math.PI / 2, 0.6 + R() * 0.5); } });   // ørene kles også
+  for (let i = 0; i < 60; i++) { const m = new THREE.Mesh(geo, ghMats[Math.floor(R() * ghMats.length)]); m.position.set((R() - 0.5) * H.w, H.top + 0.02, (R() - 0.5) * H.d); m.rotation.set(Math.PI / 2 + (R() - 0.5) * 0.8, R() * 3, 0); m.raycast = () => {}; g.add(m); }
+  return g;
+}
+function refreshGhillie() {
+  const on = GHILLIE_ON && typeof currentMap !== 'undefined' && currentMap === 'jungle';
+  for (const id in others) {
+    const r = others[id];
+    if (!r.body || (r.team !== 'bunny' && r.team !== 'squirrel')) continue;
+    const want = on && r.weapon === 1;
+    if (want && !r.body.userData.ghillie) { r.body.userData.ghillie = buildGhillie(r.team); r.body.add(r.body.userData.ghillie); }
+    if (r.body.userData.ghillie) r.body.userData.ghillie.visible = want;
+  }
+}
+if (GHILLIE_ON && typeof renderFrame === 'function') {
+  const renderFrameGhillie = renderFrame;
+  renderFrame = function () { try { refreshGhillie(); } catch (e) {} return renderFrameGhillie.apply(this, arguments); };
+}
