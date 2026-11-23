@@ -3954,17 +3954,17 @@ function jgPlantLen(a, b) {                                     // hvor mange me
 const JUNGLE_WIRES = true, WIRES_PER_LIFE = 2, WIRE_MAX_PER_PLAYER = 4, WIRE_R = 5, WIRE_DMG = 110, WIRE_DISARM_MS = 1800;
 const wires = new Map(); let wireSeq = 0;
 function wireOn() { return JUNGLE_WIRES && mapName === 'jungle'; }
-function wireSend() { io.emit('wires', [...wires.values()].map(w => [w.id, w.team, +w.ax.toFixed(2), +w.az.toFixed(2), +w.bx.toFixed(2), +w.bz.toFixed(2), +w.y.toFixed(2), w.owner])); }
+function wireSend() { io.emit('wires', [...wires.values()].map(w => [w.id, w.team, +w.ax.toFixed(2), +w.az.toFixed(2), +w.bx.toFixed(2), +w.bz.toFixed(2), +w.y.toFixed(2), w.owner, +w.ay.toFixed(2), +w.by.toFixed(2)])); }   // [NY] ay/by = høyden i hver ende
 function segDist(px, pz, ax, az, bx, bz) { const dx = bx - ax, dz = bz - az, L = dx * dx + dz * dz || 1, t = Math.max(0, Math.min(1, ((px - ax) * dx + (pz - az) * dz) / L)); return Math.hypot(px - ax - dx * t, pz - az - dz * t); }
-function segCross(p1x, p1z, p2x, p2z, q1x, q1z, q2x, q2z) {
+function segCross(p1x, p1z, p2x, p2z, q1x, q1z, q2x, q2z) {   // false, eller hvor langt ut på tråden (0–1) den ble krysset
   const d = (p2x - p1x) * (q2z - q1z) - (p2z - p1z) * (q2x - q1x); if (Math.abs(d) < 1e-9) return false;
   const t = ((q1x - p1x) * (q2z - q1z) - (q1z - p1z) * (q2x - q1x)) / d, u = ((q1x - p1x) * (p2z - p1z) - (q1z - p1z) * (p2x - p1x)) / d;
-  return t >= 0 && t <= 1 && u >= 0 && u <= 1;
+  return t >= 0 && t <= 1 && u >= 0 && u <= 1 ? { u } : false;
 }
 function wireBoom(w, victim) {
   wires.delete(w.id);
-  const cx = (w.ax + w.bx) / 2, cz = (w.az + w.bz) / 2;
-  io.emit('boom', { id: 'wire' + w.id, p: [cx, w.y + 0.3, cz], big: 1.3 });
+  const cx = w.ax, cz = w.az;                                     // [NY] smeller ved ladningen (på treet)
+  io.emit('boom', { id: 'wire' + w.id, p: [cx, w.ay, cz], big: 1.3 });
   io.emit('wireBoom', { id: w.id, name: victim ? victim.name : '' });
   const owner = players[w.owner] || { id: 'wire', name: w.ownerName, team: w.team, kills: 0, streak: 0, isBot: true, x: cx, z: cz };
   Object.values(players).forEach(t => {
@@ -3981,8 +3981,11 @@ setInterval(() => {
     const px = p._wx, pz = p._wz; p._wx = p.x; p._wz = p.z;
     if (!p.alive || p.huey || p.chute || px === undefined || intermission) continue;
     for (const w of wires.values()) {
-      if (w.team === p.team || Math.abs((p.y || 0) - w.y) > 1.2) continue;
-      if (segCross(px, pz, p.x, p.z, w.ax, w.az, w.bx, w.bz) || segDist(p.x, p.z, w.ax, w.az, w.bx, w.bz) < 0.25) { wireBoom(w, p); break; }
+      if (w.team === p.team) continue;
+      const c = segCross(px, pz, p.x, p.z, w.ax, w.az, w.bx, w.bz), near = !c && segDist(p.x, p.z, w.ax, w.az, w.bx, w.bz) < 0.25;
+      if (!c && !near) continue;
+      const u = c ? c.u : 0.5, wy = w.ay + (w.by - w.ay) * u, py = p.y || 0;   // [NY] går kroppen gjennom tråden i den høyden?
+      if (wy > py - 0.15 && wy < py + (p.crouch ? 0.95 : 1.6)) { wireBoom(w, p); break; }
     }
   }
 }, 100);
@@ -3998,14 +4001,16 @@ io.on('connection', socket => {
     if (!wireOn() || !p || !p.alive || p.huey || p.chute || intermission || !d || !Array.isArray(d.a) || !Array.isArray(d.b)) return;
     if (p.wiresLeft === undefined) p.wiresLeft = WIRES_PER_LIFE;
     if (p.wiresLeft <= 0) return;
-    const ax = num(d.a[0], -400, 400), az = num(d.a[1], -400, 400), bx = num(d.b[0], -400, 400), bz = num(d.b[1], -400, 400), y = num(d.y, -2, 30);
-    if ([ax, az, bx, bz, y].includes(null)) return;
-    const L = Math.hypot(bx - ax, bz - az);
-    if (L < 1 || L > 6.5 || segDist(p.x, p.z, ax, az, bx, bz) > 4 || Math.abs(y - (p.y || 0)) > 2) return;   // [NY] tråden kan være opptil 6 m (dras ut i to steg)
+    const v3 = d.a.length === 3;                                    // [NY] ny måte: [x, y, z] der du siktet på treet
+    const ax = num(d.a[0], -400, 400), az = num(d.a[v3 ? 2 : 1], -400, 400), bx = num(d.b[0], -400, 400), bz = num(d.b[v3 ? 2 : 1], -400, 400);
+    const y = v3 ? (p.y || 0) : num(d.y, -2, 30), ay = v3 ? num(d.a[1], -2, 40) : y + 0.25, by = v3 ? num(d.b[1], -2, 40) : y + 0.25;
+    if ([ax, az, bx, bz, y, ay, by].includes(null)) return;
+    const L = Math.hypot(bx - ax, by - ay, bz - az);
+    if (L < 1 || L > 6.5 || segDist(p.x, p.z, ax, az, bx, bz) > 6 || Math.abs(ay - (p.y || 0)) > 3 || Math.abs(by - (p.y || 0)) > 3) return;   // [NY] tråden kan være opptil 6 m
     p.wiresLeft--;
     const mine = [...wires.values()].filter(w => w.owner === p.id);
     if (mine.length >= WIRE_MAX_PER_PLAYER) wires.delete(mine[0].id);
-    const w = { id: ++wireSeq, team: p.team, owner: p.id, ownerName: p.name, ax, az, bx, bz, y, at: Date.now() };
+    const w = { id: ++wireSeq, team: p.team, owner: p.id, ownerName: p.name, ax, az, bx, bz, y, ay, by, at: Date.now() };
     wires.set(w.id, w);
     p.protectedUntil = 0;
     wireSend();
@@ -4148,7 +4153,7 @@ const PH = { hp: 400, speed: 34, respawn: 60000, thru: 0.4, sink: 3, pads: [{ x:
 const phRespawns = [];
 function phNew(team, pad) {
   const s = team === 'bunny' ? 1 : -1, x = pad.x * s, z = pad.z * s, y = jgGround(x, z);
-  const h = { id: ++hueySeq, team, player: true, home: { x, z, y, yaw: s > 0 ? Math.PI : 0 }, x, y, z, yaw: s > 0 ? Math.PI : 0, pitch: 0, roll: 0, phase: 'park', hp: PH.hp, gunner: null, pilot: null, gl: null, gr: null, pass: null, pax: new Set(), boardAt: {}, born: Date.now(), at: Date.now(), pad };
+  const h = { id: ++hueySeq, team, homeTeam: team, player: true, home: { x, z, y, yaw: s > 0 ? Math.PI : 0 }, x, y, z, yaw: s > 0 ? Math.PI : 0, pitch: 0, roll: 0, phase: 'park', hp: PH.hp, gunner: null, pilot: null, gl: null, gr: null, pass: null, pax: new Set(), boardAt: {}, born: Date.now(), at: Date.now(), pad };
   hueys.set(h.id, h); return h;
 }
 function phSpawnAll() { if (!PLAYER_HUEY || !hueyOn()) return; ['bunny', 'squirrel'].forEach(t => PH.pads.forEach(pad => phNew(t, pad))); }
@@ -4173,7 +4178,7 @@ setInterval(() => {                                               // nye hueyer 
 }, 1000);
 {
   const hueyDownPh = hueyDown;
-  hueyDown = function (h, by) { if (h.player) phRespawns.push({ team: h.team, pad: h.pad, at: Date.now() + PH.respawn }); return hueyDownPh.apply(this, arguments); };
+  hueyDown = function (h, by) { if (h.player) phRespawns.push({ team: h.homeTeam || h.team, pad: h.pad, at: Date.now() + PH.respawn }); return hueyDownPh.apply(this, arguments); };   // [NY] stjålet: ny huey til laget som eide den
   const startMapPh = startMap;
   startMap = function () { phRespawns.length = 0; const r = startMapPh.apply(this, arguments); phSpawnAll(); return r; };
 }
@@ -4181,7 +4186,11 @@ setTimeout(phSpawnAll, 1500);                                     // (START_MAP=
 io.on('connection', socket => {
   socket.on('phIn', d => {
     const p = players[socket.id], h = d && hueys.get(d.id | 0);
-    if (!PLAYER_HUEY || !p || !p.alive || p.huey || p.chute || !h || !h.player || h.team !== p.team || intermission) return;
+    if (!PLAYER_HUEY || !p || !p.alive || p.huey || p.chute || !h || !h.player || intermission) return;
+    if (h.team !== p.team) {                                       // [NY] STJEL fiendens huey – bare hvis ingen fiender sitter i den
+      if ([...h.pax].some(id => players[id] && players[id].team === h.team)) return;
+      h.team = p.team; io.emit('phStolen', { id: h.id, name: p.name, team: p.team });
+    }
     if (Math.hypot(p.x - h.x, p.z - h.z) > 7 || Math.abs((p.y || 0) - h.y) > 4) return;
     const order = ['pilot', 'gr', 'gl', 'pass'], want = d.seat && order.includes(d.seat) && !h[d.seat] ? d.seat : order.find(k => !h[k]);
     if (!want) return;

@@ -74,7 +74,8 @@ function phNearest() {
   if (!PLAYER_HUEY_C || !hueyOnMap() || !alive || hueyAboard() || (typeof chuteMe !== 'undefined' && chuteMe)) return null;
   let best = null, bd = 7;
   for (const [id, h] of hueyMap) {
-    if (!h.player || h.falling || h.team !== myTeam) continue;
+    if (!h.player || h.falling) continue;
+    if (h.team !== myTeam && (h.pax || []).some(id => others[id] && others[id].team === h.team)) continue;   // [NY] fiende-huey: kan stjeles hvis ingen fiender er i den
     const d = Math.hypot(h.cur.x - player.x, h.cur.z - player.z);
     if (d < bd && Math.abs(h.cur.y - player.feetY) < 4) { bd = d; best = [id, h]; }
   }
@@ -122,7 +123,7 @@ function phFrame() {
   phNearId = near ? near[0] : null;
   if (near) {
     const h = near[1], free = ['pilot', 'gr', 'gl', 'pass'].find(k => !h[k]);
-    phUi.textContent = free ? '🚁 ' + (isTouch ? 'Trykk 🚁 INN' : 'E') + ' = gå om bord (' + { pilot: 'pilot', gr: 'høyre dør', gl: 'venstre dør', pass: 'passasjer' }[free] + ')' : '🚁 Hueyen er full';
+    phUi.textContent = free ? '🚁 ' + (isTouch ? 'Trykk 🚁 INN' : 'E') + (h.team !== myTeam ? ' = STJEL hueyen (' : ' = gå om bord (') + { pilot: 'pilot', gr: 'høyre dør', gl: 'venstre dør', pass: 'passasjer' }[free] + ')' : '🚁 Hueyen er full';
     phUi.style.display = 'block';
   } else phUi.style.display = 'none';
   if (phInBtn) phInBtn.style.display = near ? 'block' : 'none';

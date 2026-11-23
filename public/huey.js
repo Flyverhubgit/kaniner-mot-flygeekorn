@@ -32,7 +32,7 @@ function buildHuey(team) {
   const boom = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.55, 6.6, 10), olive); boom.rotation.x = Math.PI / 2; boom.position.set(0, 1.95, -4.75); g.add(boom);
   box(0.12, 1.5, 0.9, olive, 0, 2.6, -7.85);             // halefinne
   box(1.7, 0.08, 0.45, olive, 0, 1.95, -6.1);            // stabilisator
-  [-1, 1].forEach(s => { const c = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.32, 0.03, 16), teamM); c.rotation.z = Math.PI / 2; c.position.set(s * 0.42, 1.95, -3.4); g.add(c); });   // lagmerke
+  [-1, 1].forEach(s => { const c = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.32, 0.03, 16), teamM.clone()); c.userData.teamMark = true; c.rotation.z = Math.PI / 2; c.position.set(s * 0.42, 1.95, -3.4); g.add(c); });   // lagmerke
   const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.16, 0.7, 8), dark); mast.position.set(0, 3.0, 0.2); g.add(mast);
   const rotor = new THREE.Group(); rotor.position.set(0, 3.38, 0.2); g.add(rotor);
   const blade = new THREE.Mesh(new THREE.BoxGeometry(14.6, 0.06, 0.52), dark); rotor.add(blade);
@@ -106,6 +106,8 @@ socket.on('hueys', list => {
     const dx = x - (h.tgt.x === undefined ? x : h.tgt.x), dz = z - (h.tgt.z === undefined ? z : h.tgt.z);
     h.speed = Math.hypot(dx, dz) * 10;
     Object.assign(h.tgt, { x, y, z, yaw, pitch: pitch || 0, roll: roll || 0 }); h.hp = hp; h.gunner = gunner; h.pax = pax; h.phase = phase; h.ejectIn = ejectIn;
+    const tn = t ? 'squirrel' : 'bunny';
+    if (h.team !== tn) { h.team = tn; h.g.traverse(o => { if (o.isMesh && o.userData.teamMark) o.material.color.setHex(tn === 'bunny' ? 0xd84a4a : 0x4ab04a); }); }   // [NY] stjålet: nytt lagmerke
     h.player = !!isPl; h.pilot = pilot; h.gl = gl; h.gr = gr; h.pass = pass;
     if (h.player && !h.g.userData.gunPivotL.visible) { h.g.userData.gunPivotL.visible = true; h.g.userData.standL.visible = true; }
     if (pax.includes(myId)) {
@@ -390,3 +392,5 @@ if (HUEY_M2_VIEW && typeof renderFrame === 'function') {
   const renderFrameM2 = renderFrame;
   renderFrame = function () { const now = performance.now(), dt = Math.min(0.1, (now - (m2LastT || now)) / 1000); m2LastT = now; try { m2Frame(dt); } catch (e) { console.warn('m2', e); } return renderFrameM2.apply(this, arguments); };
 }
+
+socket.on('phStolen', d => { if (hueyOnMap() && typeof showToast === 'function') showToast(d.team === myTeam ? '🚁 ' + d.name + ' stjal en fiende-Huey!' : '⚠️ ' + d.name + ' stjal Hueyen vår!'); });
