@@ -1329,7 +1329,7 @@ io.on('connection', socket => {
     if (to.includes(null)) return;
     if (DV_SEATS && d.w === 'jeepmg') { const mv = dvOf(p); if (!(mv && mv.kind === 'jeep' && (mv.gunner === p.id || (mv.driver === p.id && !mv.gunner)))) return; }   // [NY] jeep-sjåføren skyter ikke når skytteren har våpenet
     p.protectedUntil = 0;                 // skyter du, er beskyttelsen over
-    const SHOT_W = ['sniper', 'dart', 'bow', 'crossbow', 'sword', 'flail', 'c7', 'c7s', 'minimi', 'mg42', 'pistol', 'sniper50', 'jeepmg', 'tankmg', 'jetgun', 'heligun', 'fire', 'flame'];   // [NY] pilgevær under vann, bue/armbrøst/sverd på Ridderborgen, ørken-våpen (c7s = med lyddemper)
+    const SHOT_W = ['sniper', 'dart', 'bow', 'crossbow', 'sword', 'flail', 'c7', 'c7s', 'minimi', 'mg42', 'pistol', 'sniper50', 'jeepmg', 'tankmg', 'jetgun', 'heligun', 'fire', 'flame', 'm60'];   // [NY] pilgevær under vann, bue/armbrøst/sverd på Ridderborgen, ørken-våpen (c7s = med lyddemper)
     socket.broadcast.emit('shot', { id: socket.id, to, w: SHOT_W.includes(d.w) ? d.w : 'ak' });
   });
   // [NY] Krigsbrøl (V) på Ridderborgen: alle hører det
@@ -1356,6 +1356,12 @@ io.on('connection', socket => {
       if (Math.hypot(t.x - p.x, t.z - p.z) > F.reach) return;
       p['last_' + d.weapon] = now;
       applyDamage(p, t, head && F.head ? F.head : F.dmg, head && !!F.head, 'fire');
+      return;
+    }
+    if (d.weapon === 'm60') {                                           // [NY] Huey-dørskytteren (Jungelkrigen)
+      if (typeof hueyGunOk !== 'function' || !hueyGunOk(p) || now - (p.lastM60 || 0) < 90) return;
+      p.lastM60 = now;
+      applyDamage(p, t, d.head ? HUEY_M60.head : HUEY_M60.dmg, !!d.head, 'm60');
       return;
     }
     if (now - p.lastHit < (mapName === 'desert' ? 40 : MIN_HIT_MS)) return;   // [NY] ørkenen: MG42 skyter fortere (egen sjekk per våpen under)
@@ -1421,7 +1427,7 @@ io.on('connection', socket => {
     const endless = worldName === 'underworld' || hordeMap() || mapName === 'dragon';   // [NY] uendelig i underverdenen og på kyllingfarmen
     if (!p || !p.alive || (!endless && p.nades <= 0) || !d || typeof d.id !== 'string' || d.id.length > 40) return;
     if (!Array.isArray(d.p) || !Array.isArray(d.v)) return;
-    const pos = d.p.map(v => num(v, -250, 250)), vel = d.v.map(v => num(v, -40, 40));   // [FIKS] dyphavet er 220 m bredt
+    const pos = d.p.map(v => num(v, -450, 450)), vel = d.v.map(v => num(v, -40, 40));   // [FIKS] dyphavet er 220 m bredt   // [FIKS] jungelen er 800 m
     if (pos.includes(null) || vel.includes(null)) return;
     if (!endless) p.nades--;
     p.protectedUntil = 0;
@@ -1437,7 +1443,7 @@ io.on('connection', socket => {
     delete p.pending[d.id];                           // hver granat kan bare smelle én gang
     if (mapName === 'lobby') return;                  // [NY] loungen: ingen smell
     if (!Array.isArray(d.p)) return;
-    const pos = d.p.map(v => num(v, -250, 250));        // [FIKS] dyphavet er 220 m bredt
+    const pos = d.p.map(v => num(v, -450, 450));        // [FIKS] dyphavet er 220 m bredt   // [FIKS] jungelen er 800 m
     if (pos.includes(null)) return;
     if (kind === 'holy') {                            // [NY] HALLELUJA
       io.emit('boom', { id: d.id, p: pos, big: 6, holy: true });
@@ -1985,7 +1991,7 @@ io.on('connection', socket => {
     if (!p || !d || !p.pending[d.id]) return;
     delete p.pending[d.id];
     if (!Array.isArray(d.p)) return;
-    const pos = d.p.map(v => num(v, -250, 250));         // [FIKS] ørkenen er 480 m bred
+    const pos = d.p.map(v => num(v, -450, 450));         // [FIKS] ørkenen er 480 m bred   // [FIKS] jungelen er 800 m
     if (pos.includes(null)) return;
     io.emit('boom', { id: d.id, p: pos, big: 1.6 });
     blastOwner = p; blastCells(pos[0], pos[1], pos[2], ROCKET_BLOCKS); blastOwner = null;
@@ -2003,6 +2009,7 @@ io.on('connection', socket => {
       if (dist < ROCKET_RADIUS) applyDamage(p, t, Math.round(ROCKET_MAX_DMG * (1 - dist / ROCKET_RADIUS)), false, 'rocket');
     });
     if (mapName === 'desert') dvArea(pos, ROCKET_RADIUS, 260, p);   // [NY] RPG/bazooka mot kjøretøy
+    if (typeof hueyRocket === 'function') hueyRocket(pos, p);          // [NY] Jungelkrigen: raketter mot Huey-helikoptrene
   });
 
   // Morter avfyrt: alle ser granaten fly, og 3 sek senere smeller den
@@ -3473,6 +3480,7 @@ setInterval(() => {
     const b = players[id];
     if (!b.isBot || !b.alive) continue;
     if (mapName === 'pirate') { pirBot(b, now, dt); continue; }   // [NY] Piratbukta: egen robot-kode
+    if (b.huey || b.chute) continue;                    // [NY] sitter i Huey-en eller henger i fallskjermen
     // --- Se etter fiender (nærmeste med fri sikt) ---
     const eye = { x: b.x, y: b.y + 1.4, z: b.z }, desert = mapName === 'desert';
     let best = null, bestD = desert ? 85 : 42;
@@ -3643,3 +3651,155 @@ spawnFor = function (team) {
   for (let k = 0; k < 20 && (bSolid(x, S.y + 0.2, z) || bSolid(x, S.y + 1.2, z)); k++) { x = S.x0 + Math.random() * (S.x1 - S.x0); z = S.z0 + Math.random() * (S.z1 - S.z0); }
   return team === 'bunny' ? { x, y: S.y, z, yaw: 0 } : { x: -x, y: S.y, z: -z, yaw: Math.PI };
 };
+
+// ===================================================================
+// [NY] HUEY-INNSETTING (Jungelkrigen) 🚁🪂
+//  Du starter (og kommer tilbake etter død) i et Huey-helikopter som en robot flyr. Det tar deg til et tilfeldig
+//  sted langt fra fiendene. E = hopp ut i fallskjerm; etter ca. 15 sek blir du kastet ut uansett.
+//  Én om bord kan være dørskytter (M60, nesten ett skudd = ett drap). Raketter kan skyte ned Hueyen (3 treff):
+//  da hopper alle ut. Roboter flyr med og hopper i fallskjerm de også. ANGRE: JUNGLE_HUEY = false
+// ===================================================================
+const JUNGLE_HUEY = true;
+const HUEY = { alt: 42, speed: 34, hover: +process.env.HUEY_HOVER || 6000, eject: +process.env.HUEY_EJECT || 15000,   // test: HUEY_EJECT / HUEY_HOVER
+  hp: 700, rocket: 260, seats: 6, out: 12000, fall: 5 };
+const HUEY_M60 = { dmg: 85, head: 100 };
+const hueys = new Map(); let hueySeq = 0;
+function hueyOn() { return JUNGLE_HUEY && mapName === 'jungle' && !intermission; }
+function jgGround(x, z) {                                   // bakken under (trekroner teller ikke – du detter gjennom løvet)
+  const V = VOX.jungle; if (!V) return 0;
+  const ix = Math.floor(x) - JGM.X0, iz = Math.floor(z) - JGM.Z0;
+  if (ix < 0 || iz < 0 || ix >= JGM.NX || iz >= JGM.NZ) return 0;
+  const A = JGM.NX * JGM.NZ, T = JGM.T;
+  for (let y = JGM.NY - 1; y >= 0; y--) { const t = V.grid[y * A + iz * JGM.NX + ix]; if (t && t !== T.TRUNK && t !== T.LEAF && t !== T.LEAF2 && t !== T.PALM) return y + 1; }
+  return 0;
+}
+function hueyPickDZ(team) {                                // et sted langt fra fiendene, på egen halvdel eller i midten
+  const side = team === 'bunny' ? 1 : -1, foes = Object.values(players).filter(o => o.alive && o.team !== team && !o.huey);
+  let best = null, bestS = -1;
+  for (let k = 0; k < 40; k++) {
+    const x = (Math.random() * 2 - 1) * 360, z = side * (-40 + Math.random() * 400);
+    if (Math.abs(z) > 370 || Math.abs(x - JGM.RIVER(z)) < 14) continue;
+    if (Math.hypot(x, z - side * 250) < 45) continue;         // ikke rett på egen base
+    let near = 999; foes.forEach(f => { near = Math.min(near, Math.hypot(f.x - x, f.z - z)); });
+    const sc = Math.min(near, 200) + Math.random() * 60;
+    if (sc > bestS) { bestS = sc; best = { x, z }; }
+  }
+  return best || { x: 0, z: side * 200 };
+}
+function hueyNew(team) {
+  const dz = hueyPickDZ(team), side = team === 'bunny' ? 1 : -1;
+  const a = Math.atan2(0, side) + (Math.random() - 0.5) * 1.6;   // kommer inn fra egen side av kartet
+  let sx = dz.x + Math.sin(a) * 300, sz = dz.z + Math.cos(a) * 300;
+  sx = Math.max(-395, Math.min(395, sx)); sz = Math.max(-395, Math.min(395, sz));
+  const h = { id: ++hueySeq, team, x: sx, y: HUEY.alt, z: sz, yaw: Math.atan2(dz.x - sx, dz.z - sz), dz, phase: 'in', born: Date.now(), hoverAt: 0, hp: HUEY.hp, gunner: null, pax: new Set(), boardAt: {} };
+  hueys.set(h.id, h);
+  return h;
+}
+function hueyBoard(p) {
+  if (!hueyOn() || !p.alive) return;
+  hueyLeave(p, false);
+  let h = null;
+  for (const o of hueys.values()) if (o.team === p.team && o.phase === 'in' && Date.now() - o.born < 2500 && o.pax.size < HUEY.seats) { h = o; break; }
+  if (!h) h = hueyNew(p.team);
+  h.pax.add(p.id); h.boardAt[p.id] = Date.now();
+  if (!p.isBot && !h.gunner) h.gunner = p.id;              // første menneske om bord får M60-en
+  p.huey = h.id; p.chute = false;
+  p.protectedUntil = Infinity;                            // trygg inne i helikopteret
+  p.x = h.x; p.y = h.y; p.z = h.z;
+  if (p.isBot) p.target = null;
+}
+function hueyLeave(p, jump) {                             // ut av hueyen (hopp = fallskjerm)
+  const h = p.huey && hueys.get(p.huey);
+  p.huey = null;
+  if (!h) return;
+  h.pax.delete(p.id); delete h.boardAt[p.id];
+  if (h.gunner === p.id) h.gunner = null;
+  if (!jump || !p.alive) { if (p.protectedUntil === Infinity) p.protectedUntil = 0; return; }
+  const side = (Math.random() < 0.5 ? -1 : 1) * 1.6;
+  p.x = h.x + Math.cos(h.yaw) * side; p.z = h.z - Math.sin(h.yaw) * side; p.y = h.y - 1;
+  p.chute = true; p.chuteT = Date.now(); p.vy = 0;
+  p.protectedUntil = 0;
+  io.emit('chute', { id: p.id, on: true });
+  if (!p.isBot) io.to(p.id).emit('hueyJump', { x: +p.x.toFixed(2), y: +p.y.toFixed(2), z: +p.z.toFixed(2), vx: h.phase === 'in' ? +(Math.sin(h.yaw) * 6).toFixed(2) : 0, vz: h.phase === 'in' ? +(Math.cos(h.yaw) * 6).toFixed(2) : 0 });
+}
+function hueyGunOk(p) { const h = p.huey && hueys.get(p.huey); return !!(h && h.gunner === p.id); }
+function hueyRocket(pos, p) {
+  if (!hueyOn()) return;
+  for (const h of hueys.values()) {
+    if (h.team === p.team || h.hp <= 0) continue;
+    if (Math.hypot(h.x - pos[0], h.y + 1 - pos[1], h.z - pos[2]) > 7) continue;
+    h.hp -= HUEY.rocket;
+    io.emit('hueyHit', { id: h.id, hp: h.hp });
+    if (h.hp <= 0) hueyDown(h, p);
+  }
+}
+function hueyDown(h, by) {                                 // skutt ned: alle hopper ut, helikopteret går i bakken
+  [...h.pax].forEach(id => { const q = players[id]; if (q) hueyLeave(q, true); });
+  io.emit('hueyBoom', { id: h.id, x: +h.x.toFixed(1), y: +h.y.toFixed(1), z: +h.z.toFixed(1), by: by ? by.name : '' });
+  io.emit('boom', { id: 'huey' + h.id, p: [h.x, h.y, h.z], big: 2.5 });
+  hueys.delete(h.id);
+}
+setInterval(() => {
+  if (!JUNGLE_HUEY) return;
+  if (mapName !== 'jungle') { if (hueys.size) hueys.clear(); return; }
+  const now = Date.now(), dt = 0.1;
+  for (const h of hueys.values()) {
+    if (h.phase === 'in') {
+      const dx = h.dz.x - h.x, dz = h.dz.z - h.z, d = Math.hypot(dx, dz), v = Math.min(HUEY.speed, Math.max(6, d * 0.8));
+      if (d < 2) { h.phase = 'hover'; h.hoverAt = now; }
+      else { h.x += dx / d * v * dt; h.z += dz / d * v * dt; h.yaw = Math.atan2(dx, dz); }
+    } else if (h.phase === 'hover') {
+      if (now - h.hoverAt > HUEY.hover) { h.phase = 'out'; h.outAt = now; [...h.pax].forEach(id => { const q = players[id]; if (q) hueyLeave(q, true); }); }
+    } else {
+      h.x += Math.sin(h.yaw) * 40 * dt; h.z += Math.cos(h.yaw) * 40 * dt; h.y += 3 * dt;
+      if (now - h.outAt > HUEY.out || Math.abs(h.x) > 470 || Math.abs(h.z) > 470) { hueys.delete(h.id); continue; }
+    }
+    // passasjerer følger med; roboter hopper når de er fremme, alle kastes ut etter 15 sek
+    [...h.pax].forEach(id => {
+      const q = players[id];
+      if (!q || !q.alive || q.huey !== h.id) { h.pax.delete(id); if (h.gunner === id) h.gunner = null; return; }
+      q.x = h.x; q.y = h.y; q.z = h.z;
+      if (now - h.boardAt[id] > HUEY.eject || (q.isBot && h.phase === 'hover' && now - h.hoverAt > 800 + (q.id.length % 5) * 400)) hueyLeave(q, true);
+    });
+  }
+  // roboter i fallskjerm: daler sakte ned og sklir litt
+  for (const id in players) {
+    const b = players[id];
+    if (!b.chute) continue;
+    if (!b.alive) { b.chute = false; io.emit('chute', { id: b.id, on: false }); continue; }
+    if (!b.isBot) { if (now - b.chuteT > 40000) { b.chute = false; io.emit('chute', { id: b.id, on: false }); } continue; }   // menneske: klienten sier fra når hen lander
+    const free = now - b.chuteT < 1000;
+    b.y -= (free ? 9 : HUEY.fall) * dt;
+    b.x += Math.sin(b.yaw || 0) * 2 * dt; b.z += Math.cos(b.yaw || 0) * 2 * dt;
+    const g = jgGround(b.x, b.z);
+    if (b.y <= g) { b.y = g; b.chute = false; io.emit('chute', { id: b.id, on: false }); botPlan(b); }
+  }
+  if (hueys.size || hueySent) {
+    hueySent = hueys.size > 0;
+    io.emit('hueys', [...hueys.values()].map(h => [h.id, h.team === 'bunny' ? 0 : 1, +h.x.toFixed(2), +h.y.toFixed(2), +h.z.toFixed(2), +h.yaw.toFixed(3), h.hp, h.gunner || '', [...h.pax], h.phase === 'in' ? 0 : h.phase === 'hover' ? 1 : 2, Math.max(0, Math.ceil((HUEY.eject - (now - Math.min(...[...h.pax].map(i => h.boardAt[i] || now), now))) / 1000))]));
+  }
+}, 100);
+let hueySent = false;
+{
+  const addBotHuey = addBot;
+  addBot = function (team) { const r = addBotHuey.apply(this, arguments); const b = Object.values(players).filter(o => o.isBot && o.team === team).pop(); if (b && hueyOn() && b.alive && !b.huey) hueyBoard(b); return r; };
+  const respawnHuey = respawn;
+  respawn = function (p) { respawnHuey(p); if (hueyOn()) hueyBoard(p); };
+  const startMapHuey = startMap;
+  startMap = function (name) {
+    hueys.clear();
+    Object.values(players).forEach(p => { p.huey = null; p.chute = false; });
+    const r = startMapHuey.apply(this, arguments);
+    if (hueyOn()) Object.values(players).forEach(p => { if (p.alive) hueyBoard(p); });
+    return r;
+  };
+  const applyDamageHuey = applyDamage;
+  applyDamage = function (p, t, dmg, head, weapon) { if (t && t.huey) return; return applyDamageHuey.apply(this, arguments); };
+}
+io.on('connection', socket => {
+  socket.on('join', () => setTimeout(() => { const p = players[socket.id]; if (p && hueyOn() && p.alive && !p.huey) hueyBoard(p); }, 300));
+  socket.on('hueyJump', () => { const p = players[socket.id]; if (p && p.huey) hueyLeave(p, true); });
+  socket.on('hueyGun', () => { const p = players[socket.id], h = p && p.huey && hueys.get(p.huey); if (h && !h.gunner) h.gunner = p.id; });
+  socket.on('chuteLand', () => { const p = players[socket.id]; if (p && p.chute) { p.chute = false; io.emit('chute', { id: p.id, on: false }); } });
+  socket.on('disconnect', () => { for (const h of hueys.values()) { h.pax.delete(socket.id); if (h.gunner === socket.id) h.gunner = null; } });
+});

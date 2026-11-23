@@ -1,0 +1,287 @@
+// ===================================================================
+//  [NY] HUEY-INNSETTING (Jungelkrigen) 🚁🪂
+//  En robot-pilot flyr deg inn. E (eller 🪂 HOPP) = hopp ut i fallskjerm, ellers blir du kastet ut etter ca. 15 sek.
+//  Dørskytteren (første som går om bord, eller F hvis plassen er ledig) har M60 – nesten ett skudd = ett drap.
+//  I fallskjermen: W/A/S/D styrer. Raketter kan skyte ned hueyen. ANGRE: HUEY_ON = false
+// ===================================================================
+const HUEY_ON = true;
+const HUEY_SEATS = [[-0.55, -0.9], [0.35, -0.9], [-0.85, 0.2], [-0.2, 0.75], [0.35, -0.1], [-0.7, -0.35]];   // passasjerer (x, z lokalt)
+const HUEY_GUN_SEAT = [0.75, 0.35];                                    // dørskytteren, ved høyre dør
+const hueyMap = new Map(), chuteSet = new Set(), chuteMeshes = {};
+let hueyMineId = null, hueyIsGunner = false, chuteMe = null, hueyLastT = 0, hueyUi = null, hueyBtn = null;
+function hueyOnMap() { return HUEY_ON && typeof currentMap !== 'undefined' && currentMap === 'jungle'; }
+function hueyAboard() { return hueyOnMap() && hueyMineId !== null && hueyMap.has(hueyMineId); }
+
+// ---------- modellen ----------
+function buildHuey(team) {
+  const g = new THREE.Group();
+  const olive = new THREE.MeshStandardMaterial({ color: 0x4a5330, roughness: 0.85 });
+  const dark = new THREE.MeshStandardMaterial({ color: 0x23261c, roughness: 0.7, metalness: 0.3 });
+  const glass = new THREE.MeshStandardMaterial({ color: 0x9fc3d0, roughness: 0.1, metalness: 0.3, transparent: true, opacity: 0.35 });
+  const teamM = new THREE.MeshStandardMaterial({ color: team === 'bunny' ? 0xd84a4a : 0x4ab04a, roughness: 0.6 });
+  const box = (w, h, d, m, x, y, z) => { const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); b.position.set(x, y, z); g.add(b); return b; };
+  box(2.4, 0.15, 3.0, olive, 0, 0.9, 0);                 // golv i lasterommet (åpne sider = dørene)
+  box(2.4, 0.2, 3.4, olive, 0, 2.6, 0.2);                // tak
+  box(2.4, 1.7, 0.15, olive, 0, 1.75, -1.5);             // bakvegg
+  box(2.2, 0.6, 4.6, olive, 0, 0.55, 0.5);               // buk
+  box(2.3, 1.5, 1.3, olive, 0, 1.7, 2.15);               // cockpit
+  const nose = new THREE.Mesh(new THREE.SphereGeometry(1.15, 14, 10), olive); nose.scale.set(1, 0.72, 0.85); nose.position.set(0, 1.45, 2.85); g.add(nose);
+  const win = new THREE.Mesh(new THREE.SphereGeometry(0.95, 14, 10), glass); win.scale.set(1.12, 0.62, 0.72); win.position.set(0, 2.05, 2.95); g.add(win);
+  box(1.6, 0.5, 0.1, dark, 0, 1.9, 1.5);                 // instrumentpanel (sett innenfra)
+  const boom = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.55, 6.6, 10), olive); boom.rotation.x = Math.PI / 2; boom.position.set(0, 1.95, -4.75); g.add(boom);
+  box(0.12, 1.5, 0.9, olive, 0, 2.6, -7.85);             // halefinne
+  box(1.7, 0.08, 0.45, olive, 0, 1.95, -6.1);            // stabilisator
+  [-1, 1].forEach(s => { const c = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.32, 0.03, 16), teamM); c.rotation.z = Math.PI / 2; c.position.set(s * 0.42, 1.95, -3.4); g.add(c); });   // lagmerke
+  const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.16, 0.7, 8), dark); mast.position.set(0, 3.0, 0.2); g.add(mast);
+  const rotor = new THREE.Group(); rotor.position.set(0, 3.38, 0.2); g.add(rotor);
+  const blade = new THREE.Mesh(new THREE.BoxGeometry(14.6, 0.06, 0.52), dark); rotor.add(blade);
+  const disc = new THREE.Mesh(new THREE.CircleGeometry(7.3, 32), new THREE.MeshBasicMaterial({ color: 0x222222, transparent: true, opacity: 0.1, depthWrite: false, side: THREE.DoubleSide }));
+  disc.rotation.x = -Math.PI / 2; disc.position.y = 0.02; rotor.add(disc);
+  const tail = new THREE.Group(); tail.position.set(0.22, 2.65, -7.85); g.add(tail);
+  const tb = new THREE.Mesh(new THREE.BoxGeometry(0.05, 2.6, 0.2), dark); tail.add(tb);
+  [-1, 1].forEach(s => {                                  // meier
+    const sk = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 4.4, 6), dark); sk.rotation.x = Math.PI / 2; sk.position.set(s * 1.25, 0.05, 0.4); g.add(sk);
+    [-0.6, 1.4].forEach(z => box(0.08, 0.55, 0.08, dark, s * 1.15, 0.3, z));
+  });
+  box(1.9, 0.35, 0.5, dark, 0, 1.15, -1.15);              // benk bakerst
+  // M60 på dørstativ (høyre dør) – peker dit dørskytteren sikter
+  const gunPivot = new THREE.Group(); gunPivot.position.set(1.15, 1.75, 0.35); g.add(gunPivot);
+  const stand = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.8, 6), dark); stand.position.set(1.15, 1.35, 0.35); g.add(stand);
+  const gb = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.16, 0.75), dark); gb.position.z = 0.1; gunPivot.add(gb);
+  const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.75, 6), dark); barrel.rotation.x = Math.PI / 2; barrel.position.z = 0.8; gunPivot.add(barrel);
+  const belt = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.18, 0.16), olive); belt.position.set(-0.13, -0.05, 0.05); gunPivot.add(belt);
+  gunPivot.rotation.y = Math.PI / 2;                     // ut av døra
+  g.userData = { rotor, tail, gunPivot };
+  g.traverse(o => { if (o.isMesh) { o.castShadow = true; o.raycast = () => {}; } });
+  return g;
+}
+function buildChute(team) {
+  const g = new THREE.Group();
+  const can = new THREE.Mesh(new THREE.SphereGeometry(2.6, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2.6), new THREE.MeshStandardMaterial({ color: team === 'bunny' ? 0x6b7a3a : 0x55663a, roughness: 0.9, side: THREE.DoubleSide }));
+  can.scale.set(1, 0.6, 1); can.position.y = 4.2; g.add(can);
+  const lm = new THREE.LineBasicMaterial({ color: 0x333333 }), pts = [];
+  for (let i = 0; i < 8; i++) { const a = i / 8 * Math.PI * 2; pts.push(new THREE.Vector3(0, 1.2, 0), new THREE.Vector3(Math.cos(a) * 2.1, 4.6, Math.sin(a) * 2.1)); }
+  g.add(new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(pts), lm));
+  g.traverse(o => { o.raycast = () => {}; });
+  return g;
+}
+
+// ---------- lyd: rotor-dunk ----------
+function hueySound(h) {
+  if (typeof audioCtx === 'undefined' || !audioCtx || h.snd) return;
+  try {
+    const len = audioCtx.sampleRate, buf = audioCtx.createBuffer(1, len, audioCtx.sampleRate), d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+    const src = audioCtx.createBufferSource(); src.buffer = buf; src.loop = true;
+    const bp = audioCtx.createBiquadFilter(); bp.type = 'lowpass'; bp.frequency.value = 260;
+    const chop = audioCtx.createGain(); chop.gain.value = 0.5;
+    const lfo = audioCtx.createOscillator(); lfo.type = 'square'; lfo.frequency.value = 5.5;
+    const lfoG = audioCtx.createGain(); lfoG.gain.value = 0.5; lfo.connect(lfoG); lfoG.connect(chop.gain);
+    const vol = audioCtx.createGain(); vol.gain.value = 0;
+    src.connect(bp); bp.connect(chop); chop.connect(vol); vol.connect(audioCtx.destination);
+    src.start(); lfo.start();
+    h.snd = { src, lfo, vol };
+  } catch (e) { h.snd = null; }
+}
+function hueySoundStop(h) { if (h.snd) { try { h.snd.src.stop(); h.snd.lfo.stop(); h.snd.vol.disconnect(); } catch (e) {} h.snd = null; } }
+
+// ---------- nettverk ----------
+socket.on('hueys', list => {
+  if (!hueyOnMap()) return;
+  const seen = new Set();
+  hueyMineId = null; hueyIsGunner = false;
+  list.forEach(([id, t, x, y, z, yaw, hp, gunner, pax, phase, ejectIn]) => {
+    seen.add(id);
+    let h = hueyMap.get(id);
+    if (!h) {
+      h = { g: buildHuey(t ? 'squirrel' : 'bunny'), cur: { x, y, z, yaw }, tgt: {}, team: t ? 'squirrel' : 'bunny' };
+      h.g.position.set(x, y, z); h.g.rotation.y = yaw; scene.add(h.g); hueyMap.set(id, h);
+    }
+    const dx = x - (h.tgt.x === undefined ? x : h.tgt.x), dz = z - (h.tgt.z === undefined ? z : h.tgt.z);
+    h.speed = Math.hypot(dx, dz) * 10;
+    Object.assign(h.tgt, { x, y, z, yaw }); h.hp = hp; h.gunner = gunner; h.pax = pax; h.phase = phase; h.ejectIn = ejectIn;
+    if (pax.includes(myId)) { hueyMineId = id; hueyIsGunner = gunner === myId; chuteMe = null; }
+  });
+  for (const [id, h] of hueyMap) if (!seen.has(id) && !h.falling) { scene.remove(h.g); hueySoundStop(h); hueyMap.delete(id); }
+});
+socket.on('hueyJump', d => {
+  if (!hueyOnMap()) return;
+  hueyMineId = null; hueyIsGunner = false;
+  player.x = d.x; player.z = d.z; player.feetY = d.y; player.vy = 0;
+  chuteMe = { y: d.y, vy: 0, t: 0, vx: d.vx || 0, vz: d.vz || 0, mesh: null };
+});
+socket.on('chute', d => { if (d.on) chuteSet.add(d.id); else chuteSet.delete(d.id); });
+socket.on('hueyHit', d => { const h = hueyMap.get(d.id); if (h) h.hp = d.hp; });
+socket.on('hueyBoom', d => {
+  const h = hueyMap.get(d.id); if (!h) return;
+  h.falling = { t: 0, vy: 0, spin: (Math.random() - 0.5) * 3 };
+  if (d.by && typeof showToast === 'function') showToast('🚁 ' + d.by + ' skjøt ned en Huey!');
+});
+socket.on('respawn', () => { if (chuteMe && chuteMe.mesh) scene.remove(chuteMe.mesh); chuteMe = null; });
+socket.on('map', () => { if (chuteMe && chuteMe.mesh) scene.remove(chuteMe.mesh); for (const h of hueyMap.values()) { scene.remove(h.g); hueySoundStop(h); } hueyMap.clear(); chuteSet.clear(); hueyMineId = null; chuteMe = null; });
+
+// ---------- taster og knapper ----------
+window.addEventListener('keydown', e => {
+  if (!hueyAboard() || e.repeat) return;
+  if (e.code === 'KeyE') { socket.emit('hueyJump'); e.stopImmediatePropagation(); e.preventDefault(); }
+  else if (e.code === 'KeyF') { const h = hueyMap.get(hueyMineId); if (h && !h.gunner) socket.emit('hueyGun'); e.stopImmediatePropagation(); }
+}, true);
+function hueyUiFrame() {
+  if (!hueyUi) {
+    hueyUi = document.createElement('div');
+    hueyUi.style.cssText = 'position:fixed;left:50%;top:58px;transform:translateX(-50%);background:rgba(20,30,15,0.65);color:#fff;font:600 14px Fredoka,sans-serif;padding:6px 14px;border-radius:14px;pointer-events:none;z-index:30;display:none;text-align:center';
+    document.body.appendChild(hueyUi);
+    hueyBtn = document.createElement('div');
+    hueyBtn.textContent = '🪂 HOPP';
+    hueyBtn.dataset.ownTouch = '1';
+    hueyBtn.style.cssText = 'position:fixed;right:18px;bottom:150px;background:rgba(70,90,40,0.85);color:#fff;font:700 18px Fredoka,sans-serif;padding:14px 18px;border-radius:16px;z-index:40;display:none;user-select:none';
+    hueyBtn.addEventListener('touchstart', e => { e.preventDefault(); e.stopPropagation(); if (hueyAboard()) socket.emit('hueyJump'); }, { passive: false });
+    document.body.appendChild(hueyBtn);
+  }
+  const h = hueyAboard() && hueyMap.get(hueyMineId);
+  if (h) {
+    const tip = hueyIsGunner ? 'Du er dørskytter – klikk = M60' : !h.gunner ? (isTouch ? '' : 'F = ta M60-en') : '';
+    hueyUi.textContent = '🚁 ' + (isTouch ? 'Trykk 🪂 HOPP' : 'E = hopp ut') + ' · ut om ' + (h.ejectIn || 0) + ' s' + (tip ? ' · ' + tip : '');
+    hueyUi.style.display = 'block';
+  } else if (chuteMe) { hueyUi.textContent = '🪂 W/A/S/D styrer fallskjermen'; hueyUi.style.display = 'block'; }
+  else hueyUi.style.display = 'none';
+  hueyBtn.style.display = h && isTouch ? 'block' : 'none';
+}
+
+// ---------- M60 fra døra ----------
+function hueyFire() {
+  const h = hueyMap.get(hueyMineId);
+  fireCooldown = 0.09;
+  recoil = Math.min(recoil + 0.35, 1);
+  camera.updateMatrixWorld(true);
+  raycaster.setFromCamera({ x: (Math.random() - 0.5) * 0.025, y: (Math.random() - 0.5) * 0.025 }, camera);
+  const o = raycaster.ray.origin, d = raycaster.ray.direction, RANGE = 320;
+  const vox = castleRay(o, d, RANGE);
+  let bestT = vox ? vox.dist : RANGE, target = null, head = false;
+  for (const id in others) {
+    const r = others[id];
+    if (!r.alive || r.team === myTeam || hueyIdsAboard.has(id)) continue;
+    const p = r.cur, top = r.crouch ? 0.78 : 1.5;
+    const tb = rayBox(o, d, p.x - 0.4, p.y, p.z - 0.4, p.x + 0.4, p.y + top, p.z + 0.4);   // litt rausere boks: det er vanskelig å treffe fra et helikopter
+    const th = rayBox(o, d, p.x - 0.2, p.y + (r.crouch ? 0.56 : 1.12), p.z - 0.2, p.x + 0.2, p.y + (r.crouch ? 0.74 : 1.45), p.z + 0.2);
+    if (th !== null && th < bestT) { bestT = tb !== null ? Math.min(tb, th) : th; target = id; head = true; }
+    else if (tb !== null && tb < bestT) { bestT = tb; target = id; head = false; }
+  }
+  const end = o.clone().addScaledVector(d, bestT);
+  if (target) { socket.emit('hit', { target, head, weapon: 'm60' }); addStuffing(end); try { hitmarkTime = 0.06; } catch (e) {} }
+  else if (vox) { addImpact(end, vox.normal); socket.emit('blockHit', { i: vox.i, w: 'ak' }); }
+  const from = new THREE.Vector3(); h.g.userData.gunPivot.localToWorld(from.set(0, 0, 1.2));
+  if (!(typeof tracerShot === 'function' && tracerShot(from, end, 'mg42', 'me'))) addTracer(from, end);
+  if (typeof playDesertShot === 'function') playDesertShot('mg42', 1); else playShot();
+  socket.emit('shot', { to: [+end.x.toFixed(2), +end.y.toFixed(2), +end.z.toFixed(2)], w: 'm60' });
+}
+const hueyIdsAboard = new Set();
+if (typeof shoot === 'function') {
+  const shootHuey = shoot;
+  shoot = function () {
+    if (hueyAboard()) { if (hueyIsGunner) hueyFire(); return; }
+    if (chuteMe && hueyOnMap() && chuteMe.t < 1) return;          // ikke skyt mens du ramler ut
+    return shootHuey.apply(this, arguments);
+  };
+}
+if (typeof dvHideGun === 'function') { const dvHideGunHuey = dvHideGun; dvHideGun = function () { return dvHideGunHuey() || hueyAboard(); }; }
+if (typeof dvNadeBlocked === 'function') { const dvNadeHuey = dvNadeBlocked; dvNadeBlocked = function () { return dvNadeHuey() || hueyAboard(); }; }
+if (typeof dvPointHit === 'function') {                       // raketter smeller når de treffer en fiendtlig huey
+  const dvPointHitHuey = dvPointHit;
+  dvPointHit = function (p) {
+    if (hueyOnMap()) for (const h of hueyMap.values()) if (h.team !== myTeam && !h.falling && Math.hypot(p.x - h.cur.x, p.y - h.cur.y - 1.6, p.z - h.cur.z) < 3.6) return true;
+    return dvPointHitHuey(p);
+  };
+}
+
+// ---------- hver frame ----------
+function hueyLocal(h, lx, ly, lz) {
+  const c = Math.cos(h.cur.yaw), s = Math.sin(h.cur.yaw);
+  return { x: h.cur.x + lx * c + lz * s, y: h.cur.y + ly, z: h.cur.z - lx * s + lz * c };
+}
+function jgChuteGround(x, z) {                                // bakken under fallskjermen (detter gjennom trekronene)
+  const W = typeof jungleWorld !== 'undefined' && jungleWorld, J = typeof JUNGLE !== 'undefined' && JUNGLE;
+  if (!W || !J) return 0;
+  const ix = Math.floor(x) - J.X0, iz = Math.floor(z) - J.Z0;
+  if (ix < 0 || iz < 0 || ix >= J.NX || iz >= J.NZ) return 0;
+  const A = J.NX * J.NZ, T = J.T;
+  for (let y = J.NY - 1; y >= 0; y--) { const t = W.grid[y * A + iz * J.NX + ix]; if (t && t !== T.TRUNK && t !== T.LEAF && t !== T.LEAF2 && t !== T.PALM) return y + 1; }
+  return 0;
+}
+function hueyFrame() {
+  const now = performance.now(), dt = Math.min(0.1, (now - (hueyLastT || now)) / 1000); hueyLastT = now;
+  hueyIdsAboard.clear();
+  if (!hueyOnMap()) { if (hueyUi) { hueyUi.style.display = 'none'; hueyBtn.style.display = 'none'; } return; }
+  for (const [id, h] of hueyMap) {
+    if (h.falling) {                                         // skutt ned: spinner og detter, så borte
+      const f = h.falling; f.t += dt; f.vy -= 9.8 * dt; h.cur.y += f.vy * dt; h.cur.yaw += f.spin * dt;
+      h.g.position.set(h.cur.x, h.cur.y, h.cur.z); h.g.rotation.set(0.3, h.cur.yaw, 0.4);
+      if (Math.random() < 0.5) puffSmoke(new THREE.Vector3(h.cur.x, h.cur.y + 2, h.cur.z));
+      if (h.cur.y < 0 || f.t > 6) { scene.remove(h.g); hueySoundStop(h); hueyMap.delete(id); }
+      continue;
+    }
+    const k = Math.min(1, dt * 6);
+    h.cur.x += (h.tgt.x - h.cur.x) * k; h.cur.y += (h.tgt.y - h.cur.y) * k; h.cur.z += (h.tgt.z - h.cur.z) * k;
+    let dy = h.tgt.yaw - h.cur.yaw; while (dy > Math.PI) dy -= Math.PI * 2; while (dy < -Math.PI) dy += Math.PI * 2;
+    h.cur.yaw += dy * k;
+    h.g.position.set(h.cur.x, h.cur.y, h.cur.z);
+    h.g.rotation.set(Math.min(0.14, (h.speed || 0) / 34 * 0.14), h.cur.yaw, -dy * 0.6);   // nesa ned når den flyr, krenger i svinger
+    h.g.userData.rotor.rotation.y += dt * 28; h.g.userData.tail.rotation.x += dt * 50;
+    if (h.hp < 350 && Math.random() < 0.3) puffSmoke(new THREE.Vector3(...Object.values(hueyLocal(h, 0, 2.2, -2))));   // skadet: røyk
+    (h.pax || []).forEach(pid => hueyIdsAboard.add(pid));
+    hueySound(h);
+    if (h.snd) { const d = Math.hypot(h.cur.x - player.x, h.cur.y - player.feetY, h.cur.z - player.z); h.snd.vol.gain.value = (id === hueyMineId ? 0.35 : 0.6 / (1 + d / 22)); }
+  }
+  // meg om bord: sitt på plassen, kameraet følger med
+  const h = hueyAboard() && hueyMap.get(hueyMineId);
+  if (h) {
+    const i = Math.max(0, (h.pax || []).filter(p => p !== h.gunner).indexOf(myId));
+    const seat = hueyIsGunner ? HUEY_GUN_SEAT : HUEY_SEATS[i % HUEY_SEATS.length];
+    const w = hueyLocal(h, seat[0], 1.0, seat[1]);
+    player.x = w.x; player.z = w.z; player.feetY = w.y; player.vy = 0;
+    const eye = hueyIsGunner ? hueyLocal(h, 0.35, 2.15, 0.35) : { x: w.x, y: w.y + 0.75, z: w.z };   // dørskytteren sitter litt bak og over M60-en
+    camera.position.set(eye.x, eye.y, eye.z);
+    if (hueyIsGunner) {                                       // M60-en peker dit du ser
+      const dir = new THREE.Vector3(); camera.getWorldDirection(dir);
+      h.g.userData.gunPivot.lookAt(camera.position.clone().addScaledVector(dir, 30));
+    }
+  }
+  // meg i fallskjerm
+  if (chuteMe && !h) {
+    const c = chuteMe; c.t += dt;
+    if (c.t < 1.0) c.vy -= 9.8 * dt; else c.vy += (-5 - c.vy) * Math.min(1, dt * 3);   // 1 sek fritt fall, så åpner skjermen seg
+    c.y += c.vy * dt;
+    c.vx *= 1 - dt * 0.6; c.vz *= 1 - dt * 0.6;
+    player.x += c.vx * dt; player.z += c.vz * dt;
+    const g = jgChuteGround(player.x, player.z);
+    if (c.y <= g) {
+      player.feetY = g; player.vy = 0; socket.emit('chuteLand');
+      if (c.mesh) scene.remove(c.mesh); chuteMe = null;
+    } else {
+      const eyeOff = camera.position.y - player.feetY;
+      player.feetY = c.y; player.vy = 0; player.onGround = false;
+      camera.position.y = c.y + (eyeOff > 0.3 && eyeOff < 2.5 ? eyeOff : EYE);
+      if (c.t >= 1.0) { if (!c.mesh) { c.mesh = buildChute(myTeam); scene.add(c.mesh); } c.mesh.position.set(player.x, c.y, player.z); }
+    }
+  }
+  // andres fallskjermer
+  for (const id in others) {
+    const r = others[id];
+    const on = chuteSet.has(id) && r.alive;
+    if (on && !chuteMeshes[id]) { chuteMeshes[id] = buildChute(r.team); r.root.add(chuteMeshes[id]); }
+    if (chuteMeshes[id]) chuteMeshes[id].visible = on;
+  }
+  hueyUiFrame();
+}
+if (HUEY_ON && typeof renderFrame === 'function') {
+  const renderFrameHuey = renderFrame;
+  renderFrame = function () {
+    let hidden = [];
+    try {
+      hueyFrame();
+      if (hueyOnMap()) hueyIdsAboard.forEach(id => { const r = others[id]; if (r && r.root.visible) { r.root.visible = false; hidden.push(r.root); } });   // de som sitter inne vises ikke (de sitter på benken)
+    } catch (e) { console.warn('huey', e); }
+    try { return renderFrameHuey.apply(this, arguments); }
+    finally { hidden.forEach(g => g.visible = true); }
+  };
+}
