@@ -1978,7 +1978,7 @@ io.on('connection', socket => {
     if (!Array.isArray(d.p) || !Array.isArray(d.v)) return;
     if (mapName === 'desert' && Date.now() - (p.lastRocket || 0) < 2500) return;   // [NY] ørkenen: RPG/bazooka må lades (2,5 sek)
     p.lastRocket = Date.now();
-    const pos = d.p.map(v => num(v, -250, 250)), vel = d.v.map(v => num(v, -40, 40));   // [FIKS] ørkenen er 480 m bred
+    const pos = d.p.map(v => num(v, -450, 450)), vel = d.v.map(v => num(v, -40, 40));   // [FIKS] ørkenen er 480 m bred
     if (pos.includes(null) || vel.includes(null)) return;
     p.rockets--;
     p.pending[d.id] = Date.now();
@@ -3656,12 +3656,12 @@ spawnFor = function (team) {
 // [NY] HUEY-INNSETTING (Jungelkrigen) 🚁🪂
 //  Du starter (og kommer tilbake etter død) i et Huey-helikopter som en robot flyr. Det tar deg til et tilfeldig
 //  sted langt fra fiendene. E = hopp ut i fallskjerm; etter ca. 15 sek blir du kastet ut uansett.
-//  Én om bord kan være dørskytter (M60, nesten ett skudd = ett drap). Raketter kan skyte ned Hueyen (3 treff):
+//  Én om bord kan være dørskytter (M60, nesten ett skudd = ett drap). Raketter kan skyte ned Hueyen (2 treff):
 //  da hopper alle ut. Roboter flyr med og hopper i fallskjerm de også. ANGRE: JUNGLE_HUEY = false
 // ===================================================================
 const JUNGLE_HUEY = true;
 const HUEY = { alt: 42, speed: 34, hover: +process.env.HUEY_HOVER || 6000, eject: +process.env.HUEY_EJECT || 15000,   // test: HUEY_EJECT / HUEY_HOVER
-  hp: 700, rocket: 260, seats: 6, out: 12000, fall: 5 };
+  hp: 700, rocket: 350, seats: 6, out: 12000, fall: 5 };
 const HUEY_M60 = { dmg: 85, head: 100 };
 const hueys = new Map(); let hueySeq = 0;
 function hueyOn() { return JUNGLE_HUEY && mapName === 'jungle' && !intermission; }
