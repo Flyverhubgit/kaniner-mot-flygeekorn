@@ -5,6 +5,7 @@
 //  Vanlige hatter skjules under. ANGRE: JUNGLE_GEAR_ON = false
 // ===================================================================
 const JUNGLE_GEAR_ON = true;
+const JUNGLE_EAR_CAMO = true;   // [NY] ørene i kamuflasje. ANGRE: false
 const JG_MAT = {};
 function jgMat(k) {
   if (JG_MAT[k]) return JG_MAT[k];
@@ -55,10 +56,17 @@ function buildJungleGear(team, seed) {
 function jungleGearize(body, team, name, on) {
   if (!body) return;
   if (body.userData.jgear) { body.remove(body.userData.jgear); body.userData.jgear = null; }
+  (body.userData.earCovers || []).forEach(m => m.parent && m.parent.remove(m)); body.userData.earCovers = [];
   const gg = body.userData.gearGroup;
   if (gg) gg.children.forEach(c => { const G = typeof GEAR !== 'undefined' && GEAR.find(x => x.id === c.userData.gearId); if (G && (G.slot === 'head' || G.slot === 'body')) c.visible = !on; });   // hatter og drakter under uniformen
   if (!on) return;
   const d = buildJungleGear(team, jgHash(name || '')); body.add(d); body.userData.jgear = d;
+  // [NY] kamuflasje-trekk over de lange kaninørene (de hvite/rosa ørene lyste i krattet)
+  if (JUNGLE_EAR_CAMO && team === 'bunny') body.children.forEach(e => {
+    if (!e.isGroup && !(e.type === 'Object3D') || Math.abs(e.position.y - 1.45) > 0.02 || Math.abs(Math.abs(e.position.x) - 0.12) > 0.02) return;
+    const c = new THREE.Mesh(new THREE.BoxGeometry(0.27, 0.84, 0.08), jgMat('shirtB')); c.position.set(0, 0.42, 0); c.castShadow = true; c.raycast = () => {};
+    e.add(c); body.userData.earCovers.push(c);
+  });
 }
 function refreshJungleGear() {
   const on = JUNGLE_GEAR_ON && typeof currentMap !== 'undefined' && currentMap === 'jungle';
@@ -115,4 +123,47 @@ function refreshGhillie() {
 if (GHILLIE_ON && typeof renderFrame === 'function') {
   const renderFrameGhillie = renderFrame;
   renderFrame = function () { try { refreshGhillie(); } catch (e) {} return renderFrameGhillie.apply(this, arguments); };
+}
+
+// [NY] GHILLIE PÅ SNIKSKYTTEREN: blad-filler rundt løpet og kolben (både din egen i hånda og de andres) i jungelen.
+//  Kikkertsiktet holdes fritt. ANGRE: GHILLIE_GUN = false
+const GHILLIE_GUN = true;
+const ghGunBox = {};
+function ghGunStrips(team, layer) {
+  if (!ghMats) ghMats = GH_COLS.map(c => new THREE.MeshStandardMaterial({ color: c, roughness: 1, side: THREE.DoubleSide }));
+  if (!ghGunBox[team]) ghGunBox[team] = new THREE.Box3().setFromObject(buildSniper(team));
+  const b = ghGunBox[team], g = new THREE.Group(), geo = new THREE.PlaneGeometry(0.035, 0.13);
+  const cx = (b.min.x + b.max.x) / 2, w = b.max.x - b.min.x, h = b.max.y - b.min.y, L = b.max.z - b.min.z;
+  let seed = 9; const R = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+  for (let i = 0; i < 90; i++) {
+    const z = b.min.z + R() * L, a = R() * Math.PI * 2;
+    const zk = (z - b.min.z) / L, top = Math.sin(a) > 0.4;
+    if (top && zk > 0.3 && zk < 0.7) continue;                 // ikke over kikkertsiktet
+    const y = b.min.y + h * (top ? 0.55 : 0.35) + Math.sin(a) * h * 0.25;
+    const m = new THREE.Mesh(geo, ghMats[Math.floor(R() * ghMats.length)]);
+    m.position.set(cx + Math.cos(a) * w * 0.6, y, z);
+    m.rotation.set((R() - 0.5) * 0.6, R() * Math.PI, (R() - 0.5) * 0.5);
+    m.scale.y = 0.8 + R() * 0.8;
+    if (layer) { m.scale.multiplyScalar(0.6); m.rotation.x = Math.PI / 2 + (R() - 0.5) * 0.5; m.position.y = b.min.y + h * 0.45 + Math.sin(a) * h * 0.18; m.position.x = cx + Math.cos(a) * w * 0.45; }   // egen: små, ligger langs våpenet
+    m.raycast = () => {}; if (layer) m.layers.set(layer);
+    g.add(m);
+  }
+  return g;
+}
+function refreshGhillieGun() {
+  const on = GHILLIE_GUN && typeof currentMap !== 'undefined' && currentMap === 'jungle';
+  if (typeof sniperView !== 'undefined' && sniperView) {
+    if (on && !sniperView.userData.gh) { sniperView.userData.gh = ghGunStrips(myTeam || 'bunny', 2); sniperView.add(sniperView.userData.gh); }
+    if (sniperView.userData.gh) sniperView.userData.gh.visible = on;
+  }
+  for (const id in others) {
+    const r = others[id], hs = r.heldSniper;
+    if (!hs) continue;
+    if (on && !hs.userData.gh) { hs.userData.gh = ghGunStrips(r.team === 'squirrel' ? 'squirrel' : 'bunny', 0); hs.add(hs.userData.gh); }
+    if (hs.userData.gh) hs.userData.gh.visible = on;
+  }
+}
+if (GHILLIE_GUN && typeof renderFrame === 'function') {
+  const renderFrameGhGun = renderFrame;
+  renderFrame = function () { try { refreshGhillieGun(); } catch (e) {} return renderFrameGhGun.apply(this, arguments); };
 }
