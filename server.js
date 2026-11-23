@@ -2961,7 +2961,7 @@ setInterval(() => {
 // ===================================================================
 const BOT_MAPS = ['castle', 'medieval', 'room', 'temple', 'west', 'desert', 'pirate', 'jungle'];
 const PIRATE_TEAM = 5;                       // [NY] Piratbukta: robotene fyller hvert lag opp til 5
-const JUNGLE_TEAM = 10;                       // [NY] Jungelkrigen: 10 mot 10 (stort kart, færre roboter)
+const JUNGLE_TEAM = 20;                       // [NY] Jungelkrigen: 20 mot 20 = 40 totalt (var 15 mot 15)
 const DESERT_TEAM = 16;                      // [NY] Ørkenkrigen: robotene fyller hvert lag opp til 16 (16 mot 16)
 const DESERT_BOT_W = ['c7', 'c7', 'c7', 'minimi', 'mg42', 'sniper50'];   // robotenes våpen (tilfeldig)
 const DESERT_BOT_MS = { c7: 330, minimi: 230, mg42: 170, sniper50: 1700 };   // tid mellom robot-skudd
@@ -3446,15 +3446,17 @@ function botSmart(b, best, bestD, now, dt) {
   }
   // Rundt på slagmarka: velg et mål og finn veien dit
   b.state = 'roam';
+  if (typeof squadTick === 'function') squadTick(b, now);           // [NY] tropper: følg lederen / ny rute når lederen flytter seg
   if (!b.route || !b.route.length) {
     const r = Math.random();
     let g = null;
+    if (typeof squadGoal === 'function') g = squadGoal(b);          // [NY] troppens mål (lytt, jakt, angrip, forsvar)
     if (r < 0.4 && !(mapName === 'jungle' && JUNGLE_CTF)) {        // gå dit en fiende omtrent er (litt unøyaktig – de "hører" deg)
       let best = null, bd = mapName === 'desert' ? 160 : 90;
       for (const id in players) { const t = players[id]; if (!t.alive || t.team === b.team || t.vehicle) continue; const d = Math.hypot(t.x - b.x, t.z - b.z); if (d < bd) { bd = d; best = t; } }
       if (best) { const j = Math.min(12, bd * 0.15); g = [best.x + (Math.random() - 0.5) * j, best.z + (Math.random() - 0.5) * j]; }   // nærmere = mer nøyaktig
     }
-    if (typeof ctfBotGoal === 'function') g = ctfBotGoal(b, r);    // [NY] fang flagget: angrep / forsvar / jakt på flaggbæreren
+    if (!g && typeof ctfBotGoal === 'function') g = ctfBotGoal(b, r);    // [NY] fang flagget: angrep / forsvar / jakt på flaggbæreren
     if (!g && r < 0.6 && BOT_OUT[mapName] && BOT_OUT[mapName].length) g = mir(b.team === 'bunny' ? 'squirrel' : 'bunny', BOT_OUT[mapName][BOT_OUT[mapName].length - 1]);
     if (!g) g = botField();
     botGo(b, g[0], g[1]);
@@ -4006,3 +4008,113 @@ io.on('connection', socket => {
   });
   socket.on('wireAsk', () => { if (wireOn()) wireSend(); });
 });
+
+// ===================================================================
+// [NY] TROPPER, LYD OG "SKYT BARE PÅ DET DU SER" (Jungelkrigen) 🎖️
+//  Robotene går i små tropper på 3–4 med en leder. Lederen velger mål (angrep, forsvar eller jakt), de andre
+//  følger i en kile 5–8 m bak. De vet ikke hvor du er: de reagerer bare på det de SER (sikt, kratt-regelen) og det
+//  de HØRER – skudd (ca. 90 m), løping i krattet (ca. 18 m), gåing (ca. 7 m). Dukket = stille. Hører en i troppen
+//  noe, går hele troppen dit og leter. Får en kontakt, kommer de andre. ANGRE: JUNGLE_SQUADS = false
+// ===================================================================
+const JUNGLE_SQUADS = true, SQUAD_SIZE = 4, NOISE_SHOT = 90, NOISE_RUN = 18, NOISE_WALK = 7;
+const squads = new Map(); let squadSeq = 0;
+const noises = [];                                               // { x, z, team, t, r }
+function squadsOn() { return JUNGLE_SQUADS && mapName === 'jungle'; }
+function noiseAdd(x, z, team, r) { if (!squadsOn()) return; noises.push({ x, z, team, t: Date.now(), r }); if (noises.length > 200) noises.splice(0, noises.length - 200); }
+{
+  const ioEmitSquad = io.emit.bind(io);                          // robotenes skudd lager lyd
+  io.emit = function (ev, d) { try { if (ev === 'shot' && d && players[d.id]) { const p = players[d.id]; noiseAdd(p.x, p.z, p.team, NOISE_SHOT); } } catch (e) {} return ioEmitSquad.apply(this, arguments); };
+}
+io.on('connection', socket => { socket.on('shot', () => { const p = players[socket.id]; if (p && p.alive) noiseAdd(p.x, p.z, p.team, NOISE_SHOT); }); });   // menneskers skudd
+function squadOf(b) { return b.squad && squads.get(b.squad); }
+function squadJoin(b) {                                          // bli med i nærmeste tropp med plass, ellers lag en ny
+  let best = null, bd = 90;
+  for (const q of squads.values()) {
+    if (q.team !== b.team || q.members.size >= SQUAD_SIZE) continue;
+    const L = players[q.leader]; if (!L || !L.alive || L.huey || L.chute) continue;
+    const d = Math.hypot(L.x - b.x, L.z - b.z); if (d < bd) { bd = d; best = q; }
+  }
+  if (!best) {
+    const roles = ['attack', 'attack', 'hunt', 'defend'], n = [...squads.values()].filter(q => q.team === b.team).length;
+    best = { id: ++squadSeq, team: b.team, leader: b.id, members: new Set(), role: roles[n % roles.length], goal: null, invest: null, contact: null };
+    squads.set(best.id, best);
+  }
+  best.members.add(b.id); b.squad = best.id; b.slot = best.members.size - 1;
+}
+function squadLeave(b) { const q = squadOf(b); b.squad = null; if (!q) return; q.members.delete(b.id); if (q.leader === b.id) q.leader = [...q.members][0] || null; if (!q.leader) squads.delete(q.id); }
+function squadTick(b, now) {
+  if (!squadsOn()) return;
+  if (!b.squad || !squads.has(b.squad)) squadJoin(b);
+  let q = squadOf(b); if (!q) return;
+  if (q.members.size === 1 && now > (b.mergeAt || 0)) {          // alene: finn en tropp innen 250 m og slutt deg til den
+    b.mergeAt = now + 5000;
+    let best = null, bd = 250;
+    for (const o of squads.values()) {
+      if (o === q || o.team !== b.team || o.members.size >= SQUAD_SIZE) continue;
+      const L = players[o.leader]; if (!L || !L.alive || L.huey || L.chute) continue;
+      const d = Math.hypot(L.x - b.x, L.z - b.z); if (d < bd) { bd = d; best = o; }
+    }
+    if (best) { squadLeave(b); best.members.add(b.id); b.squad = best.id; b.slot = best.members.size - 1; b.route = null; b.squadAt = 0; q = best; }
+  }
+  if (!players[q.leader] || !players[q.leader].alive) { q.leader = b.id; b.route = null; }
+  if (q.leader === b.id) return;
+  if (now < (b.squadAt || 0)) return;                            // følgerne: sjekk plassen i kilen hvert 1,5 sek
+  b.squadAt = now + 1500;
+  const L = players[q.leader], k = b.slot || 1, side = k % 2 ? -1 : 1, back = 5 + Math.ceil(k / 2) * 3;
+  const fx = Math.sin(L.yaw || 0), fz = Math.cos(L.yaw || 0);   // lederens "bakover" er motsatt av synsretningen
+  const tx = L.x + fx * back + fz * side * 5, tz = L.z + fz * back - fx * side * 5;
+  b.squadGoal = [tx, tz];
+  if (Math.hypot(b.x - tx, b.z - tz) > 6) b.route = null;          // kommer for langt etter: ny rute
+}
+function squadGoal(b) {
+  if (!squadsOn()) return null;
+  const q = squadOf(b); if (!q) return null;
+  const now = Date.now();
+  const leg = g => { const dx = g[0] - b.x, dz = g[1] - b.z, d = Math.hypot(dx, dz); return d <= 110 ? g : [b.x + dx / d * 90, b.z + dz / d * 90]; };   // lange turer i etapper
+  if (q.leader !== b.id) return b.squadGoal ? leg(b.squadGoal) : null;   // følger lederen
+  if (q.contact && now - q.contact.t < 12000) return leg([q.contact.x, q.contact.z]);   // en i troppen så fienden: alle dit
+  if (q.invest && now < q.invest.until) return leg([q.invest.x, q.invest.z]);           // hørte noe: gå og let
+  if (q.role === 'hunt') {                                       // jegerne leter i krattet midt på kartet
+    const a = Math.random() * Math.PI * 2, d = 60 + Math.random() * 180; return leg([Math.cos(a) * d, Math.sin(a) * d]);
+  }
+  return null;                                                   // angrep/forsvar: fang-flagget-logikken (ctfBotGoal)
+}
+setInterval(() => {                                              // hver halve sekund: hvem hørte hva? (og lyd fra folk som løper)
+  if (!squadsOn() || intermission) return;
+  const now = Date.now();
+  for (const id in players) {
+    const p = players[id];
+    if (!p.alive || p.huey || p.chute) { p._nx = undefined; continue; }
+    if (p._nx !== undefined) {
+      const sp = Math.hypot(p.x - p._nx, p.z - p._nz) / 0.5;
+      if (!p.crouch && sp > 0.8 && !JGM.masked(p.x, p.z) && !JGM.inRiver(p.x, p.z)) noiseAdd(p.x, p.z, p.team, sp > 4.5 ? NOISE_RUN : NOISE_WALK);
+    }
+    p._nx = p.x; p._nz = p.z;
+    if (p.isBot && p.target) { const q = squadOf(p), t = players[p.target]; if (q && t) q.contact = { x: t.x, z: t.z, t: now }; }   // kontakt: si fra til troppen
+  }
+  while (noises.length && now - noises[0].t > 3000) noises.shift();
+  for (const q of squads.values()) {
+    for (const n of noises) {
+      if (n.team === q.team || now - n.t > 600) continue;
+      let heard = false;
+      for (const mid of q.members) { const m = players[mid]; if (m && m.alive && !m.huey && !m.chute && Math.hypot(m.x - n.x, m.z - n.z) < n.r) { heard = true; break; } }
+      if (heard && (!q.invest || now > q.invest.until - 8000)) {
+        const j = n.r > 30 ? 14 : 5;                             // skudd langt unna: omtrent; nær rasling: ganske nøyaktig
+        q.invest = { x: n.x + (Math.random() - 0.5) * j, z: n.z + (Math.random() - 0.5) * j, until: now + 15000 };
+        const L = players[q.leader]; if (L) L.route = null;
+      }
+    }
+  }
+  // tropper uten levende medlemmer forsvinner
+  for (const q of [...squads.values()]) { [...q.members].forEach(id => { if (!players[id]) q.members.delete(id); }); if (!q.members.size) squads.delete(q.id); }
+}, 500);
+{
+  const startMapSquad = startMap;
+  startMap = function () { squads.clear(); noises.length = 0; Object.values(players).forEach(p => { p.squad = null; }); return startMapSquad.apply(this, arguments); };
+  const hueyLeaveSquad = hueyLeave;                              // hopper ut: bli med i troppen nær der du lander (skjer i squadTick)
+  hueyLeave = function (p, jump) { const r = hueyLeaveSquad.apply(this, arguments); if (p.isBot && squadsOn()) squadLeave(p); return r; };
+}
+if (process.env.SQUAD_DEBUG) setInterval(() => {
+  const out = [...squads.values()].map(q => { const L = players[q.leader]; let spread = 0; q.members.forEach(id => { const m = players[id]; if (m && L) spread = Math.max(spread, Math.hypot(m.x - L.x, m.z - L.z)); }); return q.team[0] + q.role[0] + q.members.size + '/' + Math.round(spread); });
+  console.log('SQUADS', out.join(' '));
+}, 30000);
