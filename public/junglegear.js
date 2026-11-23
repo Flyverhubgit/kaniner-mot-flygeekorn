@@ -157,7 +157,7 @@ function ghGunStrips(team, layer) {
   const b = ghGunBox[team], g = new THREE.Group(), geo = new THREE.PlaneGeometry(0.035, 0.13);
   const cx = (b.min.x + b.max.x) / 2, w = b.max.x - b.min.x, h = b.max.y - b.min.y, L = b.max.z - b.min.z;
   let seed = 9; const R = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
-  for (let i = 0; i < 90; i++) {
+  for (let i = 0; i < (layer ? 170 : 90); i++) {               // [NY] din egen: dobbelt så mange filler
     const z = b.min.z + R() * L, a = R() * Math.PI * 2;
     const zk = (z - b.min.z) / L, top = Math.sin(a) > 0.4;
     if (top && zk > 0.3 && zk < 0.7) continue;                 // ikke over kikkertsiktet
@@ -166,7 +166,7 @@ function ghGunStrips(team, layer) {
     m.position.set(cx + Math.cos(a) * w * 0.6, y, z);
     m.rotation.set((R() - 0.5) * 0.6, R() * Math.PI, (R() - 0.5) * 0.5);
     m.scale.y = 0.8 + R() * 0.8;
-    if (layer) { m.scale.multiplyScalar(0.6); m.rotation.x = Math.PI / 2 + (R() - 0.5) * 0.5; m.position.y = b.min.y + h * 0.45 + Math.sin(a) * h * 0.18; m.position.x = cx + Math.cos(a) * w * 0.45; }   // egen: små, ligger langs våpenet
+    if (layer) { m.scale.multiplyScalar(0.75); m.rotation.x = Math.PI / 2 + (R() - 0.5) * 0.5; m.position.y = b.min.y + h * 0.45 + Math.sin(a) * h * 0.18; m.position.x = cx + Math.cos(a) * w * 0.45; }   // egen: små, ligger langs våpenet
     m.raycast = () => {}; if (layer) m.layers.set(layer);
     g.add(m);
   }
@@ -188,4 +188,37 @@ function refreshGhillieGun() {
 if (GHILLIE_GUN && typeof renderFrame === 'function') {
   const renderFrameGhGun = renderFrame;
   renderFrame = function () { try { refreshGhillieGun(); } catch (e) {} return renderFrameGhGun.apply(this, arguments); };
+}
+
+// [NY] GHILLIE PÅ DINE EGNE POTER/ARMER: blad-filler rundt underarmene når du holder snikskytteren i jungelen.
+//  ANGRE: GHILLIE_ARMS = false
+const GHILLIE_ARMS = true;
+let ghArms = null;
+function ghArmStrips(from, to, n) {
+  if (!ghMats) ghMats = GH_COLS.map(c => new THREE.MeshStandardMaterial({ color: c, roughness: 1, side: THREE.DoubleSide }));
+  const g = new THREE.Group(), geo = new THREE.PlaneGeometry(0.03, 0.1), a = new THREE.Vector3(...from), b = new THREE.Vector3(...to);
+  let seed = 21; const R = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+  for (let i = 0; i < n; i++) {
+    const p = a.clone().lerp(b, R()), ang = R() * Math.PI * 2, r = 0.045 + R() * 0.025;
+    const m = new THREE.Mesh(geo, ghMats[Math.floor(R() * ghMats.length)]);
+    m.position.set(p.x + Math.cos(ang) * r, p.y + Math.sin(ang) * r - 0.02, p.z);
+    m.rotation.set((R() - 0.5) * 0.8, R() * Math.PI, (R() - 0.5) * 0.8);
+    m.scale.y = 0.7 + R() * 0.9;
+    m.layers.set(2); m.raycast = () => {}; m.castShadow = false;
+    g.add(m);
+  }
+  return g;
+}
+function refreshGhillieArms() {
+  if (typeof arms === 'undefined' || !arms.userData.R) return;
+  const on = GHILLIE_ARMS && typeof currentMap !== 'undefined' && currentMap === 'jungle' && typeof weapon !== 'undefined' && weapon === sniperW;
+  if (on && !ghArms) {                                         // samme linjer som underarmene i buildArms (game.js)
+    ghArms = { R: ghArmStrips([0.01, -0.11, 0.15], [0.14, -0.34, 0.48], 70), L: ghArmStrips([-0.02, -0.07, -0.17], [-0.27, -0.33, 0.16], 70) };
+    arms.userData.R.add(ghArms.R); arms.userData.L.add(ghArms.L);
+  }
+  if (ghArms) { ghArms.R.visible = on; ghArms.L.visible = on; }
+}
+if (GHILLIE_ARMS && typeof renderFrame === 'function') {
+  const renderFrameGhArms = renderFrame;
+  renderFrame = function () { try { refreshGhillieArms(); } catch (e) {} return renderFrameGhArms.apply(this, arguments); };
 }
