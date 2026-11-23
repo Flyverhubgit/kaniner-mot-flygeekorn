@@ -3662,6 +3662,7 @@ spawnFor = function (team) {
 //  da hopper alle ut. Roboter flyr med og hopper i fallskjerm de også. ANGRE: JUNGLE_HUEY = false
 // ===================================================================
 const JUNGLE_HUEY = true;
+const HUEY_MESSY = true;   // [NY] rotete innsetting: færre per helikopter, inn fra alle kanter, roboter hopper på ulike steder underveis. ANGRE: false
 const HUEY = { alt: 42, speed: 34, hover: +process.env.HUEY_HOVER || 6000, eject: +process.env.HUEY_EJECT || 15000,   // test: HUEY_EJECT / HUEY_HOVER
   hp: 700, rocket: 350, seats: 6, out: 12000, fall: 5 };
 const HUEY_M60 = { dmg: 85, head: 100 };
@@ -3679,18 +3680,19 @@ function hueyPickDZ(team) {                                // et sted langt fra 
   const side = team === 'bunny' ? 1 : -1, foes = Object.values(players).filter(o => o.alive && o.team !== team && !o.huey);
   let best = null, bestS = -1;
   for (let k = 0; k < 40; k++) {
-    const x = (Math.random() * 2 - 1) * 360, z = side * (-40 + Math.random() * 400);
+    const x = (Math.random() * 2 - 1) * 360, z = side * (HUEY_MESSY ? -150 + Math.random() * 520 : -40 + Math.random() * 400);   // [NY] rotete: helt inn mot fiendens halvdel også
     if (Math.abs(z) > 370 || Math.abs(x - JGM.RIVER(z)) < 14) continue;
     if (Math.hypot(x, z - side * 250) < 45) continue;         // ikke rett på egen base
+    if (Math.hypot(x, z + side * 250) < 120) continue;        // [NY] og ikke rett ved fiendens flagg
     let near = 999; foes.forEach(f => { near = Math.min(near, Math.hypot(f.x - x, f.z - z)); });
-    const sc = Math.min(near, 200) + Math.random() * 60;
+    const sc = HUEY_MESSY ? (near < 60 ? near - 200 : Math.min(near, 150) + Math.random() * 140) : Math.min(near, 200) + Math.random() * 60;
     if (sc > bestS) { bestS = sc; best = { x, z }; }
   }
   return best || { x: 0, z: side * 200 };
 }
 function hueyNew(team) {
   const dz = hueyPickDZ(team), side = team === 'bunny' ? 1 : -1;
-  const a = Math.atan2(0, side) + (Math.random() - 0.5) * 1.6;   // kommer inn fra egen side av kartet
+  const a = HUEY_MESSY ? Math.random() * Math.PI * 2 : Math.atan2(0, side) + (Math.random() - 0.5) * 1.6;   // kommer inn fra egen side av kartet ([NY] rotete: fra hvor som helst)
   let sx = dz.x + Math.sin(a) * 300, sz = dz.z + Math.cos(a) * 300;
   sx = Math.max(-395, Math.min(395, sx)); sz = Math.max(-395, Math.min(395, sz));
   const h = { id: ++hueySeq, team, x: sx, y: HUEY.alt, z: sz, yaw: Math.atan2(dz.x - sx, dz.z - sz), dz, phase: 'in', born: Date.now(), hoverAt: 0, hp: HUEY.hp, gunner: null, pax: new Set(), boardAt: {} };
@@ -3701,9 +3703,10 @@ function hueyBoard(p) {
   if (!hueyOn() || !p.alive) return;
   hueyLeave(p, false);
   let h = null;
-  for (const o of hueys.values()) if (o.team === p.team && o.phase === 'in' && Date.now() - o.born < 2500 && o.pax.size < HUEY.seats) { h = o; break; }
+  for (const o of hueys.values()) if (o.team === p.team && o.phase === 'in' && Date.now() - o.born < (HUEY_MESSY ? 1500 : 2500) && o.pax.size < (HUEY_MESSY ? 4 : HUEY.seats)) { h = o; break; }
   if (!h) h = hueyNew(p.team);
   h.pax.add(p.id); h.boardAt[p.id] = Date.now();
+  if (p.isBot) p.jumpAt = HUEY_MESSY ? Date.now() + 2500 + Math.random() * 6000 : 0;   // [NY] roboter hopper hver for seg underveis
   if (!p.isBot && !h.gunner) h.gunner = p.id;              // første menneske om bord får M60-en
   p.huey = h.id; p.chute = false;
   p.protectedUntil = Infinity;                            // trygg inne i helikopteret
@@ -3761,7 +3764,7 @@ setInterval(() => {
       const q = players[id];
       if (!q || !q.alive || q.huey !== h.id) { h.pax.delete(id); if (h.gunner === id) h.gunner = null; return; }
       q.x = h.x; q.y = h.y; q.z = h.z;
-      if (now - h.boardAt[id] > HUEY.eject || (q.isBot && h.phase === 'hover' && now - h.hoverAt > 800 + (q.id.length % 5) * 400)) hueyLeave(q, true);
+      if (now - h.boardAt[id] > HUEY.eject || (q.isBot && (HUEY_MESSY ? now > q.jumpAt : h.phase === 'hover' && now - h.hoverAt > 800 + (q.id.length % 5) * 400))) hueyLeave(q, true);
     });
   }
   // roboter i fallskjerm: daler sakte ned og sklir litt

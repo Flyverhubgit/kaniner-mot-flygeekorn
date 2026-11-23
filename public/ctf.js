@@ -45,6 +45,7 @@ socket.on('ctf', d => {
     cap: d.by === myTeam ? '🏆 ' + d.name + ' tok flagget hjem! +1' : '💥 ' + d.name + ' tok flagget vårt hjem…'
   }[d.ev];
   if (txt && typeof showToast === 'function') showToast(txt);
+  if (CTF_ALARM && d.team === myTeam && (d.ev === 'take' || d.ev === 'drop')) ctfAlarm(d.ev === 'take' ? '⚠️ FLAGGET VÅRT ER STJÅLET!' : '⚠️ FLAGGET VÅRT LIGGER PÅ BAKKEN!', d.ev === 'take' ? 'Følg den røde pila og stopp ' + d.name : 'Rør det for å sende det hjem');
   if (typeof playPop === 'function' && (d.ev === 'take' || d.ev === 'cap')) playPop();
   if (d.ev === 'cap' && d.capId === myId) { if (typeof gainCoins === 'function') gainCoins(25); if (typeof gainXP === 'function') gainXP(25); }   // belønning til den som tok flagget hjem
 });
@@ -111,4 +112,58 @@ function ctfFrame() {
 if (CTF_ON && typeof renderFrame === 'function') {
   const renderFrameCtf = renderFrame;
   renderFrame = function () { try { ctfFrame(); } catch (e) { console.warn('ctf', e); } return renderFrameCtf.apply(this, arguments); };
+}
+
+// [NY] VARSEL TIL LAGET: stort rødt varsel + alarm når flagget vårt blir tatt / mistet, og en rød pil rundt
+//  siktet som peker mot flagget vårt så lenge det ikke er hjemme. ANGRE: CTF_ALARM = false
+const CTF_ALARM = true;
+let ctfBanner = null, ctfBannerT = 0, ctfArrow = null;
+function ctfBeep() {
+  if (typeof audioCtx === 'undefined' || !audioCtx) return;
+  try {
+    const t = audioCtx.currentTime;
+    [0, 0.22, 0.44].forEach((d, i) => {
+      const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+      o.type = 'square'; o.frequency.value = i % 2 ? 620 : 880;
+      g.gain.setValueAtTime(0.0001, t + d); g.gain.exponentialRampToValueAtTime(0.12, t + d + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + d + 0.18);
+      o.connect(g); g.connect(audioCtx.destination); o.start(t + d); o.stop(t + d + 0.2);
+    });
+  } catch (e) {}
+}
+function ctfAlarm(big, small) {
+  if (!ctfBanner) {
+    ctfBanner = document.createElement('div');
+    ctfBanner.style.cssText = 'position:fixed;left:50%;top:22%;transform:translateX(-50%);background:rgba(170,20,20,0.82);color:#fff;font:700 20px Fredoka,sans-serif;padding:10px 22px;border-radius:16px;pointer-events:none;z-index:35;text-align:center;white-space:nowrap;display:none;box-shadow:0 0 24px rgba(255,40,40,0.6)';
+    document.body.appendChild(ctfBanner);
+  }
+  ctfBanner.innerHTML = big + '<br><span style="font-size:14px;font-weight:600">' + small + '</span>';
+  ctfBanner.style.display = 'block'; ctfBannerT = performance.now() + 4000;
+  ctfBeep();
+}
+function ctfArrowFrame() {
+  if (!ctfArrow) {
+    ctfArrow = document.createElement('div');
+    ctfArrow.style.cssText = 'position:fixed;z-index:26;pointer-events:none;display:none;text-align:center;font:700 13px Fredoka,sans-serif;color:#fff;text-shadow:0 1px 3px #000';
+    ctfArrow.innerHTML = '<div class="a" style="width:0;height:0;border-left:13px solid transparent;border-right:13px solid transparent;border-bottom:26px solid #ff3030;margin:0 auto;filter:drop-shadow(0 0 4px #000)"></div><div class="d"></div>';
+    document.body.appendChild(ctfArrow);
+  }
+  if (ctfBanner && ctfBanner.style.display === 'block') {
+    if (performance.now() > ctfBannerT) ctfBanner.style.display = 'none';
+    else ctfBanner.style.opacity = 0.75 + 0.25 * Math.sin(performance.now() / 120);
+  }
+  const f = ctfOnMap() && ctfFlags[myTeam];
+  if (!CTF_ALARM || !f || f.state === 'home' || !alive) { ctfArrow.style.display = 'none'; return; }
+  let tx = f.x, tz = f.z;
+  if (f.state === 'carried' && others[f.carrier]) { tx = others[f.carrier].cur.x; tz = others[f.carrier].cur.z; }
+  const dx = tx - player.x, dz = tz - player.z, sy = Math.sin(player.yaw), cy = Math.cos(player.yaw);
+  const ahead = -dx * sy - dz * cy, right = dx * cy - dz * sy, ang = Math.atan2(right, ahead);
+  const R = Math.min(innerWidth, innerHeight) * 0.22, cx = innerWidth / 2 + Math.sin(ang) * R, cyy = innerHeight / 2 - Math.cos(ang) * R;
+  ctfArrow.style.left = (cx - 30) + 'px'; ctfArrow.style.top = (cyy - 20) + 'px'; ctfArrow.style.width = '60px';
+  ctfArrow.querySelector('.a').style.transform = 'rotate(' + ang + 'rad)';
+  ctfArrow.querySelector('.d').textContent = (f.state === 'carried' ? '🏃 ' : '🚩 ') + Math.round(Math.hypot(dx, dz)) + ' m';
+  ctfArrow.style.display = 'block';
+}
+if (CTF_ALARM && typeof renderFrame === 'function') {
+  const renderFrameAlarm = renderFrame;
+  renderFrame = function () { try { ctfArrowFrame(); } catch (e) {} return renderFrameAlarm.apply(this, arguments); };
 }
