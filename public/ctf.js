@@ -45,7 +45,7 @@ socket.on('ctf', d => {
     cap: d.by === myTeam ? '🏆 ' + d.name + ' tok flagget hjem! +1' : '💥 ' + d.name + ' tok flagget vårt hjem…'
   }[d.ev];
   if (txt && typeof showToast === 'function') showToast(txt);
-  if (CTF_ALARM && d.team === myTeam && (d.ev === 'take' || d.ev === 'drop')) ctfAlarm(d.ev === 'take' ? '⚠️ FLAGGET VÅRT ER STJÅLET!' : '⚠️ FLAGGET VÅRT LIGGER PÅ BAKKEN!', d.ev === 'take' ? 'Følg den røde pila og stopp ' + d.name : 'Rør det for å sende det hjem');
+  if (CTF_ALARM && d.team === myTeam && (d.ev === 'take' || d.ev === 'drop')) ctfAlarm(d.ev === 'take' ? '⚠️ Flagget vårt er stjålet!' : '⚠️ Flagget vårt ligger på bakken!');
   if (typeof playPop === 'function' && (d.ev === 'take' || d.ev === 'cap')) playPop();
   if (d.ev === 'cap' && d.capId === myId) { if (typeof gainCoins === 'function') gainCoins(25); if (typeof gainXP === 'function') gainXP(25); }   // belønning til den som tok flagget hjem
 });
@@ -130,14 +130,14 @@ function ctfBeep() {
     });
   } catch (e) {}
 }
-function ctfAlarm(big, small) {
+function ctfAlarm(big) {
   if (!ctfBanner) {
     ctfBanner = document.createElement('div');
-    ctfBanner.style.cssText = 'position:fixed;left:50%;top:22%;transform:translateX(-50%);background:rgba(170,20,20,0.82);color:#fff;font:700 20px Fredoka,sans-serif;padding:10px 22px;border-radius:16px;pointer-events:none;z-index:35;text-align:center;white-space:nowrap;display:none;box-shadow:0 0 24px rgba(255,40,40,0.6)';
+    ctfBanner.style.cssText = 'position:fixed;left:50%;top:62px;transform:translateX(-50%);background:rgba(170,20,20,0.6);color:#fff;font:600 13px Fredoka,sans-serif;padding:4px 12px;border-radius:12px;pointer-events:none;z-index:35;white-space:nowrap;display:none;transition:opacity 0.4s';   // [NY] liten og kort (var stor midt på skjermen)
     document.body.appendChild(ctfBanner);
   }
-  ctfBanner.innerHTML = big + '<br><span style="font-size:14px;font-weight:600">' + small + '</span>';
-  ctfBanner.style.display = 'block'; ctfBannerT = performance.now() + 4000;
+  ctfBanner.textContent = big;
+  ctfBanner.style.display = 'block'; ctfBanner.style.opacity = 1; ctfBannerT = performance.now() + 2000;
   ctfBeep();
 }
 function ctfArrowFrame() {
@@ -148,8 +148,8 @@ function ctfArrowFrame() {
     document.body.appendChild(ctfArrow);
   }
   if (ctfBanner && ctfBanner.style.display === 'block') {
-    if (performance.now() > ctfBannerT) ctfBanner.style.display = 'none';
-    else ctfBanner.style.opacity = 0.75 + 0.25 * Math.sin(performance.now() / 120);
+    if (performance.now() > ctfBannerT + 400) ctfBanner.style.display = 'none';
+    else if (performance.now() > ctfBannerT) ctfBanner.style.opacity = 0;
   }
   const f = ctfOnMap() && ctfFlags[myTeam];
   if (!CTF_ALARM || !f || f.state === 'home' || !alive) { ctfArrow.style.display = 'none'; return; }
