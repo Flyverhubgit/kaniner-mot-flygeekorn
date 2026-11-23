@@ -6,6 +6,27 @@
 // ===================================================================
 const JUNGLE_GEAR_ON = true;
 const JUNGLE_EAR_CAMO = true;   // [NY] ørene i kamuflasje. ANGRE: false
+const JUNGLE_EAR_LEAVES = true;   // [NY] ørene kledd i buskete blader (false = bare tigerstripe-trekk)
+let jgLeafGeo = null, jgLeafMats = null;
+function jgEarLeaves() {                                      // ca. 45 blader som stikker ut fra øret i alle retninger
+  if (!jgLeafGeo) {
+    const sh = new THREE.Shape(); sh.moveTo(0, 0); sh.quadraticCurveTo(0.06, 0.07, 0, 0.17); sh.quadraticCurveTo(-0.06, 0.07, 0, 0);
+    jgLeafGeo = new THREE.ShapeGeometry(sh);
+    jgLeafMats = [0x3f6e28, 0x4f8a30, 0x2f5a20, 0x5a7a30, 0x6b8a3a].map(c => new THREE.MeshStandardMaterial({ color: c, roughness: 0.85, side: THREE.DoubleSide }));
+  }
+  const g = new THREE.Group();
+  let seed = 5; const R = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+  for (let i = 0; i < 64; i++) {
+    const m = new THREE.Mesh(jgLeafGeo, jgLeafMats[Math.floor(R() * jgLeafMats.length)]);
+    const side = R() < 0.5 ? -1 : 1, y = -0.42 + R() * 0.92;
+    m.position.set((R() - 0.5) * 0.26, y, side * (0.03 + R() * 0.03));
+    m.rotation.set(side * (0.4 + R() * 0.8), R() * 6.28, (R() - 0.5) * 2.4);
+    m.scale.setScalar(1.1 + R() * 0.7);
+    m.raycast = () => {};
+    g.add(m);
+  }
+  return g;
+}
 const JG_MAT = {};
 function jgMat(k) {
   if (JG_MAT[k]) return JG_MAT[k];
@@ -64,7 +85,8 @@ function jungleGearize(body, team, name, on) {
   // [NY] kamuflasje-trekk over de lange kaninørene (de hvite/rosa ørene lyste i krattet)
   if (JUNGLE_EAR_CAMO && team === 'bunny') body.children.forEach(e => {
     if (!e.isGroup && !(e.type === 'Object3D') || Math.abs(e.position.y - 1.45) > 0.02 || Math.abs(Math.abs(e.position.x) - 0.12) > 0.02) return;
-    const c = new THREE.Mesh(new THREE.BoxGeometry(0.27, 0.84, 0.08), jgMat('shirtB')); c.position.set(0, 0.42, 0); c.castShadow = true; c.raycast = () => {};
+    const c = new THREE.Mesh(new THREE.BoxGeometry(0.27, 0.84, 0.08), JUNGLE_EAR_LEAVES ? jgMat('olive') : jgMat('shirtB')); c.position.set(0, 0.42, 0); c.castShadow = true; c.raycast = () => {};
+    if (JUNGLE_EAR_LEAVES) c.add(jgEarLeaves());               // [NY] buskete blader over hele øret
     e.add(c); body.userData.earCovers.push(c);
   });
 }
