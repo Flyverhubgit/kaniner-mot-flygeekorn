@@ -3738,6 +3738,7 @@ function hueyLeave(p, jump) {                             // ut av hueyen (hopp 
   if (!h) return;
   h.pax.delete(p.id); delete h.boardAt[p.id];
   if (h.gunner === p.id) h.gunner = null;
+  if (h.player) ['pilot', 'gl', 'gr', 'pass'].forEach(k => { if (h[k] === p.id) h[k] = null; });   // [NY] spiller-huey: ledig sete
   if (!jump || !p.alive) { if (p.protectedUntil === Infinity) p.protectedUntil = 0; return; }
   const side = (Math.random() < 0.5 ? -1 : 1) * 1.6;
   p.x = h.x + Math.cos(h.yaw) * side; p.z = h.z - Math.sin(h.yaw) * side; p.y = h.y - 1;
@@ -3746,13 +3747,13 @@ function hueyLeave(p, jump) {                             // ut av hueyen (hopp 
   io.emit('chute', { id: p.id, on: true });
   if (!p.isBot) io.to(p.id).emit('hueyJump', { x: +p.x.toFixed(2), y: +p.y.toFixed(2), z: +p.z.toFixed(2), vx: h.phase === 'in' ? +(Math.sin(h.yaw) * 6).toFixed(2) : 0, vz: h.phase === 'in' ? +(Math.cos(h.yaw) * 6).toFixed(2) : 0 });
 }
-function hueyGunOk(p) { const h = p.huey && hueys.get(p.huey); return !!(h && h.gunner === p.id); }
+function hueyGunOk(p) { const h = p.huey && hueys.get(p.huey); return !!(h && (h.gunner === p.id || (h.player && (h.gl === p.id || h.gr === p.id)))); }   // [NY] begge dørene i spiller-hueyen
 function hueyRocket(pos, p) {
   if (!hueyOn()) return;
   for (const h of hueys.values()) {
     if (h.team === p.team || h.hp <= 0) continue;
     if (Math.hypot(h.x - pos[0], h.y + 1 - pos[1], h.z - pos[2]) > 7) continue;
-    h.hp -= HUEY.rocket;
+    h.hp -= h.player ? h.hp : HUEY.rocket;                      // [NY] spiller-huey: én rakett
     io.emit('hueyHit', { id: h.id, hp: h.hp });
     if (h.hp <= 0) hueyDown(h, p);
   }
@@ -3768,6 +3769,7 @@ setInterval(() => {
   if (mapName !== 'jungle') { if (hueys.size) hueys.clear(); return; }
   const now = Date.now(), dt = 0.1;
   for (const h of hueys.values()) {
+    if (h.player) { phTick(h, now, dt); continue; }               // [NY] spiller-hueyer (egen kode nederst)
     if (h.phase === 'in' && HUEY_LOW && h.wps && h.wps.length) {   // [NY] lavt og svingete, sakte ned mot slippet
       const wp = h.wps[0], last = h.wps.length === 1, dx = wp.x - h.x, dz = wp.z - h.z, d = Math.hypot(dx, dz);
       const v = last ? Math.min(30, Math.max(5, d * 0.7)) : 30;
@@ -3812,7 +3814,8 @@ setInterval(() => {
   }
   if (hueys.size || hueySent) {
     hueySent = hueys.size > 0;
-    io.emit('hueys', [...hueys.values()].map(h => [h.id, h.team === 'bunny' ? 0 : 1, +h.x.toFixed(2), +h.y.toFixed(2), +h.z.toFixed(2), +h.yaw.toFixed(3), h.hp, h.gunner || '', [...h.pax], h.phase === 'in' ? 0 : h.phase === 'hover' ? 1 : 2, Math.max(0, Math.ceil((HUEY.eject - (now - Math.min(...[...h.pax].map(i => h.boardAt[i] || now), now))) / 1000))]));
+    io.emit('hueys', [...hueys.values()].map(h => [h.id, h.team === 'bunny' ? 0 : 1, +h.x.toFixed(2), +h.y.toFixed(2), +h.z.toFixed(2), +h.yaw.toFixed(3), h.hp, h.gunner || '', [...h.pax], h.phase === 'in' ? 0 : h.phase === 'hover' ? 1 : 2, h.player ? 0 : Math.max(0, Math.ceil((HUEY.eject - (now - Math.min(...[...h.pax].map(i => h.boardAt[i] || now), now))) / 1000)),
+      h.player ? 1 : 0, h.pilot || '', h.gl || '', h.gr || '', h.pass || '', +(h.pitch || 0).toFixed(3), +(h.roll || 0).toFixed(3)]));
   }
 }, 100);
 let hueySent = false;
@@ -3830,7 +3833,10 @@ let hueySent = false;
     return r;
   };
   const applyDamageHuey = applyDamage;
-  applyDamage = function (p, t, dmg, head, weapon) { if (t && t.huey) return; return applyDamageHuey.apply(this, arguments); };
+  applyDamage = function (p, t, dmg, head, weapon) {
+    if (t && t.huey) { const h = hueys.get(t.huey); if (!h || !h.player) return; dmg = Math.max(1, Math.round(dmg * PH.thru)); return applyDamageHuey.call(this, p, t, dmg, head, weapon); }   // [NY] kulene går gjennom tynnveggen, men svakere
+    return applyDamageHuey.apply(this, arguments);
+  };
 }
 io.on('connection', socket => {
   socket.on('join', () => setTimeout(() => { const p = players[socket.id]; if (p && hueyOn() && p.alive && !p.huey) hueyBoard(p); }, 300));
@@ -4129,3 +4135,98 @@ if (process.env.SQUAD_DEBUG) setInterval(() => {
   const out = [...squads.values()].map(q => { const L = players[q.leader]; let spread = 0; q.members.forEach(id => { const m = players[id]; if (m && L) spread = Math.max(spread, Math.hypot(m.x - L.x, m.z - L.z)); }); return q.team[0] + q.role[0] + q.members.size + '/' + Math.round(spread); });
   console.log('SQUADS', out.join(' '));
 }, 30000);
+
+// ===================================================================
+// [NY] SPILLER-HUEY 🚁 (Jungelkrigen): 2 per lag på basen. Du flyr selv, og to skyttere med M2 .50 – én i hver dør.
+//  Setene: 1 pilot, 2 høyre dør, 3 venstre dør, 4 passasjer (kan hoppe ut i fallskjerm). E ved hueyen = gå om bord,
+//  E inne = gå ut (på bakken) eller hopp (i lufta). Uten pilot synker den rolig ned og lander.
+//  Én rakett skyter den ned. Kuler: hueyen tåler mange, og kulene går gjennom veggen til dem inni, men med 40 % skade.
+//  Ny huey på basen 60 sek etter at den er skutt ned. Robot-hueyene (innsetting) er som før. ANGRE: PLAYER_HUEY = false
+// ===================================================================
+const PLAYER_HUEY = true;
+const PH = { hp: 400, speed: 34, respawn: 60000, thru: 0.4, sink: 3, pads: [{ x: -17, z: 240 }, { x: -17, z: 260 }], bullet: { ak: 2, sniper: 8, sniper50: 15, m60: 10, c7: 2, gun: 2 } };
+const phRespawns = [];
+function phNew(team, pad) {
+  const s = team === 'bunny' ? 1 : -1, x = pad.x * s, z = pad.z * s, y = jgGround(x, z);
+  const h = { id: ++hueySeq, team, player: true, home: { x, z, y, yaw: s > 0 ? Math.PI : 0 }, x, y, z, yaw: s > 0 ? Math.PI : 0, pitch: 0, roll: 0, phase: 'park', hp: PH.hp, gunner: null, pilot: null, gl: null, gr: null, pass: null, pax: new Set(), boardAt: {}, born: Date.now(), at: Date.now(), pad };
+  hueys.set(h.id, h); return h;
+}
+function phSpawnAll() { if (!PLAYER_HUEY || !hueyOn()) return; ['bunny', 'squirrel'].forEach(t => PH.pads.forEach(pad => phNew(t, pad))); }
+function phTick(h, now, dt) {
+  const pl = h.pilot && players[h.pilot];
+  if (!pl || !pl.alive || pl.huey !== h.id) {                     // ingen pilot: synk rolig ned og land
+    if (h.pilot) h.pilot = null;
+    const g = jgGround(h.x, h.z);
+    if (h.y > g + 0.05) h.y = Math.max(g, h.y - PH.sink * dt);
+    h.pitch *= 0.9; h.roll *= 0.9;
+  }
+  [...h.pax].forEach(id => {
+    const q = players[id];
+    if (!q || !q.alive || q.huey !== h.id) { h.pax.delete(id); ['pilot', 'gl', 'gr', 'pass'].forEach(k => { if (h[k] === id) h[k] = null; }); if (h.gunner === id) h.gunner = null; return; }
+    q.x = h.x; q.y = h.y; q.z = h.z;
+  });
+}
+setInterval(() => {                                               // nye hueyer på basen
+  if (!PLAYER_HUEY) return;
+  const now = Date.now();
+  for (let i = phRespawns.length - 1; i >= 0; i--) if (now >= phRespawns[i].at) { const r = phRespawns.splice(i, 1)[0]; if (hueyOn()) phNew(r.team, r.pad); }
+}, 1000);
+{
+  const hueyDownPh = hueyDown;
+  hueyDown = function (h, by) { if (h.player) phRespawns.push({ team: h.team, pad: h.pad, at: Date.now() + PH.respawn }); return hueyDownPh.apply(this, arguments); };
+  const startMapPh = startMap;
+  startMap = function () { phRespawns.length = 0; const r = startMapPh.apply(this, arguments); phSpawnAll(); return r; };
+}
+setTimeout(phSpawnAll, 1500);                                     // (START_MAP=jungle ved testing)
+io.on('connection', socket => {
+  socket.on('phIn', d => {
+    const p = players[socket.id], h = d && hueys.get(d.id | 0);
+    if (!PLAYER_HUEY || !p || !p.alive || p.huey || p.chute || !h || !h.player || h.team !== p.team || intermission) return;
+    if (Math.hypot(p.x - h.x, p.z - h.z) > 7 || Math.abs((p.y || 0) - h.y) > 4) return;
+    const order = ['pilot', 'gr', 'gl', 'pass'], want = d.seat && order.includes(d.seat) && !h[d.seat] ? d.seat : order.find(k => !h[k]);
+    if (!want) return;
+    dropHoly(p);
+    h[want] = p.id; h.pax.add(p.id); h.boardAt[p.id] = Date.now();
+    p.huey = h.id; p.chute = false; p.protectedUntil = 0;
+    if (want === 'pilot') { h.at = Date.now(); h.phase = 'fly'; }
+  });
+  socket.on('phSeat', d => {
+    const p = players[socket.id], h = p && p.huey && hueys.get(p.huey);
+    if (!h || !h.player || !d || !['pilot', 'gl', 'gr', 'pass'].includes(d.seat) || h[d.seat]) return;
+    ['pilot', 'gl', 'gr', 'pass'].forEach(k => { if (h[k] === p.id) h[k] = null; });
+    h[d.seat] = p.id; if (d.seat === 'pilot') h.at = Date.now();
+  });
+  socket.on('phOut', () => {
+    const p = players[socket.id], h = p && p.huey && hueys.get(p.huey);
+    if (!h || !h.player) return;
+    if (h.y - jgGround(h.x, h.z) < 1.5) {                         // på bakken: gå ut ved døra
+      hueyLeave(p, false);
+      const s = 3.2; p.x = h.x + Math.cos(h.yaw) * s; p.z = h.z - Math.sin(h.yaw) * s; p.y = jgGround(p.x, p.z);
+      socket.emit('phExit', { x: +p.x.toFixed(2), y: +p.y.toFixed(2), z: +p.z.toFixed(2) });
+    } else hueyLeave(p, true);                                   // i lufta: fallskjerm
+  });
+  socket.on('phMove', d => {
+    const p = players[socket.id], h = p && p.huey && hueys.get(p.huey);
+    if (!h || !h.player || h.pilot !== p.id || !d) return;
+    const x = num(d.x, -420, 420), y = num(d.y, -1, 140), z = num(d.z, -420, 420), yaw = num(d.yaw, -1e6, 1e6), pitch = num(d.p, -1, 1), roll = num(d.r, -1, 1);
+    if ([x, y, z, yaw, pitch, roll].includes(null)) return;
+    const now = Date.now(), dt = Math.max(0.05, (now - h.at) / 1000);
+    if (Math.hypot(x - h.x, y - h.y, z - h.z) > PH.speed * dt * 1.6 + 2) return;   // for fort: avvis
+    h.at = now; h.x = x; h.y = y; h.z = z; h.yaw = yaw; h.pitch = pitch; h.roll = roll;
+  });
+  socket.on('phCrash', () => {                                    // piloten krasjet i trær / bakken for fort
+    const p = players[socket.id], h = p && p.huey && hueys.get(p.huey);
+    if (!h || !h.player || h.pilot !== p.id) return;
+    const inside = [...h.pax].map(id => players[id]).filter(Boolean);
+    inside.forEach(q => { hueyLeave(q, false); q.y = jgGround(q.x, q.z); killByWorld(q, '💥', 'crash'); });
+    h.hp = 0; hueyDown(h, null);
+  });
+  socket.on('phHit', d => {                                       // kule traff skroget: litt skade (de inni treffes gjennom veggen)
+    const p = players[socket.id], h = d && hueys.get(d.id | 0), now = Date.now();
+    if (!p || !p.alive || !h || !h.player || h.team === p.team || now - (p.lastPhHit || 0) < 70) return;
+    p.lastPhHit = now;
+    h.hp -= PH.bullet[d.w] || 2;
+    io.emit('hueyHit', { id: h.id, hp: h.hp });
+    if (h.hp <= 0) hueyDown(h, p);
+  });
+});

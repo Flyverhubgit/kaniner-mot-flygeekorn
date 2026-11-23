@@ -8,6 +8,7 @@ const HUEY_ON = true;
 const HUEY_SEATS = [[-0.55, -0.9], [0.35, -0.9], [-0.85, 0.2], [-0.2, 0.75], [0.35, -0.1], [-0.7, -0.35]];   // passasjerer (x, z lokalt)
 const HUEY_GUN_SEAT = [0.75, 0.35];                                    // dørskytteren, ved høyre dør
 const hueyMap = new Map(), chuteSet = new Set(), chuteMeshes = {};
+let hueySeat = null;                                           // [NY] 'pilot' | 'gl' | 'gr' | 'pass' (spiller-huey), 'gunner' | 'p' (robot-huey)
 let hueyMineId = null, hueyIsGunner = false, chuteMe = null, hueyLastT = 0, hueyUi = null, hueyBtn = null;
 function hueyOnMap() { return HUEY_ON && typeof currentMap !== 'undefined' && currentMap === 'jungle'; }
 function hueyAboard() { return hueyOnMap() && hueyMineId !== null && hueyMap.has(hueyMineId); }
@@ -54,7 +55,9 @@ function buildHuey(team) {
   [-1, 1].forEach(sx => { const gr = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.14, 6), dark); gr.position.set(sx * 0.08, -0.02, -0.3); gunPivot.add(gr); });
   const belt = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.2, 0.3), olive); belt.position.set(-0.17, -0.08, 0.05); gunPivot.add(belt);
   gunPivot.rotation.y = Math.PI / 2;                     // ut av døra
-  g.userData = { rotor, tail, gunPivot };
+  const gunPivotL = gunPivot.clone(); gunPivotL.position.set(-1.15, 1.75, 0.35); gunPivotL.rotation.y = -Math.PI / 2; gunPivotL.visible = false; g.add(gunPivotL);   // [NY] venstre dør (spiller-huey)
+  const standL = stand.clone(); standL.position.set(-1.15, 1.35, 0.35); standL.visible = false; g.add(standL);
+  g.userData = { rotor, tail, gunPivot, gunPivotL, standL };
   g.traverse(o => { if (o.isMesh) { o.castShadow = true; o.raycast = () => {}; } });
   return g;
 }
@@ -92,8 +95,8 @@ function hueySoundStop(h) { if (h.snd) { try { h.snd.src.stop(); h.snd.lfo.stop(
 socket.on('hueys', list => {
   if (!hueyOnMap()) return;
   const seen = new Set();
-  hueyMineId = null; hueyIsGunner = false;
-  list.forEach(([id, t, x, y, z, yaw, hp, gunner, pax, phase, ejectIn]) => {
+  hueyMineId = null; hueyIsGunner = false; hueySeat = null;
+  list.forEach(([id, t, x, y, z, yaw, hp, gunner, pax, phase, ejectIn, isPl, pilot, gl, gr, pass, pitch, roll]) => {
     seen.add(id);
     let h = hueyMap.get(id);
     if (!h) {
@@ -102,8 +105,14 @@ socket.on('hueys', list => {
     }
     const dx = x - (h.tgt.x === undefined ? x : h.tgt.x), dz = z - (h.tgt.z === undefined ? z : h.tgt.z);
     h.speed = Math.hypot(dx, dz) * 10;
-    Object.assign(h.tgt, { x, y, z, yaw }); h.hp = hp; h.gunner = gunner; h.pax = pax; h.phase = phase; h.ejectIn = ejectIn;
-    if (pax.includes(myId)) { hueyMineId = id; hueyIsGunner = gunner === myId; chuteMe = null; }
+    Object.assign(h.tgt, { x, y, z, yaw, pitch: pitch || 0, roll: roll || 0 }); h.hp = hp; h.gunner = gunner; h.pax = pax; h.phase = phase; h.ejectIn = ejectIn;
+    h.player = !!isPl; h.pilot = pilot; h.gl = gl; h.gr = gr; h.pass = pass;
+    if (h.player && !h.g.userData.gunPivotL.visible) { h.g.userData.gunPivotL.visible = true; h.g.userData.standL.visible = true; }
+    if (pax.includes(myId)) {
+      hueyMineId = id; chuteMe = null;
+      hueySeat = h.player ? (pilot === myId ? 'pilot' : gl === myId ? 'gl' : gr === myId ? 'gr' : 'pass') : gunner === myId ? 'gunner' : 'p';
+      hueyIsGunner = hueySeat === 'gunner' || hueySeat === 'gl' || hueySeat === 'gr';
+    }
   });
   for (const [id, h] of hueyMap) if (!seen.has(id) && !h.falling) { scene.remove(h.g); hueySoundStop(h); hueyMap.delete(id); }
 });
@@ -126,7 +135,10 @@ socket.on('map', () => { if (chuteMe && chuteMe.mesh) scene.remove(chuteMe.mesh)
 // ---------- taster og knapper ----------
 window.addEventListener('keydown', e => {
   if (!hueyAboard() || e.repeat) return;
-  if (e.code === 'KeyE') { socket.emit('hueyJump'); e.stopImmediatePropagation(); e.preventDefault(); }
+  const hp = hueyMap.get(hueyMineId), pl = hp && hp.player;
+  if (e.code === 'KeyE') { socket.emit(pl ? 'phOut' : 'hueyJump'); e.stopImmediatePropagation(); e.preventDefault(); }
+  else if (pl && /^Digit[1-4]$/.test(e.code)) { socket.emit('phSeat', { seat: ['pilot', 'gr', 'gl', 'pass'][+e.code.slice(5) - 1] }); e.stopImmediatePropagation(); e.preventDefault(); }   // [NY] bytt sete
+  else if (pl && e.code === 'KeyV' && typeof phCamToggle === 'function') { phCamToggle(); e.stopImmediatePropagation(); }
   else if (e.code === 'KeyF') { const h = hueyMap.get(hueyMineId); if (h && !h.gunner) socket.emit('hueyGun'); e.stopImmediatePropagation(); }
 }, true);
 function hueyUiFrame() {
@@ -138,17 +150,19 @@ function hueyUiFrame() {
     hueyBtn.textContent = '🪂 HOPP';
     hueyBtn.dataset.ownTouch = '1';
     hueyBtn.style.cssText = 'position:fixed;right:18px;bottom:150px;background:rgba(70,90,40,0.85);color:#fff;font:700 18px Fredoka,sans-serif;padding:14px 18px;border-radius:16px;z-index:40;display:none;user-select:none';
-    hueyBtn.addEventListener('touchstart', e => { e.preventDefault(); e.stopPropagation(); if (hueyAboard()) socket.emit('hueyJump'); }, { passive: false });
+    hueyBtn.addEventListener('touchstart', e => { e.preventDefault(); e.stopPropagation(); if (hueyAboard()) { const hh = hueyMap.get(hueyMineId); socket.emit(hh && hh.player ? 'phOut' : 'hueyJump'); } }, { passive: false });
     document.body.appendChild(hueyBtn);
   }
   const h = hueyAboard() && hueyMap.get(hueyMineId);
   if (h) {
     const tip = hueyIsGunner ? 'Du er dørskytter – klikk = .50 (M2)' : !h.gunner ? (isTouch ? '' : 'F = ta M60-en') : '';
-    hueyUi.textContent = '🚁 ' + (isTouch ? 'Trykk 🪂 HOPP' : 'E = hopp ut') + ' · ut om ' + (h.ejectIn || 0) + ' s' + (tip ? ' · ' + tip : '');
+    if (h.player) hueyUi.textContent = { pilot: '🚁 Pilot · Mellomrom opp · Shift ned · V kamera', gr: '🎯 Høyre dør (M2)', gl: '🎯 Venstre dør (M2)', pass: '🪂 Passasjer' }[hueySeat] + (isTouch ? '' : ' · E ut/hopp · 1–4 bytt sete');
+    else hueyUi.textContent = '🚁 ' + (isTouch ? 'Trykk 🪂 HOPP' : 'E = hopp ut') + ' · ut om ' + (h.ejectIn || 0) + ' s' + (tip ? ' · ' + tip : '');
     hueyUi.style.display = 'block';
   } else if (chuteMe) { hueyUi.textContent = '🪂 W/A/S/D styrer fallskjermen'; hueyUi.style.display = 'block'; }
   else hueyUi.style.display = 'none';
   hueyBtn.style.display = h && isTouch ? 'block' : 'none';
+  if (h) hueyBtn.textContent = h.player ? (h.cur.y - jgChuteGround(h.cur.x, h.cur.z) < 1.5 ? '🚪 UT' : '🪂 HOPP') : '🪂 HOPP';
 }
 
 // ---------- M60 fra døra ----------
@@ -223,31 +237,46 @@ function hueyFrame() {
       if (h.cur.y < 0 || f.t > 6) { scene.remove(h.g); hueySoundStop(h); hueyMap.delete(id); }
       continue;
     }
+    if (h.player && id === hueyMineId && hueySeat === 'pilot' && typeof phStep === 'function') {   // [NY] du flyr: lokal fysikk
+      phStep(h, dt);
+      h.g.position.set(h.cur.x, h.cur.y, h.cur.z); h.g.rotation.set(h.cur.pitch || 0, h.cur.yaw, h.cur.roll || 0);
+      h.g.userData.rotor.rotation.y += dt * 28; h.g.userData.tail.rotation.x += dt * 50;
+      hueySound(h); if (h.snd) h.snd.vol.gain.value = 0.35;
+      continue;
+    }
+    if (h.player && typeof phl !== 'undefined' && phl && phl.id === id) phl = null;
     const k = Math.min(1, dt * 6);
     h.cur.x += (h.tgt.x - h.cur.x) * k; h.cur.y += (h.tgt.y - h.cur.y) * k; h.cur.z += (h.tgt.z - h.cur.z) * k;
     let dy = h.tgt.yaw - h.cur.yaw; while (dy > Math.PI) dy -= Math.PI * 2; while (dy < -Math.PI) dy += Math.PI * 2;
     h.cur.yaw += dy * k;
     h.g.position.set(h.cur.x, h.cur.y, h.cur.z);
-    h.g.rotation.set(Math.min(0.14, (h.speed || 0) / 34 * 0.14), h.cur.yaw, -dy * 0.6);   // nesa ned når den flyr, krenger i svinger
+    if (h.player) { h.cur.pitch = (h.cur.pitch || 0) + ((h.tgt.pitch || 0) - (h.cur.pitch || 0)) * k; h.cur.roll = (h.cur.roll || 0) + ((h.tgt.roll || 0) - (h.cur.roll || 0)) * k; h.g.rotation.set(h.cur.pitch, h.cur.yaw, h.cur.roll); }
+    else h.g.rotation.set(Math.min(0.14, (h.speed || 0) / 34 * 0.14), h.cur.yaw, -dy * 0.6);   // nesa ned når den flyr, krenger i svinger
+    if (h.player && !h.pilot && h.cur.y - jgChuteGround(h.cur.x, h.cur.z) < 0.3) { h.g.userData.rotor.rotation.y -= dt * 24; }   // parkert: rotoren står nesten stille
     h.g.userData.rotor.rotation.y += dt * 28; h.g.userData.tail.rotation.x += dt * 50;
+    h.g.userData.gunPivot.visible = true; if (h.player) h.g.userData.gunPivotL.visible = true;   // (skjules igjen under hvis det er din egen)
     if (h.hp < 350 && Math.random() < 0.3) puffSmoke(new THREE.Vector3(...Object.values(hueyLocal(h, 0, 2.2, -2))));   // skadet: røyk
-    (h.pax || []).forEach(pid => hueyIdsAboard.add(pid));
+    if (!h.player) (h.pax || []).forEach(pid => hueyIdsAboard.add(pid));   // (i spiller-hueyen vises de som sitter inne)
     hueySound(h);
-    if (h.snd) { const d = Math.hypot(h.cur.x - player.x, h.cur.y - player.feetY, h.cur.z - player.z); h.snd.vol.gain.value = (id === hueyMineId ? 0.35 : 0.6 / (1 + d / 22)); }
+    if (h.snd) { const d = Math.hypot(h.cur.x - player.x, h.cur.y - player.feetY, h.cur.z - player.z); h.snd.vol.gain.value = (h.player && !h.pilot && !(h.pax || []).length) ? 0 : (id === hueyMineId ? 0.35 : 0.6 / (1 + d / 22)); }
   }
   // meg om bord: sitt på plassen, kameraet følger med
   const h = hueyAboard() && hueyMap.get(hueyMineId);
   if (h) {
     const i = Math.max(0, (h.pax || []).filter(p => p !== h.gunner).indexOf(myId));
-    const seat = hueyIsGunner ? HUEY_GUN_SEAT : HUEY_SEATS[i % HUEY_SEATS.length];
+    const PS = { pilot: [-0.45, 2.15], gr: HUEY_GUN_SEAT, gl: [-HUEY_GUN_SEAT[0], HUEY_GUN_SEAT[1]], pass: [0, -0.9], gunner: HUEY_GUN_SEAT };   // [NY] setene i spiller-hueyen
+    const seat = PS[hueySeat] || HUEY_SEATS[i % HUEY_SEATS.length];
     const w = hueyLocal(h, seat[0], 1.0, seat[1]);
     player.x = w.x; player.z = w.z; player.feetY = w.y; player.vy = 0;
-    const eye = hueyIsGunner ? hueyLocal(h, 0.8, 1.95, 0.35) : { x: w.x, y: w.y + 0.75, z: w.z };   // dørskytteren står i døra bak M2-en
+    const eye = hueySeat === 'gl' ? hueyLocal(h, -0.8, 1.95, 0.35) : hueyIsGunner ? hueyLocal(h, 0.8, 1.95, 0.35) : hueySeat === 'pilot' ? hueyLocal(h, -0.45, 1.85, 2.3) : { x: w.x, y: w.y + 0.75, z: w.z };   // dørskytteren står i døra bak M2-en
     camera.position.set(eye.x, eye.y, eye.z);
-    h.g.userData.gunPivot.visible = !hueyIsGunner;            // du ser din egen M2 i hendene i stedet
+    if (hueySeat === 'pilot' && typeof phPilotCam === 'function') phPilotCam(h);   // tredjeperson-kamera (V bytter)
+    const myPivot = hueySeat === 'gl' ? h.g.userData.gunPivotL : h.g.userData.gunPivot;
+    h.g.userData.gunPivot.visible = !(hueyIsGunner && hueySeat !== 'gl');   // du ser din egen M2 i hendene i stedet
+    if (h.player) h.g.userData.gunPivotL.visible = hueySeat !== 'gl';
     if (hueyIsGunner) {
       const dir = new THREE.Vector3(); camera.getWorldDirection(dir);
-      h.g.userData.gunPivot.lookAt(camera.position.clone().addScaledVector(dir, 30));
+      myPivot.lookAt(camera.position.clone().addScaledVector(dir, 30));
     }
   }
   // meg i fallskjerm

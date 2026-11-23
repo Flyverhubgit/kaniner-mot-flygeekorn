@@ -174,7 +174,7 @@ let jFogK = 0;
     jungleFog.forEach(f => { f.position.x = f.userData.base.x + Math.sin(t * 0.07 + f.userData.ph) * 3; f.position.z = f.userData.base.z + Math.cos(t * 0.05 + f.userData.ph) * 3; });
     const inP = JUNGLE.inPaddy(px, pz) && camera.position.y < 6;
     jFogK += ((inP ? 1 : 0) - jFogK) * 0.03;
-    const lush = typeof JUNGLE_LUSH !== 'undefined' && JUNGLE_LUSH, baseNear = lush ? 6 : JUNGLE_R * 0.55, baseFar = lush ? LUSH_FAR : JUNGLE_R + 10;
+    const lush = typeof JUNGLE_LUSH !== 'undefined' && JUNGLE_LUSH, baseNear = lush ? 6 : JUNGLE_R * 0.55, baseFar = (lush ? LUSH_FAR : JUNGLE_R + 10) + Math.max(0, camera.position.y - 22) * 2.5;   // [NY] høyt oppe (helikopter): ser lenger
     scene.fog.near = baseNear * (1 - jFogK) + 3 * jFogK;
     scene.fog.far = baseFar * (1 - jFogK) + 26 * jFogK;
     if (jFogK > 0.01) scene.fog.color.setRGB(0.44 + 0.4 * jFogK, 0.54 + 0.34 * jFogK, 0.41 + 0.43 * jFogK);
