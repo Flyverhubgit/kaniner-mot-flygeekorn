@@ -151,10 +151,11 @@ if (GHILLIE_ON && typeof renderFrame === 'function') {
 //  Kikkertsiktet holdes fritt. ANGRE: GHILLIE_GUN = false
 const GHILLIE_GUN = true;
 const ghGunBox = {};
-function ghGunStrips(team, layer) {
+function ghGunStrips(team, layer, kind) {
   if (!ghMats) ghMats = GH_COLS.map(c => new THREE.MeshStandardMaterial({ color: c, roughness: 1, side: THREE.DoubleSide }));
-  if (!ghGunBox[team]) ghGunBox[team] = new THREE.Box3().setFromObject(buildSniper(team));
-  const b = ghGunBox[team], g = new THREE.Group(), geo = new THREE.PlaneGeometry(0.035, 0.13);
+  const bk = kind === 50 ? 'b50' : team;
+  if (!ghGunBox[bk]) ghGunBox[bk] = new THREE.Box3().setFromObject(kind === 50 ? buildSniper50() : buildSniper(team));
+  const b = ghGunBox[bk], g = new THREE.Group(), geo = new THREE.PlaneGeometry(0.035, 0.13);
   const cx = (b.min.x + b.max.x) / 2, w = b.max.x - b.min.x, h = b.max.y - b.min.y, L = b.max.z - b.min.z;
   let seed = 9; const R = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
   for (let i = 0; i < (layer ? 170 : 90); i++) {               // [NY] din egen: dobbelt så mange filler
@@ -174,14 +175,16 @@ function ghGunStrips(team, layer) {
 }
 function refreshGhillieGun() {
   const on = GHILLIE_GUN && typeof currentMap !== 'undefined' && currentMap === 'jungle';
-  if (typeof sniperView !== 'undefined' && sniperView) {
-    if (on && !sniperView.userData.gh) { sniperView.userData.gh = ghGunStrips(myTeam || 'bunny', 2); sniperView.add(sniperView.userData.gh); }
-    if (sniperView.userData.gh) sniperView.userData.gh.visible = on;
+  const j50 = typeof jg50 !== 'undefined' && jg50;               // [NY] .50 i jungelen: fillene på .50-modellen i stedet
+  const own = j50 ? DW_VIEW.sniper50 : (typeof sniperView !== 'undefined' ? sniperView : null);
+  if (own) {
+    if (on && !own.userData.gh) { own.userData.gh = j50 ? ghGunStrips('b50', 2, 50) : ghGunStrips(myTeam || 'bunny', 2); own.add(own.userData.gh); }
+    if (own.userData.gh) own.userData.gh.visible = on;
   }
   for (const id in others) {
-    const r = others[id], hs = r.heldSniper;
+    const r = others[id], hs = j50 ? r.dwHeld && r.dwHeld.sniper50 : r.heldSniper;
     if (!hs) continue;
-    if (on && !hs.userData.gh) { hs.userData.gh = ghGunStrips(r.team === 'squirrel' ? 'squirrel' : 'bunny', 0); hs.add(hs.userData.gh); }
+    if (on && !hs.userData.gh) { hs.userData.gh = j50 ? ghGunStrips('b50', 0, 50) : ghGunStrips(r.team === 'squirrel' ? 'squirrel' : 'bunny', 0); hs.add(hs.userData.gh); }
     if (hs.userData.gh) hs.userData.gh.visible = on;
   }
 }

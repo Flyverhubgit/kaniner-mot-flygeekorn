@@ -35,6 +35,7 @@ const PORT = process.env.PORT || 3000;
 // ---------- Regler ----------
 const ROUND_SECONDS = +process.env.ROUND_SECONDS || 600;     // 10 minutter per runde (var 5; kan endres for testing)
 // [NY] Ørkenkrigen: lagkamp (team deathmatch) – første lag til 100 drap, eller flest drap etter 15 minutter
+const JUNGLE_50 = true;   // [NY] Jungelkrigen: snikskytteren er .50 (12,7 mm), 90 / 200 hode. ANGRE: false
 const JUNGLE_CTF = true, CTF_SECONDS = +process.env.CTF_SECONDS || 20 * 60;   // [NY] Jungelkrigen: fang flagget, 20 min runde (se FANG FLAGGET nederst). ANGRE: false
 const DESERT_SECONDS = +process.env.DESERT_SECONDS || 30 * 60, DESERT_KILLS = +process.env.DESERT_KILLS || 200;   // dobbelt så lang (var 15 min / 100 drap)
 // Ørken-våpen: skade i kroppen / hodet, og korteste tid mellom to treff (ms). 100 liv.
@@ -1365,6 +1366,13 @@ io.on('connection', socket => {
       applyDamage(p, t, d.head ? HUEY_M60.head : HUEY_M60.dmg, !!d.head, 'm60');
       return;
     }
+    if (d.weapon === 'sniper50' && mapName === 'jungle' && JUNGLE_50) {  // [NY] .50 snikskytter i Jungelkrigen (samme skade som i ørkenen)
+      const W = DESERT_W.sniper50;
+      if (now - (p.last_sniper50 || 0) < W.ms) return;
+      p.last_sniper50 = now;
+      applyDamage(p, t, d.head ? W.head : W.dmg, !!d.head, 'sniper');
+      return;
+    }
     if (now - p.lastHit < (mapName === 'desert' ? 40 : MIN_HIT_MS)) return;   // [NY] ørkenen: MG42 skyter fortere (egen sjekk per våpen under)
     p.lastHit = now;
 
@@ -2113,7 +2121,7 @@ io.on('connection', socket => {
     if (!Number.isInteger(i) || i < 0 || i >= V.grid.length) return;
     const t = V.grid[i];
     if (!t || V.LIB.INFO[t].hp === 0) return;
-    const now = Date.now(), sniper = d.w === 'sniper';
+    const now = Date.now(), sniper = d.w === 'sniper' || (d.w === 'sniper50' && mapName === 'jungle');   // [NY] .50 i jungelen
     if (now - (sniper ? (p.lastBlockSniper || 0) : (p.lastBlockHit || 0)) < (sniper ? SNIPER_MIN_MS : MIN_HIT_MS)) return;
     if (sniper) p.lastBlockSniper = now; else p.lastBlockHit = now;
     if (jungleTreeHit(i, sniper ? 'sniper' : 'ak')) return;          // [NY] seige trær i jungelen
