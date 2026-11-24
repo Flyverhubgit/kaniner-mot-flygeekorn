@@ -59,6 +59,7 @@ socket.on('map', () => { for (const w of wireObjs.values()) scene.remove(w.g); w
 socket.emit('wireAsk');
 
 // [NY] SIKT OG SKYT: B = ta fram sprengladningen (i hånda). Sikt på et tre (maks 4 m) og "skyt" = ladningen festes der.
+//  Den fester seg på alt: trær, vegger, bakken – og helikoptre (letter et fiende-helikopter med tråden på: SMELL).
 //  Gå til neste tre (tråden dras etter deg), sikt og "skyt" igjen = enden av tråden festes. Tråden: 1,5–6 m.
 //  B igjen / Esc = legg bort. ANGRE: WIRE_AIM = false (da: gamle to-stegs måten med B der du står)
 const WIRE_TWO_STEP = true, WIRE_AIM = true, WIRE_MIN = 1.5, WIRE_MAX = 6, WIRE_REACH = 4;
@@ -69,6 +70,14 @@ function wireAim() {                                          // hva sikter du p
   camera.updateMatrixWorld(true);
   const o = camera.position.clone(), d = new THREE.Vector3(); camera.getWorldDirection(d);
   const h = typeof castleRay === 'function' ? castleRay(o, d, WIRE_REACH) : null;
+  let best = h ? h.dist : WIRE_REACH, hit = null;
+  if (typeof hueyMap !== 'undefined') for (const [id, hu] of hueyMap) {   // [NY] helikoptre: ladningen/tråden kan festes på dem også
+    if (hu.falling) continue;
+    const c = new THREE.Vector3(hu.cur.x, hu.cur.y + 1.6, hu.cur.z), oc = c.clone().sub(o), t = oc.dot(d), r = 1.9;
+    const m2 = oc.lengthSq() - t * t; if (t < 0 || m2 > r * r) continue;
+    const tt = t - Math.sqrt(r * r - m2); if (tt > 0 && tt < best) { best = tt; hit = id; }
+  }
+  if (hit !== null) { const p = o.clone().addScaledVector(d, best); p.huey = hit; return p; }
   if (h) return o.clone().addScaledVector(d, Math.max(0, h.dist - 0.03));
   if (d.y < -0.05) { const t = (player.feetY + 0.05 - o.y) / d.y; if (t > 0 && t < WIRE_REACH) return o.clone().addScaledVector(d, t); }   // bakken
   return null;
@@ -89,15 +98,15 @@ function wireClick() {                                         // "skyt" mens du
     const g = new THREE.Group(), ch = wireCharge(); ch.position.copy(p); g.add(ch);
     const lg = new THREE.Group(); const line = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 1, 4), new THREE.MeshStandardMaterial({ color: 0xa8b0b8, metalness: 0.7, roughness: 0.35 })); lg.add(line); g.add(lg);
     g.traverse(o => { o.raycast = () => {}; }); scene.add(g);
-    wireStage = { a: p.clone(), t: performance.now(), g, line };
-    bannerMsg = '🧨 Ladning festet! Gå til neste tre, sikt og skyt for å feste tråden'; bannerTime = 2.2;
+    wireStage = { a: p.clone(), ah: p.huey === undefined ? null : p.huey, t: performance.now(), g, line };
+    bannerMsg = p.huey !== undefined ? '🧨 Ladning på helikopteret! Fest tråden et annet sted' : '🧨 Ladning festet! Gå til neste tre, sikt og skyt for å feste tråden'; bannerTime = 2.2;
     return;
   }
   const L = p.distanceTo(wireStage.a);                         // 2) enden av tråden
   if (L < WIRE_MIN) { bannerMsg = 'Tråden er for kort – lenger bort'; bannerTime = 1.2; return; }
   if (L > WIRE_MAX) { bannerMsg = 'Tråden er for lang (maks 6 m)'; bannerTime = 1.2; return; }
   const a = wireStage.a;
-  socket.emit('wirePlace', { a: [+a.x.toFixed(2), +a.y.toFixed(2), +a.z.toFixed(2)], b: [+p.x.toFixed(2), +p.y.toFixed(2), +p.z.toFixed(2)] });
+  socket.emit('wirePlace', { a: [+a.x.toFixed(2), +a.y.toFixed(2), +a.z.toFixed(2)], b: [+p.x.toFixed(2), +p.y.toFixed(2), +p.z.toFixed(2)], ah: wireStage.ah, bh: p.huey === undefined ? null : p.huey });
   wiresLeftC--;
   wireModeOff();
   bannerMsg = '🪤 Snubletråd spent (' + wiresLeftC + ' igjen)'; bannerTime = 1.4;
@@ -122,7 +131,7 @@ function wireStageFrame() {
   if (wireMode && (!wireMapOn() || !alive || wireBusy())) { wireModeOff(); return; }
   if (!wireMode) return;
   const p = wireAim();
-  if (!wireStage) { if (wireUi) { wireUi.textContent = p ? '🧨 Skyt = fest ladningen her (B = legg bort)' : '🎯 Sikt på et tre (maks 4 m)'; wireUi.style.display = 'block'; } return; }
+  if (!wireStage) { if (wireUi) { wireUi.textContent = p ? (p.huey !== undefined ? '🚁 Skyt = fest ladningen på helikopteret' : '🧨 Skyt = fest ladningen her (B = legg bort)') : '🎯 Sikt på et tre, en vegg, bakken eller et helikopter (maks 4 m)'; wireUi.style.display = 'block'; } return; }
   if (performance.now() - wireStage.t > 45000) { wireModeOff(); return; }
   const hand = new THREE.Vector3(0.2, -0.3, -0.5).applyMatrix4(camera.matrixWorld);   // tråden går fra ladningen til hånda di
   const a = wireStage.a, L = (p || hand).distanceTo(a);

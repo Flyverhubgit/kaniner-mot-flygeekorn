@@ -3963,6 +3963,7 @@ function segCross(p1x, p1z, p2x, p2z, q1x, q1z, q2x, q2z) {   // false, eller hv
 }
 function wireBoom(w, victim) {
   wires.delete(w.id);
+  for (const h of [...hueys.values()]) if (Math.hypot(h.x - w.ax, h.y + 1.6 - w.ay, h.z - w.az) < 4) { h.hp = 0; hueyDown(h, players[w.owner] || null); }   // [NY] ladningen sprenger et helikopter like ved
   const cx = w.ax, cz = w.az;                                     // [NY] smeller ved ladningen (på treet)
   io.emit('boom', { id: 'wire' + w.id, p: [cx, w.ay, cz], big: 1.3 });
   io.emit('wireBoom', { id: w.id, name: victim ? victim.name : '' });
@@ -3974,6 +3975,18 @@ function wireBoom(w, victim) {
   });
   wireSend();
 }
+setInterval(() => {                                               // [NY] tråder festet på helikoptre: letter det, smeller det
+  if (!wireOn() || intermission) return;
+  for (const w of [...wires.values()]) for (const k of ['ah', 'bh']) {
+    const a = w[k]; if (!a) continue;
+    const h = hueys.get(a.id);
+    const moved = !h || Math.hypot(h.x - a.x, h.y - a.y, h.z - a.z) > 1;
+    if (!moved) continue;
+    const pilot = h && h.pilot && players[h.pilot];
+    if (h && h.team === w.team && (!pilot || pilot.team === w.team)) { wires.delete(w.id); wireSend(); break; }   // eget lag flyr: tråden løsner bare
+    wireBoom(w, pilot || null); break;
+  }
+}, 150);
 setInterval(() => {
   if (!wireOn()) { if (wires.size) { wires.clear(); wireSend(); } return; }
   for (const id in players) {
@@ -4010,7 +4023,8 @@ io.on('connection', socket => {
     p.wiresLeft--;
     const mine = [...wires.values()].filter(w => w.owner === p.id);
     if (mine.length >= WIRE_MAX_PER_PLAYER) wires.delete(mine[0].id);
-    const w = { id: ++wireSeq, team: p.team, owner: p.id, ownerName: p.name, ax, az, bx, bz, y, ay, by, at: Date.now() };
+    const hOf = id => { const h = (id !== null && id !== undefined) ? hueys.get(id | 0) : null; return h ? { id: h.id, x: h.x, y: h.y, z: h.z } : null; };   // [NY] festet på et helikopter
+    const w = { id: ++wireSeq, team: p.team, owner: p.id, ownerName: p.name, ax, az, bx, bz, y, ay, by, at: Date.now(), ah: hOf(d.ah), bh: hOf(d.bh) };
     wires.set(w.id, w);
     p.protectedUntil = 0;
     wireSend();
