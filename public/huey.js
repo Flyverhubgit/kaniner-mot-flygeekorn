@@ -109,10 +109,10 @@ socket.on('hueys', list => {
     const tn = t ? 'squirrel' : 'bunny';
     if (h.team !== tn) { h.team = tn; h.g.traverse(o => { if (o.isMesh && o.userData.teamMark) o.material.color.setHex(tn === 'bunny' ? 0xd84a4a : 0x4ab04a); }); }   // [NY] stjålet: nytt lagmerke
     h.player = !!isPl; h.pilot = pilot; h.gl = gl; h.gr = gr; h.pass = pass;
-    if (h.player && !h.g.userData.gunPivotL.visible) { h.g.userData.gunPivotL.visible = true; h.g.userData.standL.visible = true; }
+    if (!h.g.userData.standL.visible) { h.g.userData.gunPivotL.visible = true; h.g.userData.standL.visible = true; }   // [NY] M2 i begge dører på alle hueyer
     if (pax.includes(myId)) {
       hueyMineId = id; chuteMe = null;
-      hueySeat = h.player ? (pilot === myId ? 'pilot' : gl === myId ? 'gl' : gr === myId ? 'gr' : 'pass') : gunner === myId ? 'gunner' : 'p';
+      hueySeat = h.player ? (pilot === myId ? 'pilot' : gl === myId ? 'gl' : gr === myId ? 'gr' : 'pass') : gunner === myId ? 'gunner' : gl === myId ? 'gl' : 'p';   // robot-huey: gl = venstre dør
       hueyIsGunner = hueySeat === 'gunner' || hueySeat === 'gl' || hueySeat === 'gr';
     }
   });
@@ -141,7 +141,7 @@ window.addEventListener('keydown', e => {
   if (e.code === 'KeyE') { socket.emit(pl ? 'phOut' : 'hueyJump'); e.stopImmediatePropagation(); e.preventDefault(); }
   else if (pl && /^Digit[1-4]$/.test(e.code)) { socket.emit('phSeat', { seat: ['pilot', 'gr', 'gl', 'pass'][+e.code.slice(5) - 1] }); e.stopImmediatePropagation(); e.preventDefault(); }   // [NY] bytt sete
   else if (pl && e.code === 'KeyV' && typeof phCamToggle === 'function') { phCamToggle(); e.stopImmediatePropagation(); }
-  else if (e.code === 'KeyF') { const h = hueyMap.get(hueyMineId); if (h && !h.gunner) socket.emit('hueyGun'); e.stopImmediatePropagation(); }
+  else if (e.code === 'KeyF') { const h = hueyMap.get(hueyMineId); if (h && (!h.gunner || !h.gl)) socket.emit('hueyGun'); e.stopImmediatePropagation(); }
 }, true);
 function hueyUiFrame() {
   if (!hueyUi) {
@@ -157,7 +157,7 @@ function hueyUiFrame() {
   }
   const h = hueyAboard() && hueyMap.get(hueyMineId);
   if (h) {
-    const tip = hueyIsGunner ? 'Du er dørskytter – klikk = .50 (M2)' : !h.gunner ? (isTouch ? '' : 'F = ta M60-en') : '';
+    const tip = hueyIsGunner ? 'Du er dørskytter – klikk = .50 (M2)' : !h.gunner || !h.gl ? (isTouch ? '' : 'F = ta en M2') : '';
     if (h.player) hueyUi.textContent = { pilot: '🚁 Pilot · Mellomrom opp · Shift ned · V kamera', gr: '🎯 Høyre dør (M2)', gl: '🎯 Venstre dør (M2)', pass: '🪂 Passasjer' }[hueySeat] + (isTouch ? '' : ' · E ut/hopp · 1–4 bytt sete');
     else hueyUi.textContent = '🚁 ' + (isTouch ? 'Trykk 🪂 HOPP' : 'E = hopp ut') + ' · ut om ' + (h.ejectIn || 0) + ' s' + (tip ? ' · ' + tip : '');
     hueyUi.style.display = 'block';
@@ -256,7 +256,7 @@ function hueyFrame() {
     else h.g.rotation.set(Math.min(0.14, (h.speed || 0) / 34 * 0.14), h.cur.yaw, -dy * 0.6);   // nesa ned når den flyr, krenger i svinger
     if (h.player && !h.pilot && h.cur.y - jgChuteGround(h.cur.x, h.cur.z) < 0.3) { h.g.userData.rotor.rotation.y -= dt * 24; }   // parkert: rotoren står nesten stille
     h.g.userData.rotor.rotation.y += dt * 28; h.g.userData.tail.rotation.x += dt * 50;
-    h.g.userData.gunPivot.visible = true; if (h.player) h.g.userData.gunPivotL.visible = true;   // (skjules igjen under hvis det er din egen)
+    h.g.userData.gunPivot.visible = true; h.g.userData.gunPivotL.visible = true;   // (skjules igjen under hvis det er din egen)
     if (h.hp < 350 && Math.random() < 0.3) puffSmoke(new THREE.Vector3(...Object.values(hueyLocal(h, 0, 2.2, -2))));   // skadet: røyk
     if (!h.player) (h.pax || []).forEach(pid => hueyIdsAboard.add(pid));   // (i spiller-hueyen vises de som sitter inne)
     hueySound(h);
@@ -275,7 +275,7 @@ function hueyFrame() {
     if (hueySeat === 'pilot' && typeof phPilotCam === 'function') phPilotCam(h);   // tredjeperson-kamera (V bytter)
     const myPivot = hueySeat === 'gl' ? h.g.userData.gunPivotL : h.g.userData.gunPivot;
     h.g.userData.gunPivot.visible = !(hueyIsGunner && hueySeat !== 'gl');   // du ser din egen M2 i hendene i stedet
-    if (h.player) h.g.userData.gunPivotL.visible = hueySeat !== 'gl';
+    h.g.userData.gunPivotL.visible = hueySeat !== 'gl';
     if (hueyIsGunner) {
       const dir = new THREE.Vector3(); camera.getWorldDirection(dir);
       myPivot.lookAt(camera.position.clone().addScaledVector(dir, 30));

@@ -3729,6 +3729,7 @@ function hueyBoard(p) {
   h.pax.add(p.id); h.boardAt[p.id] = Date.now();
   if (p.isBot) p.jumpAt = HUEY_MESSY ? Date.now() + 2500 + Math.random() * 6000 : 0;   // [NY] roboter hopper hver for seg underveis
   if (!p.isBot && !h.gunner) h.gunner = p.id;              // første menneske om bord får M60-en
+  else if (!p.isBot && !h.gunner2) h.gunner2 = p.id;       // [NY] andre menneske: venstre dør
   p.huey = h.id; p.chute = false;
   p.protectedUntil = Infinity;                            // trygg inne i helikopteret
   p.x = h.x; p.y = h.y; p.z = h.z;
@@ -3740,6 +3741,7 @@ function hueyLeave(p, jump) {                             // ut av hueyen (hopp 
   if (!h) return;
   h.pax.delete(p.id); delete h.boardAt[p.id];
   if (h.gunner === p.id) h.gunner = null;
+  if (h.gunner2 === p.id) h.gunner2 = null;
   if (h.player) ['pilot', 'gl', 'gr', 'pass'].forEach(k => { if (h[k] === p.id) h[k] = null; });   // [NY] spiller-huey: ledig sete
   if (!jump || !p.alive) { if (p.protectedUntil === Infinity) p.protectedUntil = 0; return; }
   const side = (Math.random() < 0.5 ? -1 : 1) * 1.6;
@@ -3749,7 +3751,7 @@ function hueyLeave(p, jump) {                             // ut av hueyen (hopp 
   io.emit('chute', { id: p.id, on: true });
   if (!p.isBot) io.to(p.id).emit('hueyJump', { x: +p.x.toFixed(2), y: +p.y.toFixed(2), z: +p.z.toFixed(2), vx: h.phase === 'in' ? +(Math.sin(h.yaw) * 6).toFixed(2) : 0, vz: h.phase === 'in' ? +(Math.cos(h.yaw) * 6).toFixed(2) : 0 });
 }
-function hueyGunOk(p) { const h = p.huey && hueys.get(p.huey); return !!(h && (h.gunner === p.id || (h.player && (h.gl === p.id || h.gr === p.id)))); }   // [NY] begge dørene i spiller-hueyen
+function hueyGunOk(p) { const h = p.huey && hueys.get(p.huey); return !!(h && (h.gunner === p.id || h.gunner2 === p.id || (h.player && (h.gl === p.id || h.gr === p.id)))); }   // [NY] begge dørene i spiller-hueyen
 function hueyRocket(pos, p) {
   if (!hueyOn()) return;
   for (const h of hueys.values()) {
@@ -3797,7 +3799,7 @@ setInterval(() => {
     // passasjerer følger med; roboter hopper når de er fremme, alle kastes ut etter 15 sek
     [...h.pax].forEach(id => {
       const q = players[id];
-      if (!q || !q.alive || q.huey !== h.id) { h.pax.delete(id); if (h.gunner === id) h.gunner = null; return; }
+      if (!q || !q.alive || q.huey !== h.id) { h.pax.delete(id); if (h.gunner === id) h.gunner = null; if (h.gunner2 === id) h.gunner2 = null; return; }
       q.x = h.x; q.y = h.y; q.z = h.z;
       if (now - h.boardAt[id] > HUEY.eject || (q.isBot && (HUEY_MESSY ? now > q.jumpAt : h.phase === 'hover' && now - h.hoverAt > 800 + (q.id.length % 5) * 400))) hueyLeave(q, true);
     });
@@ -3817,7 +3819,7 @@ setInterval(() => {
   if (hueys.size || hueySent) {
     hueySent = hueys.size > 0;
     io.emit('hueys', [...hueys.values()].map(h => [h.id, h.team === 'bunny' ? 0 : 1, +h.x.toFixed(2), +h.y.toFixed(2), +h.z.toFixed(2), +h.yaw.toFixed(3), h.hp, h.gunner || '', [...h.pax], h.phase === 'in' ? 0 : h.phase === 'hover' ? 1 : 2, h.player ? 0 : Math.max(0, Math.ceil((HUEY.eject - (now - Math.min(...[...h.pax].map(i => h.boardAt[i] || now), now))) / 1000)),
-      h.player ? 1 : 0, h.pilot || '', h.gl || '', h.gr || '', h.pass || '', +(h.pitch || 0).toFixed(3), +(h.roll || 0).toFixed(3)]));
+      h.player ? 1 : 0, h.pilot || '', h.player ? h.gl || '' : h.gunner2 || '', h.gr || '', h.pass || '', +(h.pitch || 0).toFixed(3), +(h.roll || 0).toFixed(3)]));
   }
 }, 100);
 let hueySent = false;
@@ -3843,7 +3845,7 @@ let hueySent = false;
 io.on('connection', socket => {
   socket.on('join', () => setTimeout(() => { const p = players[socket.id]; if (p && hueyOn() && p.alive && !p.huey) hueyBoard(p); }, 300));
   socket.on('hueyJump', () => { const p = players[socket.id]; if (p && p.huey) hueyLeave(p, true); });
-  socket.on('hueyGun', () => { const p = players[socket.id], h = p && p.huey && hueys.get(p.huey); if (h && !h.gunner) h.gunner = p.id; });
+  socket.on('hueyGun', () => { const p = players[socket.id], h = p && p.huey && hueys.get(p.huey); if (!h || h.gunner === p.id || h.gunner2 === p.id) return; if (!h.gunner) h.gunner = p.id; else if (!h.gunner2) h.gunner2 = p.id; });
   socket.on('chuteLand', () => { const p = players[socket.id]; if (p && p.chute) { p.chute = false; io.emit('chute', { id: p.id, on: false }); } });
   socket.on('disconnect', () => { for (const h of hueys.values()) { h.pax.delete(socket.id); if (h.gunner === socket.id) h.gunner = null; } });
 });
