@@ -2252,7 +2252,9 @@ setInterval(() => {
     if (pt && p.alive) { (byMap[pt.map] = byMap[pt.map] || []).push(p.name); inPortal++; }
   });
   if (inPortal && !lobbyVote.firstAt) lobbyVote.firstAt = now;
-  if (!inPortal) { lobbyVote.firstAt = 0; lobbyVote.countdownAt = 0; }
+  if (inPortal) lobbyVote.lastAt = now;
+  if (!inPortal && now - (lobbyVote.lastAt || 0) > 3000) { lobbyVote.firstAt = 0; lobbyVote.countdownAt = 0; }   // [FIKS] nullstill først etter 3 sek uten stemmer (et lite steg ut av portalen satte klokka tilbake til 15)
+  if (!inPortal && lobbyVote.firstAt) { const st = { votes: {}, countdown: null, waitLeft: Math.max(0, Math.ceil((lobbyVote.firstAt + LOBBY_WAIT_MS - now) / 1000)), chosen: null }; const sg = JSON.stringify(st); if (sg !== lobbyVote.sig) { lobbyVote.sig = sg; io.emit('lobbyVote', st); } return; }   // ingen i portalen akkurat nå: klokka står
   const everyone = all.length > 0 && inPortal === all.length;
   const waited = lobbyVote.firstAt && now - lobbyVote.firstAt >= LOBBY_WAIT_MS;
   if ((everyone || waited) && inPortal && !lobbyVote.countdownAt) lobbyVote.countdownAt = now + LOBBY_COUNT_MS;
