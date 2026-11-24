@@ -153,14 +153,14 @@ function hueyUiFrame() {
     hueyBtn = document.createElement('div');
     hueyBtn.textContent = '🪂 HOPP';
     hueyBtn.dataset.ownTouch = '1';
-    hueyBtn.style.cssText = 'position:fixed;right:18px;bottom:150px;background:rgba(70,90,40,0.85);color:#fff;font:700 18px Fredoka,sans-serif;padding:14px 18px;border-radius:16px;z-index:40;display:none;user-select:none';
+    hueyBtn.style.cssText = 'position:fixed;left:14px;top:66%;background:rgba(70,90,40,0.85);color:#fff;font:700 18px Fredoka,sans-serif;padding:14px 18px;border-radius:16px;z-index:40;display:none;user-select:none';
     hueyBtn.addEventListener('touchstart', e => { e.preventDefault(); e.stopPropagation(); if (hueyAboard()) { const hh = hueyMap.get(hueyMineId); socket.emit(hh && hh.player ? 'phOut' : 'hueyJump'); } }, { passive: false });
     document.body.appendChild(hueyBtn);
   }
   const h = hueyAboard() && hueyMap.get(hueyMineId);
   if (h) {
     const tip = hueyIsGunner ? 'Du er dørskytter – klikk = .50 (M2)' : !h.gunner || !h.gl ? (isTouch ? '' : 'F = ta en M2') : '';
-    if (h.player) hueyUi.textContent = { pilot: '🚁 Pilot · Mellomrom opp · Shift ned · V kamera', gr: '🎯 Høyre dør (M2)', gl: '🎯 Venstre dør (M2)', pass: '🪂 Passasjer' }[hueySeat] + (isTouch ? '' : ' · E ut/hopp · 1–4 bytt sete');
+    if (h.player) hueyUi.textContent = { pilot: isTouch ? '🚁 Pilot · venstre tommel styrer · sveip for å snu' : '🚁 Pilot · Mellomrom opp · Shift ned · V kamera', gr: '🎯 Høyre dør (M2)', gl: '🎯 Venstre dør (M2)', pass: '🪂 Passasjer' }[hueySeat] + (isTouch ? '' : ' · E ut/hopp · 1–4 bytt sete');
     else hueyUi.textContent = '🚁 ' + (isTouch ? 'Trykk 🪂 HOPP' : 'E = hopp ut') + ' · ut om ' + (h.ejectIn || 0) + ' s' + (tip ? ' · ' + tip : '');
     hueyUi.style.display = 'block';
   } else if (chuteMe) { hueyUi.textContent = '🪂 W/A/S/D styrer fallskjermen'; hueyUi.style.display = 'block'; }
@@ -235,7 +235,7 @@ function jgChuteGround(x, z) {                                // bakken under fa
   return 0;
 }
 function hueyFrame() {
-  const now = performance.now(), dt = Math.min(0.1, (now - (hueyLastT || now)) / 1000); hueyLastT = now;
+  const now = performance.now(), dt = Math.min(0.35, (now - (hueyLastT || now)) / 1000); hueyLastT = now;   // [FIKS] tåler lav fps på mobil (var maks 0,1 s = sakte film)
   hueyIdsAboard.clear();
   if (!hueyOnMap()) { if (hueyUi) { hueyUi.style.display = 'none'; hueyBtn.style.display = 'none'; } return; }
   for (const [id, h] of hueyMap) {

@@ -7,6 +7,7 @@
 // ===================================================================
 const PLAYER_HUEY_C = true;
 const PHS = { fwd: 30, side: 12, up: 9, turn: 1.5, acc: 1.4, crash: 15, top: 110 };   // [NY] krasj først over 15 m/s (var 10)
+let phSeatRow = null;
 let phl = null, phSendT = 0, phCamBack = true, phUi = null, phInBtn = null, phUpBtn = null, phDnBtn = null, phUpHeld = false, phDnHeld = false, phNearId = null;
 function phCamToggle() { phCamBack = !phCamBack; }
 function phCell(x, y, z) {                                     // er det en kloss her? (trær og løv teller)
@@ -17,6 +18,10 @@ function phCell(x, y, z) {                                     // er det en klos
   return W.grid[iy * J.NX * J.NZ + iz * J.NX + ix];
 }
 function phStep(h, dt) {                                       // kalles fra huey.js hver frame når DU er pilot
+  if (dt > 0.06) { const n = Math.ceil(dt / 0.05); phStep1(h, 0); for (let i = 0; i < n && phl !== null; i++) phStep1(h, dt / n); return; }   // [FIKS] lav fps (mobil): flere små steg, samme fart som på PC
+  phStep1(h, dt);
+}
+function phStep1(h, dt) {
   if (!phl || phl.id !== h.id) { const t = h.tgt.x !== undefined ? h.tgt : h.cur; phl = { id: h.id, x: t.x, y: t.y, z: t.z, yaw: t.yaw, vx: 0, vy: 0, vz: 0, pitch: 0, roll: 0 }; }   // [FIKS] start alltid der serveren sier hueyen står
   let fwd = touchMove.y, side = touchMove.x;
   if (keys['KeyW'] || keys['ArrowUp']) fwd += 1;
@@ -63,6 +68,7 @@ function phStep(h, dt) {                                       // kalles fra hue
   phl.roll += (Math.max(-0.45, Math.min(0.45, vs / PHS.side * 0.2 + turn / Math.max(dt, 0.001) * 0.18)) - phl.roll) * Math.min(1, dt * 3);
   Object.assign(h.cur, { x: phl.x, y: phl.y, z: phl.z, yaw: phl.yaw, pitch: phl.pitch, roll: phl.roll });
   Object.assign(h.tgt, { x: phl.x, y: phl.y, z: phl.z, yaw: phl.yaw });
+  if (!dt) return;
   phSendT -= dt;
   if (phSendT <= 0) { phSendT = 0.1; socket.emit('phMove', { id: phl.id, x: +phl.x.toFixed(2), y: +phl.y.toFixed(2), z: +phl.z.toFixed(2), yaw: +phl.yaw.toFixed(3), p: +phl.pitch.toFixed(3), r: +phl.roll.toFixed(3) }); }
 }
@@ -77,7 +83,7 @@ socket.on('phExit', d => { player.x = d.x; player.z = d.z; player.feetY = d.y; p
 // ---------- gå om bord ----------
 function phNearest() {
   if (!PLAYER_HUEY_C || !hueyOnMap() || !alive || hueyAboard() || (typeof chuteMe !== 'undefined' && chuteMe)) return null;
-  let best = null, bd = 7;
+  let best = null, bd = 9;   // [FIKS] litt lenger rekkevidde (lettere på mobil)
   for (const [id, h] of hueyMap) {
     if (!h.player || h.falling) continue;
     if (h.team !== myTeam && (h.pax || []).some(id => others[id] && others[id].team === h.team)) continue;   // [NY] fiende-huey: kan stjeles hvis ingen fiender er i den
@@ -115,9 +121,12 @@ function phFrame() {
     document.body.appendChild(phUi);
     if (isTouch) {
       const mk = (txt, css) => { const b = document.createElement('div'); b.textContent = txt; b.dataset.ownTouch = '1'; b.style.cssText = 'position:fixed;z-index:40;display:none;user-select:none;color:#fff;font:700 16px Fredoka,sans-serif;background:rgba(60,80,40,0.8);border-radius:14px;padding:12px 14px;' + css; document.body.appendChild(b); return b; };
-      phInBtn = mk('🚁 INN', 'right:18px;bottom:220px');
+      phInBtn = mk('🚁 GÅ INN', 'left:50%;top:62%;transform:translateX(-50%);font-size:22px;padding:16px 26px;background:rgba(60,110,40,0.9);border:2px solid #fff');   // [FIKS] stor knapp midt på (ble dekket av andre knapper)
       phInBtn.addEventListener('touchstart', e => { e.preventDefault(); e.stopPropagation(); phBoard(); }, { passive: false });
-      phUpBtn = mk('⬆️', 'right:18px;bottom:300px'); phDnBtn = mk('⬇️', 'right:18px;bottom:230px');
+      phUpBtn = mk('⬆️ OPP', 'left:14px;top:34%;font-size:18px;padding:14px 16px'); phDnBtn = mk('⬇️ NED', 'left:14px;top:50%;font-size:18px;padding:14px 16px');   // [FIKS] til venstre, over styrespaken
+      phSeatRow = document.createElement('div'); phSeatRow.dataset.ownTouch = '1'; phSeatRow.style.cssText = 'position:fixed;left:50%;bottom:14px;transform:translateX(-50%);z-index:40;display:none;gap:6px';
+      [['🧑‍✈️', 'pilot'], ['🎯H', 'gr'], ['🎯V', 'gl'], ['🪑', 'pass']].forEach(([t, seat]) => { const b = document.createElement('span'); b.textContent = t; b.dataset.ownTouch = '1'; b.dataset.seat = seat; b.style.cssText = 'display:inline-block;margin:0 3px;color:#fff;font:700 15px Fredoka,sans-serif;background:rgba(40,60,30,0.85);border-radius:12px;padding:10px 12px;border:2px solid transparent'; b.addEventListener('touchstart', e => { e.preventDefault(); e.stopPropagation(); socket.emit('phSeat', { seat }); }, { passive: false }); phSeatRow.appendChild(b); });
+      document.body.appendChild(phSeatRow);   // [NY] bytt sete på mobil
       phUpBtn.addEventListener('touchstart', e => { e.preventDefault(); e.stopPropagation(); phUpHeld = true; }, { passive: false });
       phUpBtn.addEventListener('touchend', e => { e.preventDefault(); phUpHeld = false; }, { passive: false });
       phDnBtn.addEventListener('touchstart', e => { e.preventDefault(); e.stopPropagation(); phDnHeld = true; }, { passive: false });
@@ -134,6 +143,7 @@ function phFrame() {
   if (phInBtn) phInBtn.style.display = near ? 'block' : 'none';
   const pilot = hueyAboard() && hueySeat === 'pilot';
   if (phUpBtn) { phUpBtn.style.display = pilot ? 'block' : 'none'; phDnBtn.style.display = pilot ? 'block' : 'none'; }
+  if (phSeatRow) { const hh = hueyAboard() && hueyMap.get(hueyMineId), on = !!(hh && hh.player); phSeatRow.style.display = on ? 'block' : 'none'; if (on) phSeatRow.childNodes.forEach(b => { b.style.borderColor = b.dataset.seat === hueySeat ? '#ffd34d' : 'transparent'; b.style.opacity = !hh[b.dataset.seat] || b.dataset.seat === hueySeat ? 1 : 0.4; }); }
   if (!pilot) { phUpHeld = false; phDnHeld = false; }
 }
 if (PLAYER_HUEY_C && typeof renderFrame === 'function') {
@@ -149,3 +159,21 @@ if (PLAYER_HUEY_C && typeof renderFrame === 'function') {
   renderFrame = function () { try { if (phl && !(hueyAboard() && hueySeat === 'pilot' && hueyMineId === phl.id)) phl = null; } catch (e) {} return renderFramePhReset.apply(this, arguments); };
 }
 socket.on('phFix', d => { if (phl && phl.id === d.id) Object.assign(phl, { x: d.x, y: d.y, z: d.z, yaw: d.yaw, vx: 0, vy: 0, vz: 0 }); });   // [FIKS] serveren retter opp
+// [NY] MOBIL I HUEYEN: skjul knapper du ikke trenger. Pilot/passasjer: ingen våpenknapper. Dørskytter: bare SKYT.
+//  OPP/NED ligger til venstre der venstre SKYT-knapp ellers er.
+let phTouchWas = '';
+function phTouchButtons() {
+  const b = window.__mobBtns; if (!isTouch || !b) return;
+  const hh = hueyAboard() && hueyMap.get(hueyMineId), k = hh ? (hh.player ? hueySeat : 'robot-' + (hueyIsGunner ? 'g' : 'p')) : '';
+  if (!k && !phTouchWas) return;
+  phTouchWas = k;
+  const gun = k && (hueySeat === 'gr' || hueySeat === 'gl' || hueySeat === 'gunner');
+  for (const n in b) { const el = b[n]; if (!el || !el.style) continue; el.style.visibility = !k ? '' : (n === 'fireBtn' && gun) ? '' : 'hidden'; }
+  const lf = typeof leftFire !== 'undefined' ? leftFire : null;
+  if (lf) lf.style.visibility = !k || gun ? '' : 'hidden';
+  if (typeof setBtn !== 'undefined') setBtn.style.visibility = k ? 'hidden' : '';
+}
+if (PLAYER_HUEY_C && typeof renderFrame === 'function') {
+  const renderFramePhTouch = renderFrame;
+  renderFrame = function () { const r = renderFramePhTouch.apply(this, arguments); try { phTouchButtons(); } catch (e) {} return r; };   // etter at spillet har satt knappene
+}
