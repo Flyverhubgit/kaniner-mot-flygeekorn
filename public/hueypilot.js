@@ -6,7 +6,7 @@
 //  Kuler mot hueyen: litt skade på den, og de inni kan treffes gjennom veggen. ANGRE: PLAYER_HUEY_C = false
 // ===================================================================
 const PLAYER_HUEY_C = true;
-const PHS = { fwd: 30, side: 12, up: 9, turn: 1.5, acc: 1.4, crash: 10, top: 110 };
+const PHS = { fwd: 30, side: 12, up: 9, turn: 1.5, acc: 1.4, crash: 15, top: 110 };   // [NY] krasj først over 15 m/s (var 10)
 let phl = null, phSendT = 0, phCamBack = true, phUi = null, phInBtn = null, phUpBtn = null, phDnBtn = null, phUpHeld = false, phDnHeld = false, phNearId = null;
 function phCamToggle() { phCamBack = !phCamBack; }
 function phCell(x, y, z) {                                     // er det en kloss her? (trær og løv teller)
@@ -37,17 +37,21 @@ function phStep(h, dt) {                                       // kalles fra hue
   const k = Math.min(1, dt * PHS.acc);
   phl.vx += (tvx - phl.vx) * k; phl.vz += (tvz - phl.vz) * k;
   phl.vy += (up * PHS.up - phl.vy) * Math.min(1, dt * 3);
+  const agl = phl.y - ground;                                    // [NY] lettere landing: nær bakken bremser den ned av seg selv
+  if (agl < 6 && phl.vy < -2.5) phl.vy = Math.max(phl.vy, -2.5 - agl * 0.4);
   let nx = phl.x + phl.vx * dt, ny = phl.y + phl.vy * dt, nz = phl.z + phl.vz * dt;
   // kanten av kartet: snu
   if (Math.abs(nx) > 395 || Math.abs(nz) > 395) { nx = Math.max(-395, Math.min(395, nx)); nz = Math.max(-395, Math.min(395, nz)); phl.vx *= -0.3; phl.vz *= -0.3; bannerMsg = '↩️ Kanten av kartet!'; bannerTime = 1.2; }
   ny = Math.min(PHS.top, ny);
   const g2 = jgChuteGround(nx, nz);
-  if (ny < g2) { if (phl.vy < -7) { socket.emit('phCrash'); phl = null; return; } ny = g2; phl.vy = 0; }   // for hard landing = krasj
+  if (ny < g2) { if (phl.vy < -12) { socket.emit('phCrash'); phl = null; return; } ny = g2; phl.vy = 0; phl.vx *= 0.5; phl.vz *= 0.5; }   // bare skikkelig hard landing = krasj
   // trær og hus: sjekk nesa, midten, halen og rotortuppene
   const spd = Math.hypot(phl.vx, phl.vz, phl.vy);
   const pts = [[0, 1.4, 0], [0, 1.4, 3.4], [0, 2.2, -7.5], [6.2, 3.3, 0.2], [-6.2, 3.3, 0.2], [0, 3.3, 6.4]];
   let hit = false;
-  for (const [lx, ly, lz] of pts) { const wx = nx + lx * Math.cos(phl.yaw) + lz * Math.sin(phl.yaw), wz = nz - lx * Math.sin(phl.yaw) + lz * Math.cos(phl.yaw); if (phCell(wx, ny + ly, wz)) { hit = true; break; } }
+  let soft = false;
+  for (const [lx, ly, lz] of pts) { const wx = nx + lx * Math.cos(phl.yaw) + lz * Math.sin(phl.yaw), wz = nz - lx * Math.sin(phl.yaw) + lz * Math.cos(phl.yaw), c = phCell(wx, ny + ly, wz); if (!c) continue; const J = JUNGLE.T; if (c === J.LEAF || c === J.LEAF2 || c === J.PALM) soft = true; else { hit = true; break; } }   // [NY] løv: bare bremser (ikke krasj)
+  if (!hit && soft) { phl.vx *= 1 - Math.min(1, dt * 3); phl.vz *= 1 - Math.min(1, dt * 3); }
   if (hit) {
     if (spd > PHS.crash) { socket.emit('phCrash'); phl = null; return; }
     nx = phl.x; ny = phl.y; nz = phl.z; phl.vx *= -0.2; phl.vz *= -0.2; phl.vy = Math.max(0, phl.vy);   // sakte: bare dult
@@ -65,7 +69,8 @@ function phStep(h, dt) {                                       // kalles fra hue
 function phPilotCam(h) {                                       // bak og over hueyen (V = cockpit)
   if (!phCamBack) return;
   const dir = new THREE.Vector3(); camera.getWorldDirection(dir);
-  camera.position.set(h.cur.x - dir.x * 14, h.cur.y + 3.2 - dir.y * 14 + 3, h.cur.z - dir.z * 14);
+  const hl = Math.hypot(dir.x, dir.z) || 1, up = Math.max(-1.5, Math.min(5, -dir.y * 6));   // [FIKS] kameraet steg 20–30 m når du så ned
+  camera.position.set(h.cur.x - dir.x / hl * 13, h.cur.y + 4.5 + up, h.cur.z - dir.z / hl * 13);
 }
 socket.on('phExit', d => { player.x = d.x; player.z = d.z; player.feetY = d.y; player.vy = 0; phl = null; });
 

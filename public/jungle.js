@@ -49,7 +49,7 @@ function jungleBuild() {
     const gr = x.createRadialGradient(64, 64, 6, 64, 64, 64); gr.addColorStop(0, 'rgba(235,240,235,0.9)'); gr.addColorStop(1, 'rgba(235,240,235,0)');
     x.fillStyle = gr; x.fillRect(0, 0, 128, 128);
   });
-  const fogMat = new THREE.MeshBasicMaterial({ map: fogTex, transparent: true, opacity: 0.32, depthWrite: false, fog: false });
+  const fogMat = new THREE.MeshBasicMaterial({ map: fogTex, transparent: true, opacity: 0.2, depthWrite: false, fog: true });   // [FIKS] tåke-flakene følger tåka (lyste hvitt langt unna)
   JUNGLE.PADDIES.forEach(p => {
     const w = new THREE.Mesh(new THREE.PlaneGeometry(p.w, p.d), new THREE.MeshStandardMaterial({ color: 0x7a8a6a, roughness: 0.1, metalness: 0.2, transparent: true, opacity: 0.8 }));
     w.rotation.x = -Math.PI / 2; w.position.set(p.x, 0.12, p.z); w.raycast = () => {}; jungleGroup.add(w);
@@ -177,7 +177,8 @@ let jFogK = 0;
     const lush = typeof JUNGLE_LUSH !== 'undefined' && JUNGLE_LUSH, baseNear = lush ? 6 : JUNGLE_R * 0.55, baseFar = (lush ? LUSH_FAR : JUNGLE_R + 10) + Math.max(0, camera.position.y - 22) * 2.5;   // [NY] høyt oppe (helikopter): ser lenger
     scene.fog.near = baseNear * (1 - jFogK) + 3 * jFogK;
     scene.fog.far = baseFar * (1 - jFogK) + 26 * jFogK;
-    if (jFogK > 0.01) scene.fog.color.setRGB(0.44 + 0.4 * jFogK, 0.54 + 0.34 * jFogK, 0.41 + 0.43 * jFogK);
+    if (jFogK > 0.01) scene.fog.color.setRGB(0.44 + 0.2 * jFogK, 0.54 + 0.15 * jFogK, 0.41 + 0.2 * jFogK);   // [FIKS] dusere tåke (ble kritthvit med glød på Høy grafikk)
+    if (jFogK > 0.01 && scene.background && scene.background.isColor) { scene.background.copy(scene.fog.color); renderer.setClearColor(scene.fog.color); }   // [FIKS] himmelen = tåke-fargen (trær i det fjerne lyste hvitt mot grønn himmel)
   }
   requestAnimationFrame(jungleLoop);
 })();

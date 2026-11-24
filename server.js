@@ -4253,3 +4253,48 @@ io.on('connection', socket => {
     if (h.hp <= 0) hueyDown(h, p);
   });
 });
+
+// ===================================================================
+// [NY] KLOSSER SOM IKKE HENGER FAST FALLER NED 🧱⬇️ (alle klosse-baner)
+//  Når klosser blir skutt eller sprengt bort, sjekker vi naboene: henger en klump ikke lenger fast i bakken
+//  (eller i noe som ikke kan ødelegges), faller hele klumpen ned og knuses. Trær i jungelen har egne regler.
+//  ANGRE: FALLING_BLOCKS = false
+// ===================================================================
+const FALLING_BLOCKS = true, FALL_SEARCH_MAX = 5000;
+function fallSettle(V, removed) {
+  const L = V.LIB, NX = L.NX, NZ = L.NZ, A = NX * NZ, G = V.grid, N = G.length;
+  const tree = mapName === 'jungle' && typeof jgTreeCell === 'function' ? jgTreeCell : () => false;
+  const supported = new Set(), floating = [];
+  const nb = i => { const x = i % NX, z = Math.floor(i / NX) % NZ, out = []; if (i >= A) out.push(i - A); if (x > 0) out.push(i - 1); if (x < NX - 1) out.push(i + 1); if (z > 0) out.push(i - NX); if (z < NZ - 1) out.push(i + NX); if (i + A < N) out.push(i + A); return out; };
+  const starts = new Set(); removed.forEach(i => nb(i).forEach(j => { if (G[j]) starts.add(j); }));
+  for (const s of starts) {
+    if (supported.has(s) || !G[s]) continue;
+    const seen = new Set([s]), stack = [s]; let ok = false;
+    while (stack.length) {
+      const i = stack.pop();
+      const t = G[i];
+      if (i < A || L.INFO[t].hp === 0 || tree(t) || supported.has(i)) { ok = true; break; }   // bakken, noe som tåler alt, et tre, eller en kjent bærende klump
+      if (seen.size > FALL_SEARCH_MAX) { ok = true; break; }   // stor klump: regn den som bærende
+      const n = nb(i);
+      for (let k = n.length - 1; k >= 0; k--) { const j = n[k]; if (G[j] && !seen.has(j)) { seen.add(j); stack.push(j); } }   // nedover først (første i lista = under)
+    }
+    if (ok) seen.forEach(i => supported.add(i)); else seen.forEach(i => floating.push(i));
+  }
+  if (!floating.length) return;
+  floating.forEach(i => { if (G[i] === BUILT_T) { const k = V.built.indexOf(i); if (k >= 0) V.built.splice(k, 1); } G[i] = 0; });
+  V.gone.push(...floating.filter(i => V.pristine[i]));
+  navDirty = true;
+  io.emit('blocksFall', { cells: floating });
+}
+{
+  const destroyCellsFall = destroyCells;
+  destroyCells = function (list) {
+    const V = vox();
+    if (!FALLING_BLOCKS || !V || !list || !list.length) return destroyCellsFall.apply(this, arguments);
+    const before = list.filter(i => V.grid[i]);
+    const r = destroyCellsFall.apply(this, arguments);
+    const removed = before.filter(i => !V.grid[i]);
+    if (removed.length) try { fallSettle(V, removed); } catch (e) { console.warn('fall', e); }
+    return r;
+  };
+}
