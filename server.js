@@ -4237,8 +4237,8 @@ io.on('connection', socket => {
     if (!h || !h.player || h.pilot !== p.id || !d) return;
     const x = num(d.x, -420, 420), y = num(d.y, -1, 140), z = num(d.z, -420, 420), yaw = num(d.yaw, -1e6, 1e6), pitch = num(d.p, -1, 1), roll = num(d.r, -1, 1);
     if ([x, y, z, yaw, pitch, roll].includes(null)) return;
-    const now = Date.now(), dt = Math.max(0.05, (now - h.at) / 1000);
-    if (Math.hypot(x - h.x, y - h.y, z - h.z) > PH.speed * dt * 1.6 + 2) return;   // for fort: avvis
+    const now = Date.now(), dt = Math.min(1, Math.max(0.05, (now - h.at) / 1000));   // [FIKS] maks 1 sek: et gammelt sted langt unna blir avvist (ikke teleport)
+    if (Math.hypot(x - h.x, y - h.y, z - h.z) > PH.speed * dt * 1.6 + 2) { socket.emit('phFix', { id: h.id, x: h.x, y: h.y, z: h.z, yaw: h.yaw }); return; }   // for fort: avvis og si fra hvor den egentlig er
     h.at = now; h.x = x; h.y = y; h.z = z; h.yaw = yaw; h.pitch = pitch; h.roll = roll;
   });
   socket.on('phCrash', () => {                                    // piloten krasjet i trær / bakken for fort

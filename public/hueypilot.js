@@ -17,7 +17,7 @@ function phCell(x, y, z) {                                     // er det en klos
   return W.grid[iy * J.NX * J.NZ + iz * J.NX + ix];
 }
 function phStep(h, dt) {                                       // kalles fra huey.js hver frame når DU er pilot
-  if (!phl || phl.id !== h.id) phl = { id: h.id, x: h.cur.x, y: h.cur.y, z: h.cur.z, yaw: h.cur.yaw, vx: 0, vy: 0, vz: 0, pitch: 0, roll: 0 };
+  if (!phl || phl.id !== h.id) { const t = h.tgt.x !== undefined ? h.tgt : h.cur; phl = { id: h.id, x: t.x, y: t.y, z: t.z, yaw: t.yaw, vx: 0, vy: 0, vz: 0, pitch: 0, roll: 0 }; }   // [FIKS] start alltid der serveren sier hueyen står
   let fwd = touchMove.y, side = touchMove.x;
   if (keys['KeyW'] || keys['ArrowUp']) fwd += 1;
   if (keys['KeyS'] || keys['ArrowDown']) fwd -= 1;
@@ -140,3 +140,12 @@ if (PLAYER_HUEY_C && typeof renderFrame === 'function') {
   const renderFramePh = renderFrame;
   renderFrame = function () { try { phFrame(); } catch (e) { console.warn('ph', e); } return renderFramePh.apply(this, arguments); };
 }
+
+// [FIKS] glem den lokale flyturen når du ikke er pilot lenger / dør / ny bane (ellers kunne en ny huey "hoppe" dit du døde sist)
+socket.on('respawn', () => { phl = null; });
+socket.on('map', () => { phl = null; });
+if (PLAYER_HUEY_C && typeof renderFrame === 'function') {
+  const renderFramePhReset = renderFrame;
+  renderFrame = function () { try { if (phl && !(hueyAboard() && hueySeat === 'pilot' && hueyMineId === phl.id)) phl = null; } catch (e) {} return renderFramePhReset.apply(this, arguments); };
+}
+socket.on('phFix', d => { if (phl && phl.id === d.id) Object.assign(phl, { x: d.x, y: d.y, z: d.z, yaw: d.yaw, vx: 0, vy: 0, vz: 0 }); });   // [FIKS] serveren retter opp
