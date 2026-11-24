@@ -6,7 +6,9 @@
 // ===================================================================
 const HUEY_ON = true;
 const HUEY_SEATS = [[-0.55, -0.9], [0.35, -0.9], [-0.85, 0.2], [-0.2, 0.75], [0.35, -0.1], [-0.7, -0.35]];   // passasjerer (x, z lokalt)
-const HUEY_GUN_SEAT = [0.75, 0.35];                                    // dørskytteren, ved høyre dør
+const HUEY_GUN_REAL = true;   // [NY] som en ekte Huey: skytterne sitter bakerst i lasterommet med geværet på en svingarm ut av døra. ANGRE: false
+const HUEY_GUN_SEAT = HUEY_GUN_REAL ? [0.8, -0.95] : [0.75, 0.35];                                    // dørskytteren, ved høyre dør
+const HUEY_GUN_EYE = HUEY_GUN_REAL ? [0.78, 1.98, -0.95] : [0.8, 1.95, 0.35];
 const hueyMap = new Map(), chuteSet = new Set(), chuteMeshes = {};
 let hueySeat = null;                                           // [NY] 'pilot' | 'gl' | 'gr' | 'pass' (spiller-huey), 'gunner' | 'p' (robot-huey)
 let hueyMineId = null, hueyIsGunner = false, chuteMe = null, hueyLastT = 0, hueyUi = null, hueyBtn = null;
@@ -170,6 +172,11 @@ function hueyUiFrame() {
 // ---------- M60 fra døra ----------
 function hueyFire() {
   const h = hueyMap.get(hueyMineId);
+  if (HUEY_GUN_REAL && h) {                                    // [NY] svingarmen: kan ikke skyte inn i helikopteret (bare ut av døra, ca. 170°)
+    const d = new THREE.Vector3(); camera.getWorldDirection(d);
+    const side = hueySeat === 'gl' ? -1 : 1, ox = Math.cos(h.cur.yaw) * side, oz = -Math.sin(h.cur.yaw) * side;
+    if (d.x * ox + d.z * oz < 0.08) { fireCooldown = 0.1; return; }
+  }
   fireCooldown = 0.11;                                       // M2: ca. 9 skudd i sekundet
   if (m2View) { m2View.userData.kick = 0.045; m2View.userData.flashT = 0.05; }
   camera.updateMatrixWorld(true);
@@ -270,7 +277,7 @@ function hueyFrame() {
     const seat = PS[hueySeat] || HUEY_SEATS[i % HUEY_SEATS.length];
     const w = hueyLocal(h, seat[0], 1.0, seat[1]);
     player.x = w.x; player.z = w.z; player.feetY = w.y; player.vy = 0;
-    const eye = hueySeat === 'gl' ? hueyLocal(h, -0.8, 1.95, 0.35) : hueyIsGunner ? hueyLocal(h, 0.8, 1.95, 0.35) : hueySeat === 'pilot' ? hueyLocal(h, -0.45, 1.85, 2.3) : { x: w.x, y: w.y + 0.75, z: w.z };   // dørskytteren står i døra bak M2-en
+    const eye = hueySeat === 'gl' ? hueyLocal(h, -HUEY_GUN_EYE[0], HUEY_GUN_EYE[1], HUEY_GUN_EYE[2]) : hueyIsGunner ? hueyLocal(h, HUEY_GUN_EYE[0], HUEY_GUN_EYE[1], HUEY_GUN_EYE[2]) : hueySeat === 'pilot' ? hueyLocal(h, -0.45, 1.85, 2.3) : { x: w.x, y: w.y + 0.75, z: w.z };   // dørskytteren står i døra bak M2-en
     camera.position.set(eye.x, eye.y, eye.z);
     if (hueySeat === 'pilot' && typeof phPilotCam === 'function') phPilotCam(h);   // tredjeperson-kamera (V bytter)
     const myPivot = hueySeat === 'gl' ? h.g.userData.gunPivotL : h.g.userData.gunPivot;

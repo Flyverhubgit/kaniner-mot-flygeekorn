@@ -44,7 +44,7 @@ function phStep(h, dt) {                                       // kalles fra hue
   if (Math.abs(nx) > 395 || Math.abs(nz) > 395) { nx = Math.max(-395, Math.min(395, nx)); nz = Math.max(-395, Math.min(395, nz)); phl.vx *= -0.3; phl.vz *= -0.3; bannerMsg = '↩️ Kanten av kartet!'; bannerTime = 1.2; }
   ny = Math.min(PHS.top, ny);
   const g2 = jgChuteGround(nx, nz);
-  if (ny < g2) { if (phl.vy < -12) { socket.emit('phCrash'); phl = null; return; } ny = g2; phl.vy = 0; phl.vx *= 0.5; phl.vz *= 0.5; }   // bare skikkelig hard landing = krasj
+  if (ny < g2) { if (phl.vy < -12) { socket.emit('phCrash', { id: phl && phl.id }); phl = null; return; } ny = g2; phl.vy = 0; phl.vx *= 0.5; phl.vz *= 0.5; }   // bare skikkelig hard landing = krasj
   // trær og hus: sjekk nesa, midten, halen og rotortuppene
   const spd = Math.hypot(phl.vx, phl.vz, phl.vy);
   const pts = [[0, 1.4, 0], [0, 1.4, 3.4], [0, 2.2, -7.5], [6.2, 3.3, 0.2], [-6.2, 3.3, 0.2], [0, 3.3, 6.4]];
@@ -53,7 +53,7 @@ function phStep(h, dt) {                                       // kalles fra hue
   for (const [lx, ly, lz] of pts) { const wx = nx + lx * Math.cos(phl.yaw) + lz * Math.sin(phl.yaw), wz = nz - lx * Math.sin(phl.yaw) + lz * Math.cos(phl.yaw), c = phCell(wx, ny + ly, wz); if (!c) continue; const J = JUNGLE.T; if (c === J.LEAF || c === J.LEAF2 || c === J.PALM) soft = true; else { hit = true; break; } }   // [NY] løv: bare bremser (ikke krasj)
   if (!hit && soft) { phl.vx *= 1 - Math.min(1, dt * 3); phl.vz *= 1 - Math.min(1, dt * 3); }
   if (hit) {
-    if (spd > PHS.crash) { socket.emit('phCrash'); phl = null; return; }
+    if (spd > PHS.crash) { socket.emit('phCrash', { id: phl && phl.id }); phl = null; return; }
     nx = phl.x; ny = phl.y; nz = phl.z; phl.vx *= -0.2; phl.vz *= -0.2; phl.vy = Math.max(0, phl.vy);   // sakte: bare dult
   }
   phl.x = nx; phl.y = ny; phl.z = nz;
@@ -64,7 +64,7 @@ function phStep(h, dt) {                                       // kalles fra hue
   Object.assign(h.cur, { x: phl.x, y: phl.y, z: phl.z, yaw: phl.yaw, pitch: phl.pitch, roll: phl.roll });
   Object.assign(h.tgt, { x: phl.x, y: phl.y, z: phl.z, yaw: phl.yaw });
   phSendT -= dt;
-  if (phSendT <= 0) { phSendT = 0.1; socket.emit('phMove', { x: +phl.x.toFixed(2), y: +phl.y.toFixed(2), z: +phl.z.toFixed(2), yaw: +phl.yaw.toFixed(3), p: +phl.pitch.toFixed(3), r: +phl.roll.toFixed(3) }); }
+  if (phSendT <= 0) { phSendT = 0.1; socket.emit('phMove', { id: phl.id, x: +phl.x.toFixed(2), y: +phl.y.toFixed(2), z: +phl.z.toFixed(2), yaw: +phl.yaw.toFixed(3), p: +phl.pitch.toFixed(3), r: +phl.roll.toFixed(3) }); }
 }
 function phPilotCam(h) {                                       // bak og over hueyen (V = cockpit)
   if (!phCamBack) return;

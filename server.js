@@ -4216,12 +4216,13 @@ io.on('connection', socket => {
     h[want] = p.id; h.pax.add(p.id); h.boardAt[p.id] = Date.now();
     p.huey = h.id; p.chute = false; p.protectedUntil = 0;
     if (want === 'pilot') { h.at = Date.now(); h.phase = 'fly'; }
+    socket.emit('phFix', { id: h.id, x: h.x, y: h.y, z: h.z, yaw: h.yaw });   // [FIKS] start fra der serveren har hueyen
   });
   socket.on('phSeat', d => {
     const p = players[socket.id], h = p && p.huey && hueys.get(p.huey);
     if (!h || !h.player || !d || !['pilot', 'gl', 'gr', 'pass'].includes(d.seat) || h[d.seat]) return;
     ['pilot', 'gl', 'gr', 'pass'].forEach(k => { if (h[k] === p.id) h[k] = null; });
-    h[d.seat] = p.id; if (d.seat === 'pilot') h.at = Date.now();
+    h[d.seat] = p.id; if (d.seat === 'pilot') { h.at = Date.now(); socket.emit('phFix', { id: h.id, x: h.x, y: h.y, z: h.z, yaw: h.yaw }); }
   });
   socket.on('phOut', () => {
     const p = players[socket.id], h = p && p.huey && hueys.get(p.huey);
@@ -4234,16 +4235,16 @@ io.on('connection', socket => {
   });
   socket.on('phMove', d => {
     const p = players[socket.id], h = p && p.huey && hueys.get(p.huey);
-    if (!h || !h.player || h.pilot !== p.id || !d) return;
+    if (!h || !h.player || h.pilot !== p.id || !d || (d.id !== undefined && (d.id | 0) !== h.id)) return;   // [FIKS] bare for hueyen du faktisk flyr (meldinger fra den forrige hueyen ble brukt på den nye)
     const x = num(d.x, -420, 420), y = num(d.y, -1, 140), z = num(d.z, -420, 420), yaw = num(d.yaw, -1e6, 1e6), pitch = num(d.p, -1, 1), roll = num(d.r, -1, 1);
     if ([x, y, z, yaw, pitch, roll].includes(null)) return;
     const now = Date.now(), dt = Math.min(1, Math.max(0.05, (now - h.at) / 1000));   // [FIKS] maks 1 sek: et gammelt sted langt unna blir avvist (ikke teleport)
     if (Math.hypot(x - h.x, y - h.y, z - h.z) > PH.speed * dt * 1.6 + 2) { socket.emit('phFix', { id: h.id, x: h.x, y: h.y, z: h.z, yaw: h.yaw }); return; }   // for fort: avvis og si fra hvor den egentlig er
     h.at = now; h.x = x; h.y = y; h.z = z; h.yaw = yaw; h.pitch = pitch; h.roll = roll;
   });
-  socket.on('phCrash', () => {                                    // piloten krasjet i trær / bakken for fort
+  socket.on('phCrash', d => {                                     // piloten krasjet i trær / bakken for fort
     const p = players[socket.id], h = p && p.huey && hueys.get(p.huey);
-    if (!h || !h.player || h.pilot !== p.id) return;
+    if (!h || !h.player || h.pilot !== p.id || (d && d.id !== undefined && d.id !== null && (d.id | 0) !== h.id)) return;
     const inside = [...h.pax].map(id => players[id]).filter(Boolean);
     inside.forEach(q => { hueyLeave(q, false); q.y = jgGround(q.x, q.z); killByWorld(q, '💥', 'crash'); });
     h.hp = 0; hueyDown(h, null);
