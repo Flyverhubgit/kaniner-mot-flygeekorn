@@ -33,9 +33,9 @@ function buildWire(team, ax, az, bx, bz, y, mine, ay, by) {
     const c = document.createElement('canvas'); c.width = c.height = 64;
     const x = c.getContext('2d'); x.font = '48px sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText('⚠️', 32, 34);
     const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), depthTest: false, transparent: true }));
-    sp.scale.set(0.7, 0.7, 0.7); sp.position.set((ax + bx) / 2, Math.max(ay, by) + 1.0, (az + bz) / 2); sp.renderOrder = 5; g.add(sp);
-    const line = wireLine(A, B, 0.02, new THREE.MeshBasicMaterial({ color: 0xc8d0d8, transparent: true, opacity: 0.55, depthTest: false }));   // [NY] stålfarget (var rød/grønn)
-    line.renderOrder = 5; g.add(line);
+    sp.scale.set(0.5, 0.5, 0.5); sp.userData.warn = true; sp.position.set((ax + bx) / 2, Math.max(ay, by) + 1.0, (az + bz) / 2); sp.renderOrder = 5; g.add(sp);
+    const line = wireLine(A, B, 0.014, new THREE.MeshBasicMaterial({ color: 0xc8d0d8, transparent: true, opacity: 0.55 }));   // [NY] stålfarget; [FIKS] skjules av blader og trær (var synlig gjennom alt)
+    g.add(line);
   }
   g.traverse(o => { o.raycast = () => {}; });
   return g;
@@ -211,7 +211,11 @@ if (JUNGLE_WIRES_C && typeof renderFrame === 'function') {
   const renderFrameWire = renderFrame;
   renderFrame = function () {
     const now = performance.now(), dt = Math.min(0.1, (now - (wireLastT || now)) / 1000); wireLastT = now;
-    try { wireFrame(dt); wireStageFrame(); } catch (e) { console.warn('wire', e); }
+    try { wireFrame(dt); wireStageFrame(); wireWarnFrame(); } catch (e) { console.warn('wire', e); }
     return renderFrameWire.apply(this, arguments);
   };
+}
+
+function wireWarnFrame() {                                   // [NY] ⚠️-merket over egne tråder: bare innen 25 m
+  for (const w of wireObjs.values()) w.g.children.forEach(c => { if (c.userData.warn) c.visible = Math.hypot(c.position.x - player.x, c.position.z - player.z) < 25; });
 }
