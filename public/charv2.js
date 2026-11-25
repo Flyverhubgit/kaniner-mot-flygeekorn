@@ -30,6 +30,38 @@ function cv2SmoothBox(w, h, d) {
   return geo;
 }
 
+// [NY] v3: putete kosedyr-former (superellipsoide = mellom kloss og ball) + pæreformet kaninkropp og rundt hode
+const CHAR_V3 = true, CHAR_V3_ROUND = 3.2;      // høyere tall = mer kloss, lavere = mer ball
+const cv3Cache = new Map();
+function cv3Pillow(w, h, d) {
+  const key = w.toFixed(3) + ',' + h.toFixed(3) + ',' + d.toFixed(3);
+  if (cv3Cache.has(key)) return cv3Cache.get(key);
+  const g = new THREE.SphereGeometry(1, 22, 16), P = g.attributes.position, e = 2 / CHAR_V3_ROUND;
+  const f = v => Math.sign(v) * Math.pow(Math.abs(v), e);
+  for (let i = 0; i < P.count; i++) P.setXYZ(i, f(P.getX(i)) * w / 2, f(P.getY(i)) * h / 2, f(P.getZ(i)) * d / 2);
+  g.computeVertexNormals();
+  cv3Cache.set(key, g);
+  return g;
+}
+// dreid form: prof = [[y, radius], ...], dybden skaleres med dz
+function cv3Lathe(prof, dz) {
+  const pts = prof.map(p => new THREE.Vector2(Math.max(0.001, p[1]), p[0]));
+  const g = new THREE.LatheGeometry(pts, 24); g.scale(1, 1, dz); g.computeVertexNormals();
+  return g;
+}
+const CV3_BUNNY_BODY = [[0.12, 0.001], [0.13, 0.17], [0.18, 0.27], [0.30, 0.325], [0.46, 0.315], [0.62, 0.285], [0.78, 0.245], [0.92, 0.2], [1.02, 0.15], [1.06, 0.001]];
+const CV3_BUNNY_HEAD = [[0.98, 0.001], [1.0, 0.16], [1.06, 0.25], [1.14, 0.285], [1.24, 0.27], [1.34, 0.245], [1.42, 0.2], [1.47, 0.12], [1.49, 0.001]];
+function cv3Shape(g, team) {
+  const plush = [];
+  g.children.forEach(m => { if (m.isMesh && m.userData.box && m.position.x === 0) plush.push(m); });
+  if (team === 'bunny') {
+    const body = plush.filter(m => m.position.y > 0.3 && m.position.y < 1.0 && m.userData.box.w > 0.4);
+    const head = plush.filter(m => m.position.y > 1.1 && m.position.y < 1.3 && m.userData.box.w > 0.45);
+    if (body.length) { body.forEach(m => m.visible = false); const n = new THREE.Mesh(cv3Lathe(CV3_BUNNY_BODY, 0.74), body[0].material); n.castShadow = true; n.receiveShadow = true; g.add(n); }
+    if (head.length) { head.forEach(m => m.visible = false); const n = new THREE.Mesh(cv3Lathe(CV3_BUNNY_HEAD, 0.8), head[0].material); n.castShadow = true; n.receiveShadow = true; g.add(n); }
+  }
+}
+
 // flytt en del inn i et ledd uten at den flytter seg på skjermen
 function cv2Into(joint, m) {
   m.position.sub(joint.position);
@@ -47,8 +79,10 @@ function charRig(g, team) {
     if (!m.isMesh || !m.geometry || !m.geometry.parameters || gunParts.has(m)) return;
     const p = m.geometry.parameters;
     if (!(p.width >= 0.1 && p.height >= 0.1 && p.depth >= 0.1)) return;      // små detaljer (øyne, værhår) beholdes
-    m.geometry = cv2SmoothBox(p.width, p.height, p.depth);
+    m.userData.box = { w: p.width, h: p.height, d: p.depth };
+    m.geometry = CHAR_V3 ? cv3Pillow(p.width, p.height, p.depth) : cv2SmoothBox(p.width, p.height, p.depth);
   });
+  if (CHAR_V3 && CHAR_V2_SMOOTH && typeof GFX_HIGH !== 'undefined' && GFX_HIGH) cv3Shape(g, team);
   // 2) bein: føttene (og flygeekornets bein) henger i et hofteledd
   const hipY = sq ? 0.44 : 0.22, footTop = sq ? 0.45 : 0.15;
   const legs = [-1, 1].map(s => { const j = new THREE.Group(); j.position.set(s * (sq ? 0.13 : 0.16), hipY, 0); g.add(j); return j; });

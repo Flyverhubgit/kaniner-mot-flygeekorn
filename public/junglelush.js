@@ -85,6 +85,7 @@ function jungleLush() {
       const list = per[cid][k]; if (!list.length) continue;
       const m = new THREE.InstancedMesh(k === 'trunk' ? G.trunk : k === 'bamboo' ? G.bamboo : k === 'palm' || k === 'banana' ? G.banana : k === 'bush' ? G.bush : k === 'sap' ? G.sap : G.leaf, M[k], list.length);
       m.raycast = () => {}; m.frustumCulled = false; m.castShadow = k === 'trunk' || k === 'leaf'; m.receiveShadow = true;
+      m.userData.lushKind = k;   // [NY] junglemodels.js må vite hvilke som er palmeblader
       list.forEach((u, i) => {
         const r = (u[0] * 12.9898 + (u[1] || 0) * 78.233) % 6.28;
         if (k === 'bamboo') { d.position.set(u[0], 0, u[1]); d.rotation.set((r % 0.16) - 0.08, 0, (r % 0.12) - 0.06); d.scale.set(1, u[2], 1); }
