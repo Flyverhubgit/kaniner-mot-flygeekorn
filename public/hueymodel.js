@@ -160,6 +160,12 @@ function buildHueyV2(team) {
   };
   const stand = mount(1);
   const standL = mount(-1); standL.visible = false;
+  // [NY] ytelse: slå sammen alle faste deler per materiale (ca. 90 tegninger -> ca. 15). Rotorer, geværer, lys og lagmerker holdes for seg.
+  if (typeof jgMergeGroup === 'function') {
+    const keep = new Set([rotor, tail, gunPivot, gunPivotL, stand, standL, beacon]);
+    const fixed = g.children.filter(c => c.isMesh && !keep.has(c) && !c.userData.teamMark && !c.material.transparent);
+    if (fixed.length > 10) { const tmp = new THREE.Group(); fixed.forEach(c => { g.remove(c); tmp.add(c); }); const merged = jgMergeGroup(tmp); merged.children.slice().forEach(c => { c.castShadow = true; g.add(c); }); }
+  }
   g.userData = { rotor, tail, gunPivot, gunPivotL, standL, beacon };
   g.traverse(o => { if (o.isMesh) { o.castShadow = !o.material.transparent; o.raycast = () => {}; } });
   return g;

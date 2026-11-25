@@ -1253,10 +1253,11 @@ io.on('connection', socket => {
 
   socket.on('join', data => {
     if (players[socket.id] || !data) return;
-    const team = TEAMS.includes(data.team) ? data.team : 'bunny';
-    // [NY] Første spiller på en tom server velger banen, og runden starter på nytt
-    if (Object.values(players).filter(o => !o.isBot).length === 0 && mapName !== 'lobby' && !process.env.START_MAP) startMap('lobby');   // [NY] tom server: begynn i loungen
     const name = String(data.name || '').replace(/[<>]/g, '').trim().slice(0, 16) || 'Spiller';
+    const back = rejoinGet(name);                     // [NY] mistet nettet? samme lag, drap og død som før
+    const team = back ? back.team : TEAMS.includes(data.team) ? data.team : 'bunny';
+    // [NY] Første spiller på en tom server velger banen, og runden starter på nytt
+    if (!back && Object.values(players).filter(o => !o.isBot).length === 0 && mapName !== 'lobby' && !process.env.START_MAP) startMap('lobby');   // [NY] tom server: begynn i loungen
     const sp = spawnFor(team);
     // [NY] Flammefrukten følger navnet: kommer eieren tilbake (ny fane / mistet nett), får hen frukten igjen resten av runden
     if (FRUIT_KEEP_BY_NAME && fruit.taken && fruit.holder && !players[fruit.holder] && fruit.name === name) { fruit.holder = socket.id; io.emit('fruit', fruit); }
@@ -1287,6 +1288,7 @@ io.on('connection', socket => {
       socket.emit('gold', { list: [...farm.gold.values()].map(g => [g.id, +g.x.toFixed(1), +g.z.toFixed(1)]) });
       emitWave();
     }
+    if (back) { p.kills = back.kills; p.deaths = back.deaths; p.caps = back.caps || 0; p.homeTeam = back.homeTeam; rejoinStash.delete(name); socket.emit('rejoined', { kills: p.kills, deaths: p.deaths }); console.log(name + ' kom tilbake etter brudd'); }
     socket.broadcast.emit('playerJoined', publicPlayer(p));
     io.emit('lobby', lobbyCounts());
     console.log(name + ' ble med som ' + (team === 'bunny' ? 'kanin' : 'flygeekorn'));
@@ -2147,6 +2149,7 @@ io.on('connection', socket => {
   socket.on('disconnect', () => {
     if (votes[socket.id]) { delete votes[socket.id]; io.emit('votes', voteCounts()); }
     if (!players[socket.id]) return;
+    rejoinPut(players[socket.id]);                    // [NY] husk deg i 3 minutter, i tilfelle nettet bare datt ut
     console.log(players[socket.id].name + ' forlot spillet');
     dropHoly(players[socket.id]);                     // [NY]
     leaveVehicle(players[socket.id]);
@@ -4303,3 +4306,30 @@ function fallSettle(V, removed) {
     return r;
   };
 }
+
+// ===================================================================
+// [NY] KRASJVERN OG GJENTILKOBLING 🛟
+//  1) Én feil i koden skal ikke lenger stoppe hele spillet for alle: feilen skrives i loggen, serveren fortsetter.
+//  2) Mister du nettet, husker serveren laget ditt og drap/død i 3 minutter (samme bane og runde). Kommer du tilbake
+//     med samme navn, er du med igjen akkurat som før – og runden starter ikke på nytt selv om du var alene.
+//  ANGRE: CRASH_GUARD = false / REJOIN_KEEP = false
+// ===================================================================
+const CRASH_GUARD = true, REJOIN_KEEP = true, REJOIN_MS = 180000;
+let crashCount = 0;
+if (CRASH_GUARD) {
+  process.on('uncaughtException', e => { crashCount++; console.error('🛟 FEIL (serveren fortsetter):', e && e.stack || e); });
+  process.on('unhandledRejection', e => { crashCount++; console.error('🛟 FEIL i løfte (serveren fortsetter):', e && e.stack || e); });
+}
+const rejoinStash = new Map();
+function rejoinPut(p) {
+  if (!REJOIN_KEEP || !p || p.isBot) return;
+  rejoinStash.set(p.name, { team: p.team, homeTeam: p.homeTeam, kills: p.kills || 0, deaths: p.deaths || 0, caps: p.caps || 0, map: mapName, endsAt: roundEndsAt, at: Date.now() });
+}
+function rejoinGet(name) {
+  const b = REJOIN_KEEP && rejoinStash.get(name);
+  if (!b) return null;
+  if (Date.now() - b.at > REJOIN_MS || b.map !== mapName || b.endsAt !== roundEndsAt || !TEAMS.includes(b.team) && b.team !== 'snail') { rejoinStash.delete(name); return null; }
+  return b;
+}
+setInterval(() => { const now = Date.now(); for (const [n, b] of rejoinStash) if (now - b.at > REJOIN_MS) rejoinStash.delete(n); }, 60000);
+if (process.env.CRASH_TEST) setTimeout(() => { null.boom(); }, 3000);   // test: en feil med vilje

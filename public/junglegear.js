@@ -4,6 +4,31 @@
 //  hjelm med blader eller bare maling. Hvem som får hva avgjøres av navnet (samme hver gang).
 //  Vanlige hatter skjules under. ANGRE: JUNGLE_GEAR_ON = false
 // ===================================================================
+// [NY] YTELSE: slå sammen mange små biter (blader, ghillie-filler) til én tegning per materiale.
+//  Før: ett øre = 64 tegninger, en ghilliedrakt = ca. 600. Etter: 5–6. Ser helt likt ut. ANGRE: JG_MERGE = false
+const JG_MERGE = true;
+function jgMergeGroup(g) {
+  if (!JG_MERGE) return g;
+  const byMat = new Map();
+  g.children.forEach(m => { if (!m.isMesh) return; m.updateMatrix(); (byMat.get(m.material) || byMat.set(m.material, []).get(m.material)).push(m); });
+  const out = new THREE.Group();
+  for (const [mat, list] of byMat) {
+    const pos = [], nor = [], uv = []; let hasUv = true;
+    list.forEach(m => {
+      const geo = (m.geometry.index ? m.geometry.toNonIndexed() : m.geometry.clone()); geo.applyMatrix4(m.matrix);
+      pos.push(geo.attributes.position.array); nor.push(geo.attributes.normal.array);
+      if (geo.attributes.uv) uv.push(geo.attributes.uv.array); else hasUv = false;
+    });
+    const cat = arrs => { const n = arrs.reduce((a, b) => a + b.length, 0), o = new Float32Array(n); let k = 0; arrs.forEach(a => { o.set(a, k); k += a.length; }); return o; };
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(cat(pos), 3)); geo.setAttribute('normal', new THREE.BufferAttribute(cat(nor), 3));
+    if (hasUv && uv.length) geo.setAttribute('uv', new THREE.BufferAttribute(cat(uv), 2));
+    geo.computeBoundingSphere();
+    const mm = new THREE.Mesh(geo, mat); mm.layers.mask = list[0].layers.mask; mm.raycast = () => {}; mm.castShadow = list[0].castShadow;
+    out.add(mm);
+  }
+  return out;
+}
 const JUNGLE_GEAR_ON = true;
 const JUNGLE_EAR_CAMO = true;   // [NY] ørene i kamuflasje. ANGRE: false
 const JUNGLE_EAR_LEAVES = true;   // [NY] ørene kledd i buskete blader (false = bare tigerstripe-trekk)
@@ -25,7 +50,7 @@ function jgEarLeaves() {                                      // ca. 45 blader s
     m.raycast = () => {};
     g.add(m);
   }
-  return g;
+  return jgMergeGroup(g);
 }
 const JG_MAT = {};
 function jgMat(k) {
@@ -72,7 +97,7 @@ function buildJungleGear(team, seed) {
     add(H.w + 0.18, 0.04, H.d + 0.18, 0, H.top - 0.13, 0, jgMat('olive'));
     for (let i = 0; i < 7; i++) { const a = i / 7 * Math.PI * 2; add(0.05, 0.18, 0.1, Math.cos(a) * (H.w / 2 + 0.05), H.top + 0.08, Math.sin(a) * (H.d / 2 + 0.05), jgMat('leaf'), a); }
   }                                                         // v === 4: bare maling (ørene fri)
-  return g;
+  return jgMergeGroup(g);   // [NY] ytelse
 }
 function jungleGearize(body, team, name, on) {
   if (!body) return;
@@ -130,7 +155,7 @@ function buildGhillie(team) {
   }
   [-1, 1].forEach(sx => { for (let i = 0; i < 40; i++) { const a = R() * Math.PI * 2; strip(sx * (sq ? 0.17 : 0.12) + Math.cos(a) * 0.07, H.top + 0.05 + R() * 0.4, Math.sin(a) * 0.07, -a + Math.PI / 2, 0.6 + R() * 0.5); } });   // ørene kles også
   for (let i = 0; i < 60; i++) { const m = new THREE.Mesh(geo, ghMats[Math.floor(R() * ghMats.length)]); m.position.set((R() - 0.5) * H.w, H.top + 0.02, (R() - 0.5) * H.d); m.rotation.set(Math.PI / 2 + (R() - 0.5) * 0.8, R() * 3, 0); m.raycast = () => {}; g.add(m); }
-  return g;
+  return jgMergeGroup(g);   // [NY] ytelse
 }
 function refreshGhillie() {
   const on = GHILLIE_ON && typeof currentMap !== 'undefined' && currentMap === 'jungle';
@@ -171,7 +196,7 @@ function ghGunStrips(team, layer, kind) {
     m.raycast = () => {}; if (layer) m.layers.set(layer);
     g.add(m);
   }
-  return g;
+  return jgMergeGroup(g);   // [NY] ytelse
 }
 function refreshGhillieGun() {
   const on = GHILLIE_GUN && typeof currentMap !== 'undefined' && currentMap === 'jungle';
@@ -210,7 +235,7 @@ function ghArmStrips(from, to, n) {
     m.layers.set(2); m.raycast = () => {}; m.castShadow = false;
     g.add(m);
   }
-  return g;
+  return jgMergeGroup(g);   // [NY] ytelse
 }
 function refreshGhillieArms() {
   if (typeof arms === 'undefined' || !arms.userData.R) return;

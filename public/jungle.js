@@ -166,12 +166,12 @@ socket.on('map', d => {
 let jFogK = 0;
 (function jungleLoop() {
   if (jungleOn() && jungleWorld) {
-    const px = camera.position.x, pz = camera.position.z, R = (typeof JUNGLE_LUSH !== 'undefined' && JUNGLE_LUSH ? 60 : JUNGLE_R) + Math.max(0, camera.position.y - 15) * 2;   // [NY] dis: trenger ikke tegne langt   // høyt oppe: ser litt lenger
+    const px = camera.position.x, pz = camera.position.z, R = (typeof JUNGLE_LUSH !== 'undefined' && JUNGLE_LUSH ? (typeof jgUnderR !== 'undefined' ? jgUnderR : 60) : JUNGLE_R) + Math.max(0, camera.position.y - 15) * 2;   // [NY] jgUnderR: mindre på svake mobiler (perfmode.js)   // [NY] dis: trenger ikke tegne langt   // høyt oppe: ser litt lenger
     jungleWorld.cull(px, pz, R);
-    const lim = (R * 0.8 + 36) * (R * 0.8 + 36);
+    const pad = typeof jgUnderPad !== 'undefined' ? jgUnderPad : 36, lim = (R * 0.8 + pad) * (R * 0.8 + pad);
     for (const k in jungleUnder) { const g = jungleUnder[k], dx = g.userData.cx - px, dz = g.userData.cz - pz; g.visible = dx * dx + dz * dz < lim; }
     const t = performance.now() / 1000;
-    jungleFog.forEach(f => { f.position.x = f.userData.base.x + Math.sin(t * 0.07 + f.userData.ph) * 3; f.position.z = f.userData.base.z + Math.cos(t * 0.05 + f.userData.ph) * 3; });
+    jungleFog.forEach(f => { const dx = f.userData.base.x - px, dz = f.userData.base.z - pz; f.visible = dx * dx + dz * dz < 90 * 90; if (!f.visible) return; f.position.x = f.userData.base.x + Math.sin(t * 0.07 + f.userData.ph) * 3; f.position.z = f.userData.base.z + Math.cos(t * 0.05 + f.userData.ph) * 3; });   // [NY] ytelse: bare tåke-flak innen 90 m tegnes
     const inP = JUNGLE.inPaddy(px, pz) && camera.position.y < 6;
     jFogK += ((inP ? 1 : 0) - jFogK) * 0.03;
     const lush = typeof JUNGLE_LUSH !== 'undefined' && JUNGLE_LUSH, baseNear = lush ? 6 : JUNGLE_R * 0.55, baseFar = (lush ? LUSH_FAR : JUNGLE_R + 10) + Math.max(0, camera.position.y - 22) * 2.5;   // [NY] høyt oppe (helikopter): ser lenger
