@@ -7,7 +7,7 @@
 //     arm og ører henger i ledd) og lander på trapper, kanter og bakker
 //  RAPIER_ON = false: ingen fysikk lastes, alt er som før.
 // =====================================================================
-const RAPIER_ON = true, RAPIER_RAGDOLL = true, RAPIER_DEBRIS = true, RAPIER_NADES = true;
+const RAPIER_ON = true, RAPIER_RAGDOLL = true, RAPIER_DEBRIS = true, RAPIER_NADES = true, RAPIER_VEHICLES = true;
 const PH_DEBRIS_LIFE = 6;                        // sekunder bitene blir liggende
 const PH_RAG_PUSH = 2.2;                         // hvor hardt skuddet dytter (m/s)
 const PH_G_WORLD = (0x0001 << 16) | 0xffff;     // kollisjonsgrupper: verden treffer alt
@@ -197,6 +197,123 @@ function phNadesAfter() {
   }
 }
 
+// ---------------- kjøretøy: fjæring, helling i bakker, kan velte ----------------
+// Bare stridsvogn og jeep, og bare for den som kjører. Serveren sjekker farten som før.
+const PH_G_CAR = (0x0010 << 16) | 0x0001;       // karosseriet treffer bare verden
+const PH_CAR = {
+  jeep: { mass: 900, h: 0.45, wheels: [[-0.85, 1.35], [0.85, 1.35], [-0.85, -1.35], [0.85, -1.35]], r: 0.42, rest: 0.45, k: 32, force: 5200, brake: 40, steer: 0.5, slip: 2.2 },
+  tank: { mass: 1800, h: 0.6, wheels: [[-1.35, 2.1], [1.35, 2.1], [-1.35, 0], [1.35, 0], [-1.35, -2.1], [1.35, -2.1]], r: 0.45, rest: 0.4, k: 45, force: 7000, brake: 80, steer: 0, slip: 3.5 }
+};
+let phCar = null;
+const phE = new THREE.Euler(0, 0, 0, 'YXZ');
+function phCarEnd() {
+  if (!phCar) return;
+  if (phReady()) { try { phWorld.removeVehicleController(phCar.ctl); } catch (e) {} try { phWorld.removeRigidBody(phCar.body); } catch (e) {} }
+  phCar = null;
+}
+function phCarStart(v) {
+  phCarEnd();
+  const C = PH_CAR[v.kind], spec = DV_SPEC[v.kind];
+  for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) phAreaOnce(dvl.x + a * 3, dvl.y + 1, dvl.z + b * 3);
+  const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, dvl.yaw, 0));
+  const body = phWorld.createRigidBody(RAP.RigidBodyDesc.dynamic().setTranslation(dvl.x, dvl.y + C.h + C.rest + C.r, dvl.z).setRotation({ x: q.x, y: q.y, z: q.z, w: q.w })
+    .setLinearDamping(0.15).setAngularDamping(0.6).setCcdEnabled(true));
+  const vol = (spec.hw * 2) * (C.h * 2) * (spec.hl * 2);
+  phWorld.createCollider(RAP.ColliderDesc.cuboid(spec.hw, C.h, spec.hl).setDensity(C.mass / vol).setFriction(0.5).setCollisionGroups(PH_G_CAR), body);
+  const ctl = phWorld.createVehicleController(body);
+  ctl.indexUpAxis = 1; ctl.setIndexForwardAxis = 2;            // opp = y, frem/bak = z
+  C.wheels.forEach(([x, z]) => {
+    ctl.addWheel({ x, y: -C.h * 0.6, z }, { x: 0, y: -1, z: 0 }, { x: -1, y: 0, z: 0 }, C.rest, C.r);
+    const i = ctl.numWheels() - 1;
+    ctl.setWheelSuspensionStiffness(i, C.k); ctl.setWheelFrictionSlip(i, C.slip); ctl.setWheelMaxSuspensionTravel(i, 0.35);
+    ctl.setWheelSuspensionCompression(i, 2.3); ctl.setWheelSuspensionRelaxation(i, 3.2); ctl.setWheelSideFrictionStiffness(i, 1);
+  });
+  phCar = { id: v.id, kind: v.kind, body, ctl, C, upsideT: 0 };
+}
+function phCarDrive(dt) {
+  const v = dvMine(); if (!v) return false;
+  if (!phCar || phCar.id !== v.id) phCarStart(v);
+  const C = phCar.C, spec = DV_SPEC[v.kind], tank = v.kind === 'tank', b = phCar.body, ctl = phCar.ctl;
+  let thr = touchMove.y, turn = touchMove.x;
+  if (keys['KeyW'] || keys['ArrowUp']) thr += 1;
+  if (keys['KeyS'] || keys['ArrowDown']) thr -= 1;
+  if (keys['KeyD'] || keys['ArrowRight']) turn += 1;
+  if (keys['KeyA'] || keys['ArrowLeft']) turn -= 1;
+  thr = Math.max(-1, Math.min(1, thr)); turn = Math.max(-1, Math.min(1, turn));
+  // vegger og klosser rundt kjøretøyet
+  const t0 = b.translation(); for (let a = -1; a <= 1; a++) for (let c = -1; c <= 1; c++) phAreaOnce(t0.x + a * 3, t0.y, t0.z + c * 3);
+  const sp = ctl.currentVehicleSpeed();                         // + = framover langs +z i karosseriet; spillet kjører mot -z
+  const fwd = -sp, maxF = thr > 0 ? spec.max : spec.back;
+  const f = (Math.abs(fwd) < maxF || Math.sign(thr) !== Math.sign(fwd)) ? -thr * C.force : 0;
+  for (let i = 0; i < ctl.numWheels(); i++) {
+    let fi = f;
+    if (tank) fi += (i % 2 === 0 ? -1 : 1) * turn * C.force * 0.6;   // belter: venstre/høyre side hver sin vei
+    ctl.setWheelEngineForce(i, fi);
+    ctl.setWheelBrake(i, thr === 0 ? C.brake * 0.15 : 0);
+    if (!tank) ctl.setWheelSteering(i, i < 2 ? turn * C.steer * Math.max(0.35, 1 - Math.abs(fwd) / 30) : 0);
+  }
+  if (tank) {                                                    // stridsvogna snur også på stedet
+    const av = b.angvel(); if (turn) b.setAngvel({ x: av.x, y: -turn * spec.turn, z: av.z }, true);
+  }
+  ctl.updateVehicle(Math.min(dt, 1 / 30), undefined, PH_G_CAR);
+  // ikke ut av kartet
+  const t = b.translation(), lv = b.linvel(), B = DESERT.BOUND - 3;
+  if (Math.abs(t.x) > B && Math.sign(lv.x) === Math.sign(t.x)) b.setLinvel({ x: -lv.x * 0.3, y: lv.y, z: lv.z }, true);
+  if (Math.abs(t.z) > B && Math.sign(lv.z) === Math.sign(t.z)) b.setLinvel({ x: lv.x, y: lv.y, z: -lv.z * 0.3 }, true);
+  // ikke fortere enn serveren godtar
+  const hs = Math.hypot(lv.x, lv.z), cap = spec.max * 1.25; if (hs > cap) b.setLinvel({ x: lv.x * cap / hs, y: lv.y, z: lv.z * cap / hs }, true);
+  // les av: posisjon, retning, helning
+  const q = b.rotation(); phQ.set(q.x, q.y, q.z, q.w); phE.setFromQuaternion(phQ, 'YXZ');
+  const org = new THREE.Vector3(0, -(C.h + C.rest + C.r) + 0.05, 0).applyQuaternion(phQ);   // modellens nullpunkt (bunnen) – roterer rundt midten av karosseriet
+  dvl.x = t.x + org.x; dvl.z = t.z + org.z; dvl.y = Math.max(0, t.y + org.y); dvl.yaw = phE.y; dvl.cp = phE.x; dvl.cr = phE.z; dvl.spd = fwd;
+  // på taket? etter 3 sek snus den rett igjen
+  const up = new THREE.Vector3(0, 1, 0).applyQuaternion(phQ).y;
+  phCar.upsideT = up < 0.35 ? phCar.upsideT + dt : 0;
+  if (phCar.upsideT > 3) {
+    const qq = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, phE.y, 0));
+    b.setTranslation({ x: t.x, y: t.y + 1.8, z: t.z }, true); b.setRotation({ x: qq.x, y: qq.y, z: qq.z, w: qq.w }, true);
+    b.setLinvel({ x: 0, y: 0, z: 0 }, true); b.setAngvel({ x: 0, y: 0, z: 0 }, true); phCar.upsideT = 0;
+  }
+  if (tank && thr) { const a = 0.7 * Math.sign(thr); dvFit(dvl.x - Math.sin(dvl.yaw) * a, dvl.z - Math.cos(dvl.yaw) * a, dvl.yaw, dvl.y, spec, true); }   // sandsekker o.l. like foran blir knust (resultatet brukes ikke)
+  // tårn, kamera, ramming, sending – som i den vanlige kjørekoden
+  if (tank) { let d = player.yaw - dvl.ty; d = Math.atan2(Math.sin(d), Math.cos(d)); dvl.ty += Math.max(-1.3 * dt, Math.min(1.3 * dt, d)); }
+  else dvl.ty = player.yaw;
+  dvl.tp = Math.max(tank ? -0.15 : -0.35, Math.min(tank ? 0.35 : 0.6, player.pitch));
+  if (Math.abs(fwd) > 4) for (const id in others) {
+    const o = others[id];
+    if (!o.alive || o.team === myTeam || dvDriverIds.has(id) || (dvRamAt[id] || 0) > performance.now()) continue;
+    if (Math.hypot(o.cur.x - dvl.x, o.cur.z - dvl.z) < spec.hl * 0.8 && Math.abs(o.cur.y - dvl.y) < 2) { dvRamAt[id] = performance.now() + 1500; socket.emit('dvRam', { target: id }); }
+  }
+  dvSendT -= dt; dvDozeT -= dt;
+  if (dvSendT <= 0) { dvSendT = 0.066; socket.emit('dvMove', { x: +dvl.x.toFixed(2), y: +dvl.y.toFixed(2), z: +dvl.z.toFixed(2), yaw: +dvl.yaw.toFixed(3), ty: +dvl.ty.toFixed(3), tp: +dvl.tp.toFixed(3), cp: +dvl.cp.toFixed(3), cr: +dvl.cr.toFixed(3) }); }
+  if (dvDozeT <= 0 && dvDozeSet.size) { dvDozeT = 0.15; socket.emit('dvDoze', { cells: [...dvDozeSet].slice(0, 40) }); dvDozeSet.clear(); }
+  player.x = dvl.x; player.z = dvl.z; player.feetY = dvl.y; player.vy = 0; player.onGround = true;
+  const fx = -Math.sin(player.yaw), fz = -Math.cos(player.yaw), back = spec.camBack * Math.cos(player.pitch * 0.5);
+  if (scoped && tank) { camera.position.set(dvl.x, dvl.y + 3.0, dvl.z); camera.rotation.set(player.pitch, player.yaw, 0); }
+  else { camera.position.set(dvl.x - fx * back, dvl.y + spec.camUp - player.pitch * 3, dvl.z - fz * back); camera.rotation.set(player.pitch - (tank ? 0.18 : 0.14), player.yaw, 0); }
+  if (dvEngine) dvEngine.set(Math.abs(fwd) / spec.max);
+  return true;
+}
+// kalles fra dvDrive (desertvehicles.js) for sjåføren av stridsvogn/jeep
+function phDriveHook(dt, v) {
+  if (!RAPIER_VEHICLES || !phReady() || !v || (v.kind !== 'tank' && v.kind !== 'jeep') || myDvSeat !== 'drive') return false;
+  try { return phCarDrive(dt); } catch (e) { console.warn('kjøretøy-fysikk', e); phCarEnd(); return false; }
+}
+// helning på alle kjøretøy (eget fra fysikken, andres fra serveren)
+const phTilt = {};
+function phTiltApply(dt) {
+  if (typeof dvMeshes === 'undefined' || typeof dvInfo === 'undefined') return;
+  const k = Math.min(1, dt * 10);
+  dvInfo.forEach(v => {
+    const m = dvMeshes[v.id]; if (!m || v.kind === 'jet' || v.kind === 'heli') return;
+    const mine = phCar && phCar.id === v.id && myDv === v.id;
+    const tp = mine ? dvl.cp || 0 : (phTilt[v.id] ? phTilt[v.id][0] : 0), tr = mine ? dvl.cr || 0 : (phTilt[v.id] ? phTilt[v.id][1] : 0);
+    m.rotation.order = 'YXZ';
+    m.rotation.x = mine ? tp : m.rotation.x + (tp - m.rotation.x) * k;
+    m.rotation.z = mine ? tr : m.rotation.z + (tr - m.rotation.z) * k;
+  });
+}
+
 // ---------------- kobling til spillet ----------------
 if (RAPIER_ON) {
   // last fysikken når du blir med i et spill (ikke under lasteskjermen)
@@ -210,6 +327,7 @@ if (RAPIER_ON) {
       while (phAcc >= 1 / 60 && n < 4) { phWorld.step(); phAcc -= 1 / 60; n++; }
       if (n === 4) phAcc = 0;
       phRags.forEach(rd => rd.t += dt);
+      if (phCar && (typeof myDv === 'undefined' || myDv === null || myDvSeat !== 'drive' || !alive)) phCarEnd();   // gikk ut / døde
     }
     requestAnimationFrame(phLoop);
   })(performance.now());
@@ -237,6 +355,14 @@ if (RAPIER_ON) {
     if (typeof removeOther === 'function') {
       const phRemoveOld = removeOther;
       removeOther = function (id) { const r = others[id]; if (r && r.rd) phEndRag(r); return phRemoveOld.apply(this, arguments); };
+    }
+    if (RAPIER_VEHICLES) {
+      socket.on('dveh', list => { list.forEach(a => { phTilt[a[0]] = [a[16] || 0, a[17] || 0]; }); });
+      if (typeof renderFrame === 'function') {
+        let phTL = performance.now();
+        const phRenderOld = renderFrame;
+        renderFrame = function () { const now = performance.now(), dt = Math.min(0.1, (now - phTL) / 1000); phTL = now; try { phTiltApply(dt); } catch (e) {} return phRenderOld.apply(this, arguments); };
+      }
     }
     if (RAPIER_NADES && typeof updateNades === 'function') {
       const phNadesOld = updateNades;

@@ -183,6 +183,7 @@ function dvDrive(dt) {
     if (dvGunSend <= 0) { dvGunSend = 0.1; socket.emit('dvGunAim', { gy: +player.yaw.toFixed(3), gp: +Math.max(-0.35, Math.min(0.7, player.pitch)).toFixed(3) }); }
     return true;
   }
+  if (typeof phDriveHook === 'function' && phDriveHook(dt, v)) return true;   // [NY] Rapier-fysikk kjører (physics.js, RAPIER_VEHICLES)
   let thr = touchMove.y, turn = touchMove.x;
   if (keys['KeyW'] || keys['ArrowUp']) thr += 1;
   if (keys['KeyS'] || keys['ArrowDown']) thr -= 1;

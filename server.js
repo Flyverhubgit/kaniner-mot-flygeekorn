@@ -1762,6 +1762,7 @@ io.on('connection', socket => {
     const now = Date.now(), dt = Math.max(0.05, (now - v.at) / 1000);
     if (Math.hypot(x - v.x, z - v.z, air ? y - v.y : 0) > DV[v.kind].speed * dt * 1.6 + 2) return;   // for fort: avvis
     v.at = now; v.x = x; v.y = y; v.z = z; v.yaw = yaw; v.ty = ty; v.tp = tp;
+    if (DV_TILT && !air) { v.cp = num(d.cp, -3.2, 3.2) || 0; v.cr = num(d.cr, -3.2, 3.2) || 0; }   // [NY] fysikk: karosseriet heller (bakker, velt)
     p.x = x; p.y = y; p.z = z;
   });
   socket.on('dvFire', d => {                          // stridsvognkanonen
@@ -2728,15 +2729,16 @@ function dvBulletDmg(v, w) {
   if (v.kind === 'jet' || v.kind === 'heli') return { c7: 4, minimi: 4, mg42: 4, pistol: 2, sniper50: 30, jeepmg: JEEP_50CAL ? 18 : 8, tankmg: 8, jetgun: 10, heligun: 8 }[w] || 0;   // [NY] fly og helikopter
   return { c7: 6, minimi: 5, mg42: 5, pistol: 4, sniper50: 45, jeepmg: JEEP_50CAL ? (v.kind === 'tank' ? 9 : 20) : 7, tankmg: 7, jetgun: 12, heligun: 10 }[w] || 0;
 }
+const DV_TILT = true;   // [NY] kjøretøy-fysikk (physics.js): helning sendes med. false = som før
 function dvState() {
   return dvList.map(v => [v.id, DV_KIND_CODE[v.kind], v.team === 'bunny' ? 1 : 2, +v.x.toFixed(2), +v.y.toFixed(2), +v.z.toFixed(2), +v.yaw.toFixed(3), +v.ty.toFixed(3), +v.tp.toFixed(3),
-    Math.max(0, Math.round(v.hp / DV[v.kind].hp * 100)), v.driver || '', v.alive ? 1 : 0, v.gunner || '', +(v.gy || 0).toFixed(3), +(v.gp || 0).toFixed(3), v.ammo || 0]);
+    Math.max(0, Math.round(v.hp / DV[v.kind].hp * 100)), v.driver || '', v.alive ? 1 : 0, v.gunner || '', +(v.gy || 0).toFixed(3), +(v.gp || 0).toFixed(3), v.ammo || 0, +(v.cp || 0).toFixed(3), +(v.cr || 0).toFixed(3)]);   // [NY] 16, 17: helning (DV_TILT)
 }
 setInterval(() => {
   if (mapName !== 'desert' || !dvList.length) return;
   const now = Date.now();
   dvList.forEach(v => {                              // nytt kjøretøy hjemme etter 40 sek
-    if (!v.alive && now >= v.respawnAt) Object.assign(v, { x: v.home.x, y: 0, z: v.home.z, yaw: v.home.yaw, ty: DV[v.kind].air ? 0 : v.home.yaw, tp: 0, hp: DV[v.kind].hp, alive: true, driver: null, gunner: null, ammo: DV[v.kind].ammo || 0 });
+    if (!v.alive && now >= v.respawnAt) Object.assign(v, { x: v.home.x, y: 0, z: v.home.z, yaw: v.home.yaw, ty: DV[v.kind].air ? 0 : v.home.yaw, tp: 0, cp: 0, cr: 0, hp: DV[v.kind].hp, alive: true, driver: null, gunner: null, ammo: DV[v.kind].ammo || 0 });
     const S = DV[v.kind];
     if (S.ammo && v.ammo < S.ammo && now - (v.ammoAt || 0) > S.regenMs) { v.ammo++; v.ammoAt = now; }   // [NY] nye missiler/raketter
     if (v.driver && !players[v.driver]) v.driver = null;
