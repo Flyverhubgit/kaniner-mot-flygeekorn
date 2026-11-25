@@ -7,7 +7,8 @@
 //     arm og ører henger i ledd) og lander på trapper, kanter og bakker
 //  RAPIER_ON = false: ingen fysikk lastes, alt er som før.
 // =====================================================================
-const RAPIER_ON = true, RAPIER_RAGDOLL = true;
+const RAPIER_ON = true, RAPIER_RAGDOLL = true, RAPIER_DEBRIS = true;
+const PH_DEBRIS_LIFE = 6;                        // sekunder bitene blir liggende
 const PH_RAG_PUSH = 2.2;                         // hvor hardt skuddet dytter (m/s)
 const PH_G_WORLD = (0x0001 << 16) | 0xffff;     // kollisjonsgrupper: verden treffer alt
 const PH_G_RAG = (0x0002 << 16) | 0x0001;       // filledukke-deler treffer bare verden (ikke hverandre)
@@ -139,6 +140,30 @@ function phApplyRag(r) {
   });
 }
 
+// ---------------- rusk: bitene fra klosser blir ekte fysikk ----------------
+const phAreaDone = new Set();
+function phAreaOnce(x, y, z) {                      // én gang per 3 m-rute (raskt når mange biter kommer samtidig)
+  const k = Math.floor(x / 3) + ',' + Math.floor(y / 3) + ',' + Math.floor(z / 3);
+  if (phAreaDone.has(k)) return; phAreaDone.add(k); phArea(x, y, z, 4);
+}
+function phDebrisReset() { phAreaDone.clear(); if (typeof debris !== 'undefined') debris.forEach(d => { d.phB = null; d.phLast = 0; }); }
+function phDebrisFrame() {
+  if (!RAPIER_DEBRIS || !phReady() || typeof debris === 'undefined') return;
+  for (const d of debris) {
+    if (!d.m.visible) { if (d.phB) { try { phWorld.removeRigidBody(d.phB); } catch (e) {} d.phB = null; } d.phLast = 0; continue; }
+    if (d.life > (d.phLast || 0) + 0.01) {           // ny bit (bassenget gjenbruker dem)
+      if (d.phB) { try { phWorld.removeRigidBody(d.phB); } catch (e) {} }
+      const p = d.m.position; phAreaOnce(p.x, p.y, p.z);
+      const b = phWorld.createRigidBody(RAP.RigidBodyDesc.dynamic().setTranslation(p.x, p.y, p.z).setLinvel(d.vx, d.vy, d.vz)
+        .setAngvel({ x: (Math.random() - 0.5) * 12, y: (Math.random() - 0.5) * 12, z: (Math.random() - 0.5) * 12 }).setLinearDamping(0.1).setAngularDamping(0.4));
+      phWorld.createCollider(RAP.ColliderDesc.cuboid(0.175, 0.175, 0.175).setDensity(1.5).setFriction(0.8).setRestitution(0.25).setCollisionGroups(PH_G_DEBRIS), b);
+      d.phB = b; d.life = PH_DEBRIS_LIFE + Math.random() * 2;
+    }
+    d.phLast = d.life;
+    if (d.phB) { const t = d.phB.translation(), q = d.phB.rotation(); d.m.position.set(t.x, t.y, t.z); d.m.quaternion.set(q.x, q.y, q.z, q.w); }
+  }
+}
+
 // ---------------- kobling til spillet ----------------
 if (RAPIER_ON) {
   // last fysikken når du blir med i et spill (ikke under lasteskjermen)
@@ -179,6 +204,10 @@ if (RAPIER_ON) {
     if (typeof removeOther === 'function') {
       const phRemoveOld = removeOther;
       removeOther = function (id) { const r = others[id]; if (r && r.rd) phEndRag(r); return phRemoveOld.apply(this, arguments); };
+    }
+    if (RAPIER_DEBRIS && typeof updateCastle === 'function') {
+      const phCastleOld = updateCastle;
+      updateCastle = function (dt) { const res = phCastleOld.apply(this, arguments); try { phDebrisFrame(); } catch (e) {} return res; };   // etter den gamle: fysikken bestemmer hvor bitene er
     }
     if (typeof removeCells === 'function') {
       const phCellsOld = removeCells;
