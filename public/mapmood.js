@@ -5,7 +5,7 @@
 //  Jungelen får i tillegg solstråler som skinner ned gjennom løvet.
 //  MAP_MOOD = false: alt som før.
 // =====================================================================
-const MAP_MOOD = true, MAP_MOOD_RAYS = true;
+const MAP_MOOD = !(typeof kmfOff === 'function' && kmfOff('mood')), MAP_MOOD_RAYS = true;   // [NY] ?off=mood
 // tint = rød/grønn/blå-gange, vib = metning, con = kontrast, vig = mørke kanter
 const MAP_MOODS = {
   lobby:    { tint: [1.00, 1.00, 1.00], vib: 0.22, con: 1.06, vig: 0.28 },

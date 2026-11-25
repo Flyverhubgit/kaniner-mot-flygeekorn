@@ -7,7 +7,8 @@
 //     arm og ører henger i ledd) og lander på trapper, kanter og bakker
 //  RAPIER_ON = false: ingen fysikk lastes, alt er som før.
 // =====================================================================
-const RAPIER_ON = true, RAPIER_RAGDOLL = true, RAPIER_DEBRIS = true, RAPIER_NADES = true, RAPIER_VEHICLES = true;
+const RAPIER_ON = !(typeof kmfOff === 'function' && kmfOff('physics')),   // [NY] ?off=physics (debugflags.js)
+     RAPIER_ON_X = true, RAPIER_RAGDOLL = true, RAPIER_DEBRIS = true, RAPIER_NADES = true, RAPIER_VEHICLES = true;
 const PH_DEBRIS_LIFE = 6;                        // sekunder bitene blir liggende
 const PH_RAG_PUSH = 2.2;                         // hvor hardt skuddet dytter (m/s)
 const PH_G_WORLD = (0x0001 << 16) | 0xffff;     // kollisjonsgrupper: verden treffer alt

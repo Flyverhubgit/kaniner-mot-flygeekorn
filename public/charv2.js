@@ -8,7 +8,7 @@
 //   - beina trekkes opp i lufta
 //  CHAR_V2 = false: figurene er akkurat som før.
 // =====================================================================
-const CHAR_V2 = true, CHAR_V2_SMOOTH = true;
+const CHAR_V2 = !(typeof kmfOff === 'function' && kmfOff('chars')), CHAR_V2_SMOOTH = true;   // [NY] ?off=chars
 
 // rundere kloss: samme mål, men større runding og flere ledd
 const cv2Cache = new Map();
@@ -31,7 +31,7 @@ function cv2SmoothBox(w, h, d) {
 }
 
 // [NY] v3: putete kosedyr-former (superellipsoide = mellom kloss og ball) + pæreformet kaninkropp og rundt hode
-const CHAR_V3 = true, CHAR_V3_ROUND = 3.2;      // høyere tall = mer kloss, lavere = mer ball
+const CHAR_V3 = !(typeof kmfOff === 'function' && kmfOff('chars')), CHAR_V3_ROUND = 3.2;      // høyere tall = mer kloss, lavere = mer ball
 const cv3Cache = new Map();
 function cv3Pillow(w, h, d) {
   const key = w.toFixed(3) + ',' + h.toFixed(3) + ',' + d.toFixed(3);

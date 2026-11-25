@@ -9,7 +9,7 @@
 //   - finere drapsliste (dine drap lyser gull)
 //  JUICE = false slår alt av (spillet blir som før).
 // =====================================================================
-const JUICE = true;
+const JUICE = !(typeof kmfOff === 'function' && kmfOff('juice'));   // [NY] ?off=juice
 const JUICE_CASINGS = true, JUICE_SMOKE = true, JUICE_SWAP = true, JUICE_SHAKE = true, JUICE_POPUP = true, JUICE_FEED = true;
 
 (function () {

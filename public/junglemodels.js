@@ -8,7 +8,8 @@
 //  MegaKit-trær/planter bare på Grafikk Høy (tungt for mobil).
 //  JUNGLE_MODELS = false: jungelen ser ut som før.
 // =====================================================================
-const JUNGLE_MODELS = true, JM_PALMS = true, JM_TREES = false, JM_PLANTS = false, JM_RIVER = true;   // [FIKS] trær + planter fra MegaKit av: for tungt (bruker meldte lagg, 2026-11-25)
+const JUNGLE_MODELS = !(typeof kmfOff === 'function' && kmfOff('models')),   // [NY] ?off=models
+     JM_ON_X = true, JM_PALMS = true, JM_TREES = false, JM_PLANTS = false, JM_RIVER = true;   // [FIKS] trær + planter fra MegaKit av: for tungt (bruker meldte lagg, 2026-11-25)
 const JM_PALM_WIDE = 1.6, JM_PLANT_SHARE = 0.18;   // palmekronene bredere enn modellen; andel 3D-planter
 const JM_FILES = {
   palm: ['PalmTree_1', 'PalmTree_3', 'PalmTree_4'],
