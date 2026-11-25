@@ -74,8 +74,9 @@ function buildJungleGear(team, seed) {
   if (sq) { add(0.5, 0.42, 0.36, 0, 0.84, 0, shirt); add(0.52, 0.05, 0.38, 0, 0.62, 0, jgMat('dark')); }
   else { add(0.6, 0.46, 0.46, 0, 0.8, 0, shirt); add(0.62, 0.05, 0.48, 0, 0.58, 0, jgMat('dark')); }
   add(0.09, 0.07, 0.16, (sq ? -0.29 : -0.34), sq ? 0.95 : 0.92, 0, jgMat(team));
-  if (sq) [-0.13, 0.13].forEach(x => add(0.21, 0.19, 0.22, x, 0.09, 0.02, jgMat('boot')));
-  else [-0.16, 0.16].forEach(x => add(0.27, 0.17, 0.44, x, 0.08, 0.09, jgMat('boot')));
+  const boots = [];   // [NY] husk støvlene (charv2.js lar dem følge beina)
+  if (sq) [-0.13, 0.13].forEach(x => boots.push(add(0.21, 0.19, 0.22, x, 0.09, 0.02, jgMat('boot'))));
+  else [-0.16, 0.16].forEach(x => boots.push(add(0.27, 0.17, 0.44, x, 0.08, 0.09, jgMat('boot'))));
   // ansiktsmaling: striper over kinnene
   const fz = H.front + 0.012;
   [-1, 1].forEach(s => { add(0.12, 0.03, 0.01, s * (H.w / 2 - 0.1), H.eyeY - 0.08, fz, jgMat('paintB')); add(0.1, 0.03, 0.01, s * (H.w / 2 - 0.1), H.eyeY - 0.13, fz, jgMat('paintG')); });
@@ -97,7 +98,11 @@ function buildJungleGear(team, seed) {
     add(H.w + 0.18, 0.04, H.d + 0.18, 0, H.top - 0.13, 0, jgMat('olive'));
     for (let i = 0; i < 7; i++) { const a = i / 7 * Math.PI * 2; add(0.05, 0.18, 0.1, Math.cos(a) * (H.w / 2 + 0.05), H.top + 0.08, Math.sin(a) * (H.d / 2 + 0.05), jgMat('leaf'), a); }
   }                                                         // v === 4: bare maling (ørene fri)
-  return jgMergeGroup(g);   // [NY] ytelse
+  const bootsApart = typeof CHAR_V2 !== 'undefined' && CHAR_V2;   // [NY] figurer v2: støvlene limes ikke fast, de skal gå med beina
+  if (bootsApart) boots.forEach(b => g.remove(b));
+  const out = jgMergeGroup(g);   // [NY] ytelse
+  if (bootsApart) out.userData.boots = boots;
+  return out;
 }
 function jungleGearize(body, team, name, on) {
   if (!body) return;
