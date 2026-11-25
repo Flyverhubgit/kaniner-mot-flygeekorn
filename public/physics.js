@@ -7,12 +7,13 @@
 //     arm og ører henger i ledd) og lander på trapper, kanter og bakker
 //  RAPIER_ON = false: ingen fysikk lastes, alt er som før.
 // =====================================================================
-const RAPIER_ON = true, RAPIER_RAGDOLL = true, RAPIER_DEBRIS = true;
+const RAPIER_ON = true, RAPIER_RAGDOLL = true, RAPIER_DEBRIS = true, RAPIER_NADES = true;
 const PH_DEBRIS_LIFE = 6;                        // sekunder bitene blir liggende
 const PH_RAG_PUSH = 2.2;                         // hvor hardt skuddet dytter (m/s)
 const PH_G_WORLD = (0x0001 << 16) | 0xffff;     // kollisjonsgrupper: verden treffer alt
 const PH_G_RAG = (0x0002 << 16) | 0x0001;       // filledukke-deler treffer bare verden (ikke hverandre)
 const PH_G_DEBRIS = (0x0004 << 16) | 0x0005;    // rusk treffer verden og annet rusk
+const PH_G_NADE = (0x0008 << 16) | 0x0001;      // granater treffer bare verden
 
 let RAP = null, phWorld = null, phMap = '', phStatic = new Map(), phAcc = 0, phLast = 0;
 function phReady() { return !!(RAP && phWorld); }
@@ -146,7 +147,7 @@ function phAreaOnce(x, y, z) {                      // én gang per 3 m-rute (ra
   const k = Math.floor(x / 3) + ',' + Math.floor(y / 3) + ',' + Math.floor(z / 3);
   if (phAreaDone.has(k)) return; phAreaDone.add(k); phArea(x, y, z, 4);
 }
-function phDebrisReset() { phAreaDone.clear(); if (typeof debris !== 'undefined') debris.forEach(d => { d.phB = null; d.phLast = 0; }); }
+function phDebrisReset() { phAreaDone.clear(); if (typeof phNades !== "undefined") phNades.clear(); if (typeof debris !== 'undefined') debris.forEach(d => { d.phB = null; d.phLast = 0; }); }
 function phDebrisFrame() {
   if (!RAPIER_DEBRIS || !phReady() || typeof debris === 'undefined') return;
   for (const d of debris) {
@@ -161,6 +162,38 @@ function phDebrisFrame() {
     }
     d.phLast = d.life;
     if (d.phB) { const t = d.phB.translation(), q = d.phB.rotation(); d.m.position.set(t.x, t.y, t.z); d.m.quaternion.set(q.x, q.y, q.z, q.w); }
+  }
+}
+
+// ---------------- granater: spretter, ruller og spinner ekte ----------------
+// Den som kaster bestemmer hvor den smeller (som før), så alle får smellet på samme sted.
+const phNades = new Map();
+function phNadesBefore() {
+  if (!RAPIER_NADES || !phReady() || typeof nades === 'undefined') return;
+  const live = new Set();
+  for (const n of nades) {
+    if (n.torp || n.holy) continue;                  // torpedo og fersken som før
+    live.add(n.id);
+    let b = phNades.get(n.id);
+    if (!b) {
+      phAreaOnce(n.x, n.y, n.z);
+      b = phWorld.createRigidBody(RAP.RigidBodyDesc.dynamic().setTranslation(n.x, n.y, n.z).setLinvel(n.vx, n.vy, n.vz)
+        .setGravityScale(NADE_GRAVITY / 9.81).setAngularDamping(0.8).setLinearDamping(0.05).setCcdEnabled(true));
+      phWorld.createCollider(RAP.ColliderDesc.ball(0.12).setDensity(3).setFriction(0.7).setRestitution(0.35).setCollisionGroups(PH_G_NADE), b);
+      phNades.set(n.id, b);
+    }
+    const t = b.translation(); n.x = t.x; n.y = t.y; n.z = t.z; n.vx = n.vy = n.vz = 0;   // den gamle sprett-koden står stille
+    phAreaOnce(t.x, t.y, t.z); const lv = b.linvel(); phAreaOnce(t.x + lv.x * 0.3, t.y + lv.y * 0.3, t.z + lv.z * 0.3);   // vegger litt foran
+  }
+  for (const [id, b] of phNades) if (!live.has(id)) { try { phWorld.removeRigidBody(b); } catch (e) {} phNades.delete(id); }
+}
+function phNadesAfter() {
+  if (!RAPIER_NADES || !phReady() || typeof nades === 'undefined') return;
+  for (const n of nades) {
+    const b = phNades.get(n.id); if (!b) continue;
+    const t = b.translation(), q = b.rotation();
+    n.x = t.x; n.y = t.y; n.z = t.z;
+    n.mesh.position.set(t.x, t.y, t.z); n.mesh.quaternion.set(q.x, q.y, q.z, q.w);
   }
 }
 
@@ -204,6 +237,10 @@ if (RAPIER_ON) {
     if (typeof removeOther === 'function') {
       const phRemoveOld = removeOther;
       removeOther = function (id) { const r = others[id]; if (r && r.rd) phEndRag(r); return phRemoveOld.apply(this, arguments); };
+    }
+    if (RAPIER_NADES && typeof updateNades === 'function') {
+      const phNadesOld = updateNades;
+      updateNades = function (dt) { try { phNadesBefore(); } catch (e) {} const res = phNadesOld.apply(this, arguments); try { phNadesAfter(); } catch (e) {} return res; };
     }
     if (RAPIER_DEBRIS && typeof updateCastle === 'function') {
       const phCastleOld = updateCastle;
