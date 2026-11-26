@@ -164,7 +164,7 @@ function phAreaOnce(x, y, z) {                      // én gang per 3 m-rute (ra
   const k = Math.floor(x / 3) + ',' + Math.floor(y / 3) + ',' + Math.floor(z / 3);
   if (phAreaDone.has(k)) return; phAreaDone.add(k); phArea(x, y, z, 4);
 }
-function phDebrisReset() { if (typeof phShards !== 'undefined') phShards.forEach(o => { if (o) { o.b = null; o.m.visible = false; } }); phAreaDone.clear(); if (typeof phNades !== "undefined") phNades.clear(); if (typeof debris !== 'undefined') debris.forEach(d => { d.phB = null; d.phLast = 0; }); }
+function phDebrisReset() { if (typeof phShards !== 'undefined' && phShardIM) { phSM.makeScale(0, 0, 0); phShards.forEach((o, k) => { o.b = null; o.on = false; phShardIM.setMatrixAt(k, phSM); }); phShardIM.instanceMatrix.needsUpdate = true; } phAreaDone.clear(); if (typeof phNades !== "undefined") phNades.clear(); if (typeof debris !== 'undefined') debris.forEach(d => { d.phB = null; d.phLast = 0; }); }
 function phDebrisFrame() {
   if (!RAPIER_DEBRIS || !phReady() || typeof debris === 'undefined') return;
   for (const d of debris) {
@@ -332,51 +332,67 @@ function phTiltApply(dt) {
 }
 
 // ---------------- knusing: én kloss blir mange små biter ----------------
-const PH_SHARD_POOL = 420, PH_SHARD_BUDGET = 360;               // maks biter samtidig / per sekund
-const phShards = []; let phShardI = 0, phShardBudget = PH_SHARD_BUDGET, phShardBudgetT = 0;
-const phShardGeo = new THREE.BoxGeometry(1, 1, 1), phShardMats = {};
-function phShardMat(color, v) {                                  // v: 0–3 litt ulike nyanser, litt mørkere (veggene har tekstur og skygge)
-  const key = color + ':' + v; if (phShardMats[key]) return phShardMats[key];
-  const c = new THREE.Color(color).multiplyScalar(0.72 + v * 0.08);
-  return (phShardMats[key] = new THREE.MeshLambertMaterial({ color: c }));
+// Alle bitene tegnes som ÉN InstancedMesh (billig selv med 1000+ biter). De flyr ut fra midten av smellet.
+const PH_SHARD_POOL = 1200, PH_SHARD_BUDGET = 900;              // maks biter samtidig / per sekund
+const PH_SHARD_N_NEAR = 4, PH_SHARD_N_MID = 3, PH_SHARD_N_FAR = 2;   // 4×4×4 = 64 biter helt nær, 27 litt unna, 8 langt unna
+let phShardIM = null, phShardI = 0, phShardBudget = PH_SHARD_BUDGET, phShardBudgetT = 0, phBlastCtx = null;
+const phShards = [];
+const phSM = new THREE.Matrix4(), phSQ = new THREE.Quaternion(), phSP = new THREE.Vector3(), phSS = new THREE.Vector3(), phSC = new THREE.Color();
+function phShardInit() {
+  if (phShardIM) return;
+  phShardIM = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshLambertMaterial({ color: 0xffffff }), PH_SHARD_POOL);
+  phShardIM.frustumCulled = false; phShardIM.raycast = () => {}; phShardIM.castShadow = false;
+  phSM.makeScale(0, 0, 0);
+  for (let i = 0; i < PH_SHARD_POOL; i++) { phShardIM.setMatrixAt(i, phSM); phShardIM.setColorAt(i, phSC.set(1, 1, 1)); phShards.push({ b: null, t: 0, sx: 1, sy: 1, sz: 1, on: false }); }
+  scene.add(phShardIM);
 }
 function phShatter(i) {
   if (!RAPIER_SHATTER || !phReady() || typeof voxWorld !== 'function') return false;
   const W = voxWorld(), [x, y, z] = W.cellPos(i), d = Math.hypot(x + 0.5 - camera.position.x, z + 0.5 - camera.position.z);
-  if (d > 45) return false;
-  const n = phShardBudget >= 27 && d < 25 ? 3 : phShardBudget >= 8 ? 2 : 0;   // 3×3×3 = 27 biter nær deg, ellers 2×2×2 = 8
-  if (!n) return false;
+  if (d > 60) return false;
+  let n = d < 18 ? PH_SHARD_N_NEAR : d < 35 ? PH_SHARD_N_MID : PH_SHARD_N_FAR;
+  while (n > 1 && phShardBudget < n * n * n) n--;                 // tomt for biter dette sekundet: grovere biter
+  if (n < 2) return false;
+  phShardInit();
   phShardBudget -= n * n * n;
-  const color = (W.LIB.INFO[W.pristine[i]] || W.LIB.INFO[BUILT_T] || { color: 0x888888 }).color, s = 1 / n;
+  const color = (W.LIB.INFO[W.pristine[i]] || W.LIB.INFO[BUILT_T] || { color: 0x888888 }).color, s = 1 / n, base = new THREE.Color(color);
   phAreaOnce(x + 0.5, y + 0.5, z + 0.5);
-  if (typeof fx2Spawn === 'function' && typeof FX2 !== 'undefined' && FX2 && Math.random() < 0.6) {   // støvsky der klossen brakk
-    const cc = new THREE.Color(color).lerp(new THREE.Color(0xb0a898), 0.5).getHex();
-    fx2Spawn(fx2Dust, new THREE.Vector3(x + 0.5, y + 0.5, z + 0.5), new THREE.Vector3((Math.random() - 0.5) * 2, 0.6, (Math.random() - 0.5) * 2), 2.5 + Math.random() * 2, 0.9, 3.2, cc, 0xc8c0b0, 0.55, -0.1, 1.2);
+  if (typeof fx2Spawn === 'function' && typeof FX2 !== 'undefined' && FX2 && Math.random() < 0.5) {   // støvsky der klossen brakk
+    const cc = base.clone().lerp(new THREE.Color(0xb0a898), 0.5).getHex();
+    fx2Spawn(fx2Dust, new THREE.Vector3(x + 0.5, y + 0.5, z + 0.5), new THREE.Vector3((Math.random() - 0.5) * 2, 0.6, (Math.random() - 0.5) * 2), 2.5 + Math.random() * 2.5, 1, 3.4, cc, 0xc8c0b0, 0.55, -0.1, 1.2);
   }
+  // retning: ut fra midten av smellet (alle klossene som forsvant samtidig), ellers tilfeldig
+  const C = phBlastCtx, cx = C ? C.x : x + 0.5, cy = C ? C.y - 0.5 : y, cz = C ? C.z : z + 0.5, power = C ? Math.min(14, 5 + C.n * 0.35) : 4;
   for (let a = 0; a < n; a++) for (let b = 0; b < n; b++) for (let c = 0; c < n; c++) {
-    let o = phShards[phShardI];
-    if (!o) { const m = new THREE.Mesh(phShardGeo, phShardMat(color, 0)); m.castShadow = false; m.raycast = () => {}; scene.add(m); o = phShards[phShardI] = { m, b: null, t: 0 }; }
-    phShardI = (phShardI + 1) % PH_SHARD_POOL;
+    const k = phShardI, o = phShards[k]; phShardI = (phShardI + 1) % PH_SHARD_POOL;
     if (o.b) { try { phWorld.removeRigidBody(o.b); } catch (e) {} o.b = null; }
-    const k = s * (0.75 + Math.random() * 0.4), px = x + (a + 0.5) * s, py = y + (b + 0.5) * s, pz = z + (c + 0.5) * s;
-    o.m.material = phShardMat(color, Math.floor(Math.random() * 4)); o.m.scale.set(k, k * (0.7 + Math.random() * 0.5), k); o.m.position.set(px, py, pz); o.m.visible = true;
-    const out = { x: (px - x - 0.5) * 6 + (Math.random() - 0.5) * 3, y: 1.5 + Math.random() * 4 + (py - y - 0.5) * 4, z: (pz - z - 0.5) * 6 + (Math.random() - 0.5) * 3 };
-    o.b = phWorld.createRigidBody(RAP.RigidBodyDesc.dynamic().setTranslation(px, py, pz).setLinvel(out.x, out.y, out.z)
-      .setAngvel({ x: (Math.random() - 0.5) * 14, y: (Math.random() - 0.5) * 14, z: (Math.random() - 0.5) * 14 }).setLinearDamping(0.15).setAngularDamping(0.5));
-    phWorld.createCollider(RAP.ColliderDesc.cuboid(k / 2, k * 0.6 / 2 + 0.01, k / 2).setDensity(1.5).setFriction(0.9).setRestitution(0.2).setCollisionGroups(PH_G_DEBRIS), o.b);
-    o.t = 6 + Math.random() * 4;
+    const px = x + (a + 0.5) * s, py = y + (b + 0.5) * s, pz = z + (c + 0.5) * s;
+    o.sx = s * (0.6 + Math.random() * 0.55); o.sy = s * (0.45 + Math.random() * 0.6); o.sz = s * (0.6 + Math.random() * 0.55);
+    let dx = px - cx, dy = py - cy, dz = pz - cz; const dl = Math.hypot(dx, dy, dz) || 1; dx /= dl; dy /= dl; dz /= dl;
+    const v = power * (0.5 + Math.random() * 0.8) / Math.max(1, dl * 0.35);
+    o.b = phWorld.createRigidBody(RAP.RigidBodyDesc.dynamic().setTranslation(px, py, pz)
+      .setLinvel(dx * v + (Math.random() - 0.5) * 2, Math.abs(dy) * v * 0.6 + 1 + Math.random() * 3, dz * v + (Math.random() - 0.5) * 2)
+      .setAngvel({ x: (Math.random() - 0.5) * 16, y: (Math.random() - 0.5) * 16, z: (Math.random() - 0.5) * 16 }).setLinearDamping(0.12).setAngularDamping(0.5));
+    phWorld.createCollider(RAP.ColliderDesc.cuboid(o.sx / 2, o.sy / 2, o.sz / 2).setDensity(1.5).setFriction(0.9).setRestitution(0.18).setCollisionGroups(PH_G_DEBRIS), o.b);
+    o.t = 7 + Math.random() * 5; o.on = true;
+    phShardIM.setColorAt(k, phSC.copy(base).multiplyScalar(0.68 + Math.random() * 0.3));
   }
+  phShardIM.instanceColor.needsUpdate = true;
   return true;
 }
 function phShardFrame(dt) {
   phShardBudgetT += dt; if (phShardBudgetT > 1) { phShardBudgetT = 0; phShardBudget = PH_SHARD_BUDGET; }
-  for (const o of phShards) {
-    if (!o || !o.m.visible) continue;
-    o.t -= dt;
-    if (o.t <= 0) { o.m.visible = false; if (o.b) { try { phWorld.removeRigidBody(o.b); } catch (e) {} o.b = null; } continue; }
-    if (o.b) { const t = o.b.translation(), q = o.b.rotation(); o.m.position.set(t.x, t.y, t.z); o.m.quaternion.set(q.x, q.y, q.z, q.w); }
-    if (o.t < 1) o.m.scale.multiplyScalar(1 - dt * 2);        // krymper bort til slutt
+  if (!phShardIM) return;
+  let any = false;
+  for (let k = 0; k < phShards.length; k++) {
+    const o = phShards[k]; if (!o.on) continue;
+    any = true; o.t -= dt;
+    if (o.t <= 0 || !o.b) { o.on = false; if (o.b) { try { phWorld.removeRigidBody(o.b); } catch (e) {} o.b = null; } phSM.makeScale(0, 0, 0); phShardIM.setMatrixAt(k, phSM); continue; }
+    const t = o.b.translation(), q = o.b.rotation(), f = o.t < 1 ? o.t : 1;   // krymper bort det siste sekundet
+    phSM.compose(phSP.set(t.x, t.y, t.z), phSQ.set(q.x, q.y, q.z, q.w), phSS.set(o.sx * f, o.sy * f, o.sz * f));
+    phShardIM.setMatrixAt(k, phSM);
   }
+  if (any) phShardIM.instanceMatrix.needsUpdate = true;
 }
 
 // ---------------- kobling til spillet ----------------
@@ -445,7 +461,14 @@ if (RAPIER_ON) {
     }
     if (typeof removeCells === 'function') {
       const phCellsOld = removeCells;
-      removeCells = function (list) { const res = phCellsOld.apply(this, arguments); try { if (phReady() && list) list.forEach(phRemoveCell); } catch (e) {} return res; };
+      removeCells = function (list) {
+        try {                                                   // midten av alle klossene som forsvinner nå = der smellet var
+          if (RAPIER_SHATTER && list && list.length && typeof voxWorld === 'function') { const W = voxWorld(); let sx = 0, sy = 0, sz = 0; list.forEach(i => { const p = W.cellPos(i); sx += p[0] + 0.5; sy += p[1] + 0.5; sz += p[2] + 0.5; }); phBlastCtx = { x: sx / list.length, y: sy / list.length, z: sz / list.length, n: list.length }; }
+        } catch (e) { phBlastCtx = null; }
+        const res = phCellsOld.apply(this, arguments);
+        phBlastCtx = null;
+        try { if (phReady() && list) list.forEach(phRemoveCell); } catch (e) {} return res;
+      };
     }
   });
 }

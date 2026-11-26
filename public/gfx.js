@@ -34,6 +34,50 @@ if (!GFX_SHADOWS) { renderer.shadowMap.enabled = false; sun.castShadow = false; 
 let gfxSeed = 1;
 const gfxRnd = () => { gfxSeed = (gfxSeed * 16807) % 2147483647; return (gfxSeed - 1) / 2147483646; };
 const GFX_TEX_CACHE = {};
+// [NY] TEKSTURER v2: dobbel oppløsning, myk (ikke pikselert), skrå kanter med lys/skygge på vegger,
+// skitt mot bunnen, små sprekker og hakk – og ingen rutenett-streker på bakken (sand, gress, løv).
+// ?off=tex2 eller GFX_TEX2 = false: som før.
+const GFX_TEX2 = !(typeof kmfOff === 'function' && kmfOff('tex2'));
+const GFX_TEX2_GROUND = { grass: 1, sand: 1, leaf: 1, hay: 1 };          // sømløse flater: ingen kanter
+const GFX_TEX2_CRACK = { stone: 1, brick: 1, plaster: 1, marble: 1, speckle: 1 };
+function gfxBlockTex2(pattern, small) {
+  const S = 64, c = document.createElement('canvas'); c.width = c.height = S;
+  const x = c.getContext('2d'); x.imageSmoothingEnabled = true;
+  x.drawImage(small, 0, 0, S, S);
+  const R = gfxRnd;
+  // fin kornethet over alt (så det ikke ser ut som flate farger)
+  for (let j = 0; j < S; j++) for (let i = 0; i < S; i++) { const r = R(); if (r < 0.18) { x.fillStyle = r < 0.09 ? 'rgba(0,0,0,0.07)' : 'rgba(255,255,255,0.07)'; x.fillRect(i, j, 1, 1); } }
+  if (pattern !== 'glass' && pattern !== 'flat' && !GFX_TEX2_GROUND[pattern]) {
+    const lin = (x0, y0, x1, y1, a0, col) => { const g = x.createLinearGradient(x0, y0, x1, y1); g.addColorStop(0, col + a0 + ')'); g.addColorStop(1, col + '0)'); return g; };
+    // skitt og slitasje mot bunnen av hver kloss
+    x.fillStyle = lin(0, S, 0, S * 0.45, 0.13, 'rgba(40,30,20,'); x.fillRect(0, 0, S, S);
+    // skrå kant: lys oppe/venstre, mørk nede/høyre (ser ut som en hugget stein / avrundet kant)
+    const B = 6;
+    x.fillStyle = lin(0, 0, 0, B, 0.26, 'rgba(255,255,255,'); x.fillRect(0, 0, S, B);
+    x.fillStyle = lin(0, 0, B, 0, 0.18, 'rgba(255,255,255,'); x.fillRect(0, 0, B, S);
+    x.fillStyle = lin(0, S, 0, S - B, 0.32, 'rgba(0,0,0,'); x.fillRect(0, S - B, S, B);
+    x.fillStyle = lin(S, 0, S - B, 0, 0.26, 'rgba(0,0,0,'); x.fillRect(S - B, 0, B, S);
+    // små hakk langs kantene
+    for (let k = 0; k < 6; k++) { const e = R() * 4 | 0, t = 4 + R() * (S - 10), w = 2 + R() * 4, h = 1 + R() * 2; x.fillStyle = 'rgba(0,0,0,0.22)';
+      if (e === 0) x.fillRect(t, 0, w, h); else if (e === 1) x.fillRect(t, S - h, w, h); else if (e === 2) x.fillRect(0, t, h, w); else x.fillRect(S - h, t, h, w); }
+    // en tynn sprekk (ikke på alle)
+    if (GFX_TEX2_CRACK[pattern] && R() < 0.8) {                        // kort og svak (samme tekstur går igjen på alle klossene)
+      x.strokeStyle = 'rgba(0,0,0,0.14)'; x.lineWidth = 1; x.beginPath();
+      let a = 8 + R() * 48, b = 40 + R() * 10; x.moveTo(a, b);
+      for (let k = 0; k < 3; k++) { a += (R() - 0.5) * 8; b += 3 + R() * 4; x.lineTo(a, b); }
+      x.stroke();
+      x.strokeStyle = 'rgba(255,255,255,0.12)'; x.beginPath(); x.moveTo(a + 1, b); x.stroke();
+    }
+  } else if (GFX_TEX2_GROUND[pattern]) {
+    // bakke: noen flekker som går over kanten-følelsen, ingen streker
+    for (let k = 0; k < 14; k++) { const a = R() * S, b = R() * S, r = 3 + R() * 8, g = x.createRadialGradient(a, b, 0, a, b, r), d = R() < 0.5;
+      g.addColorStop(0, d ? 'rgba(0,0,0,0.07)' : 'rgba(255,255,255,0.07)'); g.addColorStop(1, 'rgba(0,0,0,0)'); x.fillStyle = g; x.fillRect(a - r, b - r, r * 2, r * 2); }
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.magFilter = THREE.LinearFilter; t.anisotropy = 8;
+  GFX_TEX_CACHE[pattern] = t;
+  return t;
+}
 function gfxBlockTex(pattern) {
   if (GFX_TEX_CACHE[pattern]) return GFX_TEX_CACHE[pattern];
   const S = 32, c = document.createElement('canvas'); c.width = c.height = S;
@@ -144,6 +188,7 @@ function gfxBlockTex(pattern) {
     default:                                       // 'speckle'
       noise(232, 26, 2);
   }
+  if (GFX_TEX2) return gfxBlockTex2(pattern, c);   // [NY] skarpere, mindre "kloss": skrå kanter, slitasje, sømløs bakke
   // Mørk kant rundt hver kloss (gjør at man ser de enkelte klossene, som i Minecraft)
   if (pattern !== 'glass' && pattern !== 'container') {
     x.fillStyle = 'rgba(0,0,0,0.16)';
