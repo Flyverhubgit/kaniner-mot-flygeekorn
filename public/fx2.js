@@ -46,7 +46,7 @@ function fx2Pool(n, mat) {
   for (let i = 0; i < n; i++) { const s = new THREE.Sprite(mat.clone()); s.visible = false; s.layers.set(1); fx2Group.add(s); arr.push({ s, life: 0, max: 1, v: new THREE.Vector3(), size: 1, grow: 1, rot: 0, g: 0, c0: new THREE.Color(), c1: new THREE.Color(), a: 1, drag: 0 }); }
   arr.i = 0; return arr;
 }
-let fx2Fire, fx2Smoke, fx2Dust, fx2Spark, fx2Flash, fx2Lights = [], fx2LightI = 0;
+let fx2Fire, fx2Smoke, fx2Dust, fx2Spark, fx2Flash, fx2MSmoke, fx2IDust, fx2Lights = [], fx2LightI = 0;   // MSmoke/IDust: egne bassenger for skudd og treff (stjeler ikke røyken fra smellene)
 if (FX2) {
   const fireT = fx2BlobTex(true, 7), smokeT = fx2BlobTex(false, 11), dot = fx2DotTex(), star = fx2StarTex();
   fx2Fire = fx2Pool(70, new THREE.SpriteMaterial({ map: fireT, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false }));
@@ -54,6 +54,8 @@ if (FX2) {
   fx2Dust = fx2Pool(90, new THREE.SpriteMaterial({ map: smokeT, transparent: true, depthWrite: false }));
   fx2Spark = fx2Pool(140, new THREE.SpriteMaterial({ map: dot, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false }));
   fx2Flash = fx2Pool(24, new THREE.SpriteMaterial({ map: star, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false }));
+  fx2MSmoke = fx2Pool(80, new THREE.SpriteMaterial({ map: smokeT, transparent: true, depthWrite: false }));
+  fx2IDust = fx2Pool(100, new THREE.SpriteMaterial({ map: smokeT, transparent: true, depthWrite: false }));
   for (let i = 0; i < 3; i++) { const L = new THREE.PointLight(0xffb060, 0, 9, 2); fx2Group.add(L); fx2Lights.push({ L, t: 0 }); }
 }
 function fx2Take(pool) { const o = pool[pool.i]; pool.i = (pool.i + 1) % pool.length; return o; }
@@ -115,7 +117,7 @@ function fx2Muzzle(from, to, w) {
   const dir = to.clone().sub(from).normalize(), big = w === 'sniper' || w === 'sniper50' || w === 'mg42' || w === 'jeepmg' || w === 'm60';
   const p = from.clone().addScaledVector(dir, 0.35);
   fx2Spawn(fx2Flash, p, new THREE.Vector3(), 0.06, big ? 0.9 : 0.6, 1.2, 0xfff0c0, 0xff9a40, 1, 0, 0);
-  fx2Spawn(fx2Smoke, p.clone().addScaledVector(dir, 0.3), dir.clone().multiplyScalar(1.2).add(new THREE.Vector3(0, 0.5, 0)), 0.8, 0.25, 4, 0xbbbbbb, 0xdddddd, 0.3, 0, 1.5);
+  fx2Spawn(fx2MSmoke, p.clone().addScaledVector(dir, 0.3), dir.clone().multiplyScalar(1.2).add(new THREE.Vector3(0, 0.5, 0)), 0.8, 0.25, 4, 0xbbbbbb, 0xdddddd, 0.3, 0, 1.5);
   if (fx2Near(from, 60)) fx2Light(p, big ? 2.5 : 1.6, 8, 0.06);
 }
 
@@ -141,12 +143,12 @@ function fx2Hit(p, n) {
   const out = (sp, up) => V.copy(n).multiplyScalar(sp).add(fx2Rnd(sp * 0.8)).setY(V.y + (up || 0));
   if (kind === 'water') {                        // sprut opp
     for (let i = 0; i < 8; i++) fx2Spawn(fx2Spark, p.clone(), new THREE.Vector3((Math.random() - 0.5) * 2, 3 + Math.random() * 3, (Math.random() - 0.5) * 2), 0.6, 0.12, 0.6, 0xe8f4ff, 0xcfe4f5, 0.9, 9.8, 0.5);
-    fx2Spawn(fx2Dust, p.clone(), new THREE.Vector3(0, 0.6, 0), 0.7, 0.4, 3, 0xe8f0f5, 0xffffff, 0.6, 0, 1);
+    fx2Spawn(fx2IDust, p.clone(), new THREE.Vector3(0, 0.6, 0), 0.7, 0.4, 3, 0xe8f0f5, 0xffffff, 0.6, 0, 1);
     return;
   }
   const col = { dirt: [0x6a5236, 0x8a7458], sand: [0xc9ab7a, 0xdcc9a3], stone: [0x8a8680, 0xa8a49e], metal: [0x9aa0a8, 0xc0c6cc], wood: [0x7a5a32, 0x9a7a52], leaf: [0x3e6a2a, 0x5a8a3a] }[kind];
   // støvsky ut fra veggen
-  for (let i = 0; i < 3; i++) fx2Spawn(fx2Dust, p.clone().addScaledVector(n, 0.1), out(1.2, 0.3).clone(), 0.9 + Math.random() * 0.6, 0.25, 3.2, col[0], col[1], 0.7, -0.2, 2);
+  for (let i = 0; i < 3; i++) fx2Spawn(fx2IDust, p.clone().addScaledVector(n, 0.1), out(1.2, 0.3).clone(), 0.9 + Math.random() * 0.6, 0.25, 3.2, col[0], col[1], 0.7, -0.2, 2);
   // biter (jord, flis, løv) som faller
   const bits = kind === 'leaf' ? 7 : 5;
   for (let i = 0; i < bits; i++) fx2Spawn(fx2Spark, p.clone(), out(3, 2).clone(), kind === 'leaf' ? 1.6 : 0.7, kind === 'leaf' ? 0.14 : 0.09, 1, col[0], col[0], 1, kind === 'leaf' ? 2.5 : 12, kind === 'leaf' ? 2.5 : 0.4).s.material.blending = THREE.NormalBlending;
@@ -157,7 +159,7 @@ function fx2Hit(p, n) {
 function fx2Fluff(p, team) {
   if (!FX2 || !fx2Near(p, 80)) return;
   const c = team === 'squirrel' ? 0xc8a070 : 0xf4f0ea;
-  for (let i = 0; i < 9; i++) { const o = fx2Spawn(fx2Smoke, p.clone().add(fx2Rnd(0.3)), fx2Rnd(4).clone().setY(1 + Math.random() * 2), 1 + Math.random() * 0.8, 0.12 + Math.random() * 0.1, 1.8, 0xffffff, c, 0.95, 2.5, 3); o.rot = (Math.random() - 0.5) * 4; }
+  for (let i = 0; i < 9; i++) { const o = fx2Spawn(fx2MSmoke, p.clone().add(fx2Rnd(0.3)), fx2Rnd(4).clone().setY(1 + Math.random() * 2), 1 + Math.random() * 0.8, 0.12 + Math.random() * 0.1, 1.8, 0xffffff, c, 0.95, 2.5, 3); o.rot = (Math.random() - 0.5) * 4; }
 }
 
 // ---------- oppdatering ----------
@@ -165,7 +167,7 @@ let fx2Last = performance.now();
 (function fx2Loop() {
   const now = performance.now(), dt = Math.min(0.1, (now - fx2Last) / 1000); fx2Last = now;
   if (FX2) {
-    for (const pool of [fx2Fire, fx2Smoke, fx2Dust, fx2Spark, fx2Flash]) for (const o of pool) {
+    for (const pool of [fx2Fire, fx2Smoke, fx2Dust, fx2Spark, fx2Flash, fx2MSmoke, fx2IDust]) for (const o of pool) {
       if (o.life <= 0) continue;
       o.life -= dt; if (o.life <= 0) { o.s.visible = false; continue; }
       const k = 1 - o.life / o.max;
