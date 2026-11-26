@@ -107,6 +107,12 @@ socket.on('hueys', list => {
     }
     const dx = x - (h.tgt.x === undefined ? x : h.tgt.x), dz = z - (h.tgt.z === undefined ? z : h.tgt.z);
     h.speed = Math.hypot(dx, dz) * 10;
+    if (HUEY_SMOOTH) {                                         // [NY] fart mellom pakkene (10 per sek) → jevn bevegelse i stedet for rykk
+      const nowP = performance.now(), pd = h.tgtAt ? Math.max(0.05, Math.min(0.3, (nowP - h.tgtAt) / 1000)) : 0.1;
+      let dyw = yaw - (h.tgt.yaw === undefined ? yaw : h.tgt.yaw); while (dyw > Math.PI) dyw -= Math.PI * 2; while (dyw < -Math.PI) dyw += Math.PI * 2;
+      h.vel = h.tgt.x === undefined ? { x: 0, y: 0, z: 0, yaw: 0 } : { x: dx / pd, y: (y - h.tgt.y) / pd, z: dz / pd, yaw: dyw / pd };
+      h.tgtAt = nowP;
+    }
     Object.assign(h.tgt, { x, y, z, yaw, pitch: pitch || 0, roll: roll || 0 }); h.hp = hp; h.gunner = gunner; h.pax = pax; h.phase = phase; h.ejectIn = ejectIn;
     const tn = t ? 'squirrel' : 'bunny';
     if (h.team !== tn) { h.team = tn; h.g.traverse(o => { if (o.isMesh && o.userData.teamMark) o.material.color.setHex(tn === 'bunny' ? 0xd84a4a : 0x4ab04a); }); }   // [NY] stjålet: nytt lagmerke
@@ -234,6 +240,7 @@ function jgChuteGround(x, z) {                                // bakken under fa
   for (let y = J.NY - 1; y >= 0; y--) { const t = W.grid[y * A + iz * J.NX + ix]; if (t && t !== T.TRUNK && t !== T.LEAF && t !== T.LEAF2 && t !== T.PALM) return y + 1; }
   return 0;
 }
+const HUEY_SMOOTH = true;   // [NY] jevn flyging mellom serverpakkene (false = som før)
 function hueyFrame() {
   const now = performance.now(), dt = Math.min(0.35, (now - (hueyLastT || now)) / 1000); hueyLastT = now;   // [FIKS] tåler lav fps på mobil (var maks 0,1 s = sakte film)
   hueyIdsAboard.clear();
@@ -255,9 +262,19 @@ function hueyFrame() {
     }
     if (h.player && typeof phl !== 'undefined' && phl && phl.id === id) phl = null;
     const k = Math.min(1, dt * 6);
+    let dy;
+    if (HUEY_SMOOTH && h.vel && h.tgtAt) {                    // [NY] gjett hvor den er nå (siste pakke + fart × tid), og gli dit
+      const age = Math.min(0.2, (now - h.tgtAt) / 1000), k2 = Math.min(1, dt * 14), v = h.vel;
+      h.cur.x += (h.tgt.x + v.x * age - h.cur.x) * k2; h.cur.y += (h.tgt.y + v.y * age - h.cur.y) * k2; h.cur.z += (h.tgt.z + v.z * age - h.cur.z) * k2;
+      dy = h.tgt.yaw + v.yaw * age - h.cur.yaw; while (dy > Math.PI) dy -= Math.PI * 2; while (dy < -Math.PI) dy += Math.PI * 2;
+      h.cur.yaw += dy * k2;
+      h.bank = (h.bank || 0) + (Math.max(-0.5, Math.min(0.5, -v.yaw * 0.35)) - (h.bank || 0)) * Math.min(1, dt * 3);   // krenging fra hvor fort den svinger, ikke fra rykkene
+      dy = -h.bank / 0.6;                                      // (brukes til krengingen under: -dy * 0.6 = bank)
+    } else {
     h.cur.x += (h.tgt.x - h.cur.x) * k; h.cur.y += (h.tgt.y - h.cur.y) * k; h.cur.z += (h.tgt.z - h.cur.z) * k;
-    let dy = h.tgt.yaw - h.cur.yaw; while (dy > Math.PI) dy -= Math.PI * 2; while (dy < -Math.PI) dy += Math.PI * 2;
+    dy = h.tgt.yaw - h.cur.yaw; while (dy > Math.PI) dy -= Math.PI * 2; while (dy < -Math.PI) dy += Math.PI * 2;
     h.cur.yaw += dy * k;
+    }
     h.g.position.set(h.cur.x, h.cur.y, h.cur.z);
     if (h.player) { h.cur.pitch = (h.cur.pitch || 0) + ((h.tgt.pitch || 0) - (h.cur.pitch || 0)) * k; h.cur.roll = (h.cur.roll || 0) + ((h.tgt.roll || 0) - (h.cur.roll || 0)) * k; h.g.rotation.set(h.cur.pitch, h.cur.yaw, h.cur.roll); }
     else h.g.rotation.set(Math.min(0.14, (h.speed || 0) / 34 * 0.14), h.cur.yaw, -dy * 0.6);   // nesa ned når den flyr, krenger i svinger
