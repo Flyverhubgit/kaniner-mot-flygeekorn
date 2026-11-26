@@ -10,7 +10,8 @@ let wxMood = 'day', wxBase = null, wxBaseMap = '';
 const WX = {
   sunset: { sky: 0xf0a070, top: 0x5a6fb0, sun: 0xffa060, sunI: 0.95, hemiI: 0.55, hemiSky: 0xffc8a0, hemiGround: 0x4a3828, fogK: 1, sunLow: 0.32 },
   storm: { sky: 0xc29a68, top: 0xb08e64, sun: 0xffe0b0, sunI: 0.3, hemiI: 0.7, hemiSky: 0xe8d0a8, hemiGround: 0x6a5a40, fogNear: 2, fogFar: 55 },
-  night: { sky: 0x101c38, top: 0x050a18, sun: 0x8aa8ff, sunI: 0.28, hemiI: 0.32, hemiSky: 0x5070b0, hemiGround: 0x101018, fogK: 0.75 }
+  night: { sky: 0x101c38, top: 0x050a18, sun: 0x8aa8ff, sunI: 0.28, hemiI: 0.32, hemiSky: 0x5070b0, hemiGround: 0x101018, fogK: 0.75 },
+  rain: { sky: 0x5c6a64, top: 0x3a4644, sun: 0xb8c4c0, sunI: 0.32, hemiI: 0.62, hemiSky: 0x8a9a94, hemiGround: 0x2a3428, fogK: 0.7 }   // [NY] regn (jungelen)
 };
 socket.on('weather', d => { wxMood = WEATHER_FX && WX[d.m] ? d.m : 'day'; wxApply(); });
 
@@ -112,6 +113,55 @@ function wxWindFrame() {
   wxWind.f.frequency.value = 380 + 160 * Math.sin(t * 0.45);
 }
 
+// ---------- [NY] Regn og torden (jungelen) ----------
+let wxRainLines = null, wxRainSnd = null, wxThunderT = 15, wxFlashT = 0, wxRainLast = performance.now();
+const WX_RAIN_N = isTouch ? 600 : 1800, WX_RAIN_BOX = 22;
+function wxRainFrame() {
+  const now = performance.now(), dt = Math.min(0.1, (now - wxRainLast) / 1000); wxRainLast = now;
+  const on = wxMood === 'rain' && typeof joined !== 'undefined' && joined;
+  if (on && !wxRainLines) {
+    const pos = new Float32Array(WX_RAIN_N * 6);
+    for (let i = 0; i < WX_RAIN_N; i++) { const x = (Math.random() - 0.5) * WX_RAIN_BOX * 2, y = Math.random() * 18 - 4, z = (Math.random() - 0.5) * WX_RAIN_BOX * 2; pos.set([x, y, z, x + 0.06, y - 0.7, z], i * 6); }
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    wxRainLines = new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color: 0xb8c8d0, transparent: true, opacity: 0.38, depthWrite: false }));
+    wxRainLines.frustumCulled = false; wxRainLines.raycast = () => {}; scene.add(wxRainLines);
+  }
+  if (wxRainLines) wxRainLines.visible = on;
+  // lyd: sus av regn (hvit støy, filtrert)
+  if (on && !wxRainSnd && typeof audioCtx !== 'undefined' && audioCtx) {
+    const sr = audioCtx.sampleRate, len = sr * 3, buf = audioCtx.createBuffer(1, len, sr), d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+    const src = audioCtx.createBufferSource(); src.buffer = buf; src.loop = true;
+    const hp = audioCtx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 900;
+    const lp = audioCtx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 5500;
+    const g = audioCtx.createGain(); g.gain.value = 0;
+    src.connect(hp); hp.connect(lp); lp.connect(g); g.connect(audioCtx.destination); src.start();
+    wxRainSnd = g;
+  }
+  if (wxRainSnd) wxRainSnd.gain.value += ((on ? 0.07 : 0) - wxRainSnd.gain.value) * 0.05;
+  if (!on) return;
+  // dråpene faller (og flytter seg med kameraet)
+  const P = wxRainLines.geometry.attributes.position, a = P.array, fall = 24 * dt, wind = 2.5 * dt;
+  for (let i = 0; i < WX_RAIN_N; i++) {
+    const k = i * 6; a[k + 1] -= fall; a[k + 4] -= fall; a[k] += wind; a[k + 3] += wind;
+    if (a[k + 1] < -4) { const x = (Math.random() - 0.5) * WX_RAIN_BOX * 2, z = (Math.random() - 0.5) * WX_RAIN_BOX * 2, y = 14 + Math.random() * 4; a[k] = x; a[k + 1] = y; a[k + 2] = z; a[k + 3] = x + 0.06; a[k + 4] = y - 0.7; a[k + 5] = z; }
+  }
+  P.needsUpdate = true; wxRainLines.position.set(camera.position.x, camera.position.y, camera.position.z);
+  // sprut på bakken rundt deg
+  if (typeof fx2Spawn === 'function' && typeof FX2 !== 'undefined' && FX2) for (let i = 0; i < 3; i++) {
+    const x = camera.position.x + (Math.random() - 0.5) * 24, z = camera.position.z + (Math.random() - 0.5) * 24, y = (typeof groundAt === 'function' ? groundAt(x, z, camera.position.y) : 0) + 0.05;
+    fx2Spawn(fx2Spark, new THREE.Vector3(x, y, z), new THREE.Vector3((Math.random() - 0.5) * 0.8, 1.2 + Math.random(), (Math.random() - 0.5) * 0.8), 0.25, 0.07, 0.8, 0xdde8f0, 0xc0d0d8, 0.7, 9, 0);
+  }
+  // lyn og torden
+  wxThunderT -= dt;
+  if (wxThunderT <= 0) {
+    wxThunderT = 12 + Math.random() * 25; wxFlashT = 0.35;
+    if (typeof vfxFlash === 'function') vfxFlash(0.18);
+    if (typeof vfxDeep === 'function') { const a2 = Math.random() * 6.28, d2 = 200 + Math.random() * 600; vfxDeep(new THREE.Vector3(camera.position.x + Math.cos(a2) * d2, 80, camera.position.z + Math.sin(a2) * d2), 2.2); }
+  }
+  if (wxFlashT > 0) { wxFlashT -= dt; hemi.intensity = WX.rain.hemiI * (1 + 2.5 * Math.max(0, wxFlashT / 0.35) * (Math.random() < 0.7 ? 1 : 0.3)); if (wxFlashT <= 0) hemi.intensity = WX.rain.hemiI; }
+}
+
 // ---------- Himmelen (Grafikk Høy) og alt som går hver frame ----------
 (function wxLoop() {
   if (WEATHER_FX && typeof currentMap !== 'undefined') {
@@ -122,6 +172,7 @@ function wxWindFrame() {
     if (w && typeof gfxSky !== 'undefined' && gfxSky) gfxSky.material.uniforms.sunCol.value.setHex(wxMood === 'night' ? 0xc8d8ff : wxMood === 'sunset' ? 0xff9a50 : 0xffe8c0);
     wxNightFrame();
     wxWindFrame();
+    try { wxRainFrame(); } catch (e) {}
   }
   requestAnimationFrame(wxLoop);
 })();

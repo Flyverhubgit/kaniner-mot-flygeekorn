@@ -86,7 +86,7 @@ function mmPlaceRay(r) {
 }
 let mmT = 0;
 function mmRaysFrame(dt) {
-  const on = MAP_MOOD_RAYS && typeof GFX_HIGH !== 'undefined' && GFX_HIGH && currentMap === 'jungle' && typeof joined !== 'undefined' && joined;
+  const on = MAP_MOOD_RAYS && typeof GFX_HIGH !== 'undefined' && GFX_HIGH && currentMap === 'jungle' && typeof joined !== 'undefined' && joined && !(typeof wxMood !== 'undefined' && (wxMood === 'rain' || wxMood === 'night'));   // [FIKS] ingen solstråler i regn eller om natta
   const air = (typeof chuteMe !== 'undefined' && chuteMe) || (typeof hueyAboard === 'function' && hueyAboard());   // i lufta: strålene ser rare ut ovenfra
   if (on && air) { if (mmRayGroup) mmRayGroup.visible = false; return; }
   if (!on) { if (mmRayGroup) mmRayGroup.visible = false; return; }

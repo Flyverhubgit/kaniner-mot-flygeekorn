@@ -2198,7 +2198,8 @@ function questResetAll() { Object.values(players).forEach(p => { p.questDmg = 0;
 // day = som før, sunset = solnedgang, storm = sandstorm/tåke, night = natt med lommelykter. WEATHER=night for testing.
 const WEATHER_ON = true;
 const WEATHER_MAPS = { desert: ['day', 'day', 'sunset', 'sunset', 'storm', 'night', 'night'], west: ['day', 'day', 'sunset', 'sunset', 'storm', 'night'],
-  pirate: ['day', 'day', 'sunset', 'sunset', 'night'], castle: ['day', 'day', 'sunset', 'night'], temple: ['day', 'day', 'sunset', 'night'] };
+  pirate: ['day', 'day', 'sunset', 'sunset', 'night'], castle: ['day', 'day', 'sunset', 'night'], temple: ['day', 'day', 'sunset', 'night'],
+  jungle: ['day', 'day', 'rain', 'rain', 'night'] };   // [NY] jungelen: regn og torden, eller natt med lommelykter
 let weatherNow = process.env.WEATHER || 'day';
 function pickWeather(m) {
   if (weatherForce) return weatherForce;              // [NY] valgt portal (ørken dag / natt)
