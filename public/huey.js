@@ -167,6 +167,7 @@ function hueyUiFrame() {
   if (h) {
     const tip = hueyIsGunner ? 'Du er dørskytter – klikk = .50 (M2)' : !h.gunner || !h.gl ? (isTouch ? '' : 'F = ta en M2') : '';
     if (h.player) hueyUi.textContent = { pilot: isTouch ? '🚁 Pilot · venstre tommel styrer · sveip for å snu' : '🚁 Pilot · Mellomrom opp · Shift ned · V kamera', gr: '🎯 Høyre dør (M2)', gl: '🎯 Venstre dør (M2)', pass: '🪂 Passasjer' }[hueySeat] + (isTouch ? '' : ' · E ut/hopp · 1–4 bytt sete');
+    else if (h.ejectIn < 0) hueyUi.textContent = '🚁 ' + (isTouch ? 'Trykk 🪂 HOPP' : 'E = hopp ut') + ' når du vil · blir du sittende, flyr vi over kampene' + (tip ? ' · ' + tip : '');   // [NY] du bestemmer selv (HUEY_STAY)
     else hueyUi.textContent = '🚁 ' + (isTouch ? 'Trykk 🪂 HOPP' : 'E = hopp ut') + ' · ut om ' + (h.ejectIn || 0) + ' s' + (tip ? ' · ' + tip : '');
     hueyUi.style.display = 'block';
   } else if (chuteMe) { hueyUi.textContent = '🪂 W/A/S/D styrer fallskjermen'; hueyUi.style.display = 'block'; }

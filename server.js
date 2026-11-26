@@ -1243,7 +1243,7 @@ function respawn(p) {
   p.hp = MAX_HP;
   p.alive = true;
   p.x = sp.x; p.y = 0; p.z = sp.z; p.yaw = sp.yaw;
-  if (p.isBot) { p.y = sp.y || 0; p.target = null; botPlan(p); }   // [NY] roboten starter ruta på nytt
+  if (p.isBot) { p.y = sp.y || 0; p.target = null; p.flank = null; p.flankDone = false; p.ambushSpot = null; p.ambush = false; if (p.sneaking) { p.sneaking = false; p.crouch = 0; } botPlan(p); }   // [NY] roboten starter ruta på nytt
   io.to(p.id).emit('respawn', sp);
   io.emit('alive', { id: p.id });
 }
@@ -2994,6 +2994,12 @@ function inBox(x, y, z) {
 }
 const BOT_SPEED = 4.2;                       // du går 6
 const BOT_REACT_MS = 650;                    // tid fra de ser deg til første skudd
+const BOT_SNEAKY = true;                       // [NY] lure roboter: vet bare det laget har sett/hørt, flanker, sniker, ligger i bakhold. false = som før
+const BOT_HARDER = true;                       // [NY] litt raskere reaksjon og bedre sikte. false = som før
+function botReactMs() { return BOT_HARDER ? 450 : BOT_REACT_MS; }
+function botAim(c) { return BOT_HARDER ? Math.min(0.6, c * 1.25) : c; }
+const teamIntel = { bunny: {}, squirrel: {} };  // [NY] hvor laget sist så/hørte hver fiende: { id: { x, z, t } }
+function intelSet(team, p) { if (team && teamIntel[team] && p) teamIntel[team][p.id] = { x: p.x, z: p.z, t: Date.now() }; }
 let botSeq = 0;
 function isBot(p) { return p && p.isBot; }
 function botOn() { return BOT_MAPS.includes(mapName) && worldName === 'main'; }
@@ -3278,10 +3284,10 @@ function pirBot(b, now, dt) {
   const dx = best.x - b.x, dz = best.z - b.z;
   b.yaw = Math.atan2(-dx, -dz);
   b.pitch = Math.atan2((best.y + 1.1) - (b.y + 1.4), bestD);
-  if (now - b.seenAt > BOT_REACT_MS && now >= b.nextShot) {
+  if (now - b.seenAt > botReactMs() && now >= b.nextShot) {
     b.nextShot = now + 450 + Math.random() * 250;
     b.protectedUntil = 0;
-    const chance = Math.max(0.08, 0.38 - bestD * 0.005) * (best.crouch ? 0.7 : 1);
+    const chance = botAim(Math.max(0.08, 0.38 - bestD * 0.005) * (best.crouch ? 0.7 : 1));
     const hit = Math.random() < chance, head = hit && Math.random() < 0.08;
     const miss = hit ? 0 : 0.8 + Math.random() * 1.5;
     const to = [+(best.x + (Math.random() - 0.5) * miss).toFixed(2), +(best.y + (head ? 1.3 : 0.9) + (Math.random() - 0.5) * miss).toFixed(2), +(best.z + (Math.random() - 0.5) * miss).toFixed(2)];
@@ -3480,6 +3486,7 @@ function botSmart(b, best, bestD, now, dt) {
   return true;
 }
 function botFollow(b, now, dt, speed) {
+  if (typeof botSneakStep === 'function' && !b.target && botSneakStep(b, now)) { b.smartMoved = true; return; }   // [NY] sniker / venter i bakhold
   if (!b.route || !b.route.length) return;
   const wp = b.route[0], dx = wp[0] - b.x, dz = wp[1] - b.z;
   if (Math.hypot(dx, dz) < 1.0) { b.route.shift(); return; }
@@ -3537,20 +3544,20 @@ setInterval(() => {
       b.yaw = Math.atan2(-dx, -dz);                                   // se på fienden
       b.pitch = Math.atan2((best.y + 1.1) - (b.y + 1.4), bestD) ;
       // --- Skyt (etter reaksjonstid, sakte tempo, bommer ofte) ---
-      if (desert && now - b.seenAt > BOT_REACT_MS && now >= b.nextShot) {   // [NY] ørken-robot: eget våpen
+      if (desert && now - b.seenAt > botReactMs() && now >= b.nextShot) {   // [NY] ørken-robot: eget våpen
         const W = DESERT_W[b.dw], sn = b.dw === 'sniper50';
         b.nextShot = now + DESERT_BOT_MS[b.dw] + Math.random() * 150;
         b.protectedUntil = 0;
-        const chance = (sn ? Math.max(0.1, 0.3 - bestD * 0.002) : Math.max(0.06, 0.36 - bestD * 0.0045)) * (best.crouch ? 0.7 : 1);
+        const chance = botAim((sn ? Math.max(0.1, 0.3 - bestD * 0.002) : Math.max(0.06, 0.36 - bestD * 0.0045)) * (best.crouch ? 0.7 : 1));
         const hit = Math.random() < chance, head = hit && Math.random() < (sn ? 0.2 : 0.07);
         const miss = hit ? 0 : 0.8 + Math.random() * 1.8;
         const to = [+(best.x + (Math.random() - 0.5) * miss).toFixed(2), +(best.y + (head ? 1.3 : 0.9) + (Math.random() - 0.5) * miss).toFixed(2), +(best.z + (Math.random() - 0.5) * miss).toFixed(2)];
         io.emit('shot', { id: b.id, to, w: b.dw });
         if (hit) applyDamage(b, best, head ? W.head : W.dmg, head, sn ? 'sniper' : 'gun');
-      } else if (!desert && now - b.seenAt > BOT_REACT_MS && now >= b.nextShot) {
+      } else if (!desert && now - b.seenAt > botReactMs() && now >= b.nextShot && !(BOT_SNEAKY && b.ambush && bestD > 28)) {   // [NY] bakhold: vent til fienden er nær
         b.nextShot = now + (med ? 1300 : 450) + Math.random() * 250;
         b.protectedUntil = 0;
-        const chance = Math.max(0.1, 0.4 - bestD * 0.007) * (best.crouch ? 0.7 : 1);
+        const chance = botAim(Math.max(0.1, 0.4 - bestD * 0.007) * (best.crouch ? 0.7 : 1));
         const hit = Math.random() < chance;
         const head = hit && Math.random() < 0.08;
         const miss = hit ? 0 : 0.8 + Math.random() * 1.5;
@@ -3686,8 +3693,21 @@ const HUEY_LOW_ALT = 20, HUEY_DROP_ALT = 17;   // [NY] rotete innsetting: færre
 const HUEY = { alt: 42, speed: 34, hover: +process.env.HUEY_HOVER || 6000, eject: +process.env.HUEY_EJECT || 15000,   // test: HUEY_EJECT / HUEY_HOVER
   hp: 700, rocket: 350, seats: 6, out: 12000, fall: 5 };
 const HUEY_M60 = { dmg: 85, head: 100 };
+const HUEY_SLOW = true;   // [NY] roligere tur inn: halv fart, myke svinger (tid til å skyte). false = som før
+const HUEY_STAY = true;   // [NY] mennesker hopper når de vil; blir du sittende sirkler hueyen over kampene (aldri over basene). false = som før
+const HUEY_RIDE = { v: 15, turn: 0.4, loiterV: 12, loiterR: 38, loiterAlt: 26, baseKeep: 200 };   // baseKeep: hele sirkelen minst 200 m fra basene
 const hueys = new Map(); let hueySeq = 0;
 function hueyOn() { return JUNGLE_HUEY && mapName === 'jungle' && !intermission; }
+// [NY] hvor er kampene? Fienden med flest andre fiender rundt seg – men aldri nær noen av basene (for lett)
+function hueyFightSpot(h) {
+  const enemy = h.team === 'bunny' ? 'squirrel' : 'bunny', homes = ['bunny', 'squirrel'].map(t => { const s = t === 'bunny' ? 1 : -1; return { x: JGM.FLAG.x * s, z: JGM.FLAG.z * s }; });
+  const okSpot = (x, z) => homes.every(o => Math.hypot(o.x - x, o.z - z) > HUEY_RIDE.baseKeep + HUEY_RIDE.loiterR + 5) && Math.abs(x) < 340 && Math.abs(z) < 340;   // hele sirkelen holder seg unna basene
+  const foes = Object.values(players).filter(p => p.alive && p.team === enemy && !p.huey && !p.chute && okSpot(p.x, p.z));
+  let best = null, bn = -1;
+  for (const p of foes) { const n = foes.filter(q => Math.hypot(q.x - p.x, q.z - p.z) < 60).length; if (n > bn) { bn = n; best = p; } }
+  if (best) return { x: best.x, z: best.z };
+  const a = Math.random() * Math.PI * 2; return { x: Math.cos(a) * 60, z: Math.sin(a) * 60 };   // ingen kamper: midt på kartet
+}
 function jgGround(x, z) {                                   // bakken under (trekroner teller ikke – du detter gjennom løvet)
   const V = VOX.jungle; if (!V) return 0;
   const ix = Math.floor(x) - JGM.X0, iz = Math.floor(z) - JGM.Z0;
@@ -3781,12 +3801,13 @@ setInterval(() => {
     if (h.player) { phTick(h, now, dt); continue; }               // [NY] spiller-hueyer (egen kode nederst)
     if (h.phase === 'in' && HUEY_LOW && h.wps && h.wps.length) {   // [NY] lavt og svingete, sakte ned mot slippet
       const wp = h.wps[0], last = h.wps.length === 1, dx = wp.x - h.x, dz = wp.z - h.z, d = Math.hypot(dx, dz);
-      const v = last ? Math.min(30, Math.max(5, d * 0.7)) : 30;
+      const vmax = HUEY_SLOW ? HUEY_RIDE.v : 30, v = last ? Math.min(vmax, Math.max(5, d * 0.7)) : vmax;
       const passed = d < 30 && (Math.sin(h.yaw) * dx + Math.cos(h.yaw) * dz) < 0 && !last;   // fløy forbi: ta neste
       if (d < (last ? 2 : 8) || passed) { h.wps.shift(); if (last) { h.phase = 'hover'; h.hoverAt = now; } }
       else {
         const want = Math.atan2(dx, dz); let dy = want - h.yaw; while (dy > Math.PI) dy -= Math.PI * 2; while (dy < -Math.PI) dy += Math.PI * 2;
-        h.yaw += Math.max(-1.1 * dt, Math.min(1.1 * dt, dy));   // svinger mykt, som et ekte helikopter
+        const tr = HUEY_SLOW ? HUEY_RIDE.turn : 1.1;
+        h.yaw += Math.max(-tr * dt, Math.min(tr * dt, dy));   // svinger mykt, som et ekte helikopter
         h.x += Math.sin(h.yaw) * v * dt; h.z += Math.cos(h.yaw) * v * dt;
       }
       const gy = jgGround(h.x, h.z) + (last && d < 60 ? HUEY_DROP_ALT : HUEY_LOW_ALT) + Math.sin(now / 900 + h.id) * 1.2;
@@ -3796,7 +3817,26 @@ setInterval(() => {
       if (d < 2) { h.phase = 'hover'; h.hoverAt = now; }
       else { h.x += dx / d * v * dt; h.z += dz / d * v * dt; h.yaw = Math.atan2(dx, dz); }
     } else if (h.phase === 'hover') {
-      if (now - h.hoverAt > HUEY.hover) { h.phase = 'out'; h.outAt = now; [...h.pax].forEach(id => { const q = players[id]; if (q) hueyLeave(q, true); }); }
+      if (now - h.hoverAt > HUEY.hover) {
+        if (HUEY_STAY) {                                           // [NY] robotene hopper; mennesker som blir sittende får en tur over kampene
+          [...h.pax].forEach(id => { const q = players[id]; if (q && q.isBot) hueyLeave(q, true); });
+          if ([...h.pax].some(id => players[id] && !players[id].isBot)) { h.phase = 'loiter'; h.loiterAt = 0; h.ang = Math.random() * 6.28; } else { h.phase = 'out'; h.outAt = now; }
+        } else { h.phase = 'out'; h.outAt = now; [...h.pax].forEach(id => { const q = players[id]; if (q) hueyLeave(q, true); }); }
+      }
+    } else if (h.phase === 'loiter') {                             // [NY] sirkler over der kampene er, med åpne dører
+      if (![...h.pax].some(id => players[id] && !players[id].isBot)) { h.phase = 'out'; h.outAt = now; }
+      else {
+        if (now > h.loiterAt) { h.center = hueyFightSpot(h); h.loiterAt = now + 12000; }
+        h.ang += HUEY_RIDE.loiterV / HUEY_RIDE.loiterR * dt;
+        const tx = h.center.x + Math.cos(h.ang) * HUEY_RIDE.loiterR, tz = h.center.z + Math.sin(h.ang) * HUEY_RIDE.loiterR;
+        const dx = tx - h.x, dz = tz - h.z, d = Math.hypot(dx, dz);
+        let dy = Math.atan2(dx, dz) - h.yaw; while (dy > Math.PI) dy -= Math.PI * 2; while (dy < -Math.PI) dy += Math.PI * 2;
+        h.yaw += Math.max(-0.5 * dt, Math.min(0.5 * dt, dy));
+        const v = Math.min(HUEY_RIDE.v, Math.max(HUEY_RIDE.loiterV * 0.6, d * 0.5));
+        h.x += Math.sin(h.yaw) * v * dt; h.z += Math.cos(h.yaw) * v * dt;
+        const gy = jgGround(h.x, h.z) + HUEY_RIDE.loiterAlt + Math.sin(now / 900 + h.id) * 1.2;
+        h.y += (gy - h.y) * Math.min(1, dt * 1.2);
+      }
     } else {
       h.x += Math.sin(h.yaw) * 40 * dt; h.z += Math.cos(h.yaw) * 40 * dt; h.y += 3 * dt;
       if (now - h.outAt > HUEY.out || Math.abs(h.x) > 470 || Math.abs(h.z) > 470) { hueys.delete(h.id); continue; }
@@ -3806,7 +3846,7 @@ setInterval(() => {
       const q = players[id];
       if (!q || !q.alive || q.huey !== h.id) { h.pax.delete(id); if (h.gunner === id) h.gunner = null; if (h.gunner2 === id) h.gunner2 = null; return; }
       q.x = h.x; q.y = h.y; q.z = h.z;
-      if (now - h.boardAt[id] > HUEY.eject || (q.isBot && (HUEY_MESSY ? now > q.jumpAt : h.phase === 'hover' && now - h.hoverAt > 800 + (q.id.length % 5) * 400))) hueyLeave(q, true);
+      if ((now - h.boardAt[id] > HUEY.eject && !(HUEY_STAY && !q.isBot)) || (q.isBot && (HUEY_MESSY ? now > q.jumpAt : h.phase === 'hover' && now - h.hoverAt > 800 + (q.id.length % 5) * 400))) hueyLeave(q, true);
     });
   }
   // roboter i fallskjerm: daler sakte ned og sklir litt
@@ -3823,7 +3863,7 @@ setInterval(() => {
   }
   if (hueys.size || hueySent) {
     hueySent = hueys.size > 0;
-    io.emit('hueys', [...hueys.values()].map(h => [h.id, h.team === 'bunny' ? 0 : 1, +h.x.toFixed(2), +h.y.toFixed(2), +h.z.toFixed(2), +h.yaw.toFixed(3), h.hp, h.gunner || '', [...h.pax], h.phase === 'in' ? 0 : h.phase === 'hover' ? 1 : 2, h.player ? 0 : Math.max(0, Math.ceil((HUEY.eject - (now - Math.min(...[...h.pax].map(i => h.boardAt[i] || now), now))) / 1000)),
+    io.emit('hueys', [...hueys.values()].map(h => [h.id, h.team === 'bunny' ? 0 : 1, +h.x.toFixed(2), +h.y.toFixed(2), +h.z.toFixed(2), +h.yaw.toFixed(3), h.hp, h.gunner || '', [...h.pax], h.phase === 'in' ? 0 : h.phase === 'hover' ? 1 : 2, h.player ? 0 : HUEY_STAY ? -1 : Math.max(0, Math.ceil((HUEY.eject - (now - Math.min(...[...h.pax].map(i => h.boardAt[i] || now), now))) / 1000)),
       h.player ? 1 : 0, h.pilot || '', h.player ? h.gl || '' : h.gunner2 || '', h.gr || '', h.pass || '', +(h.pitch || 0).toFixed(3), +(h.roll || 0).toFixed(3)]));
   }
 }, 100);
@@ -3878,11 +3918,74 @@ function ctfBotGoal(b, r) {                                 // lange turer deles
   if (d <= 110) return g;
   return [b.x + dx / d * 90 + (Math.random() - 0.5) * 24, b.z + dz / d * 90 + (Math.random() - 0.5) * 24];
 }
+// [NY] LURE ROBOTER: vet bare det laget har sett/hørt, flanker fra siden, sniker inn, ligger i bakhold i krattet
+function jgInPlants(x, z) { return !JGM.masked(x, z) && !JGM.inRiver(x, z); }
+function botCtfRole(b) {                                          // hele troppen får troppens rolle (ikke bare lederen)
+  const q = typeof squadOf === 'function' && squadsOn() ? squadOf(b) : null;
+  if (q && q.role) return q.role === 'defend' ? 'defend' : q.role === 'attack' ? 'attack' : 'roam';
+  return b.ctfRole;
+}
+function ctfSneakGoal(b, r, mine, theirs, home) {
+  const now = Date.now();
+  if (mine.state === 'carried') {                                 // noen har flagget vårt
+    const c = players[mine.carrier], I = c && teamIntel[b.team][c.id];
+    if (I && now - I.t < 10000 && r < 0.75) { const j = Math.min(20, (now - I.t) / 400); return [I.x + (Math.random() - 0.5) * j, I.z + (Math.random() - 0.5) * j]; }   // der han sist ble sett/hørt
+    if (r < 0.3) { const eh = ctfHome(ctfOther(b.team)), dx = home.x - eh.x, dz = home.z - eh.z, d = Math.hypot(dx, dz) || 1, k = 60 + Math.random() * 40, s = (Math.random() - 0.5) * 120;   // skjær ham av et sted foran basen hans
+      return [eh.x + dx / d * k - dz / d * s, eh.z + dz / d * k + dx / d * s]; }
+  }
+  if (b.ctfRole === 'attack' && theirs.state === 'home') {
+    if (Math.hypot(b.x - home.x, b.z - home.z) < 50) { b.flankDone = false; b.flank = null; }   // nettopp startet: ny flanke
+    if (!b.flankDone) {
+      if (!b.flank || now > b.flank.until) {                    // et punkt ut til siden, så de ikke kommer rett fram
+        const dx = theirs.x - b.x, dz = theirs.z - b.z, d = Math.hypot(dx, dz) || 1, side = (Math.random() < 0.5 ? -1 : 1) * (50 + Math.random() * 70), k = 0.55 + Math.random() * 0.15;
+        let fx = b.x + dx * k - dz / d * side, fz = b.z + dz * k + dx / d * side;
+        fx = Math.max(-380, Math.min(380, fx)); fz = Math.max(-380, Math.min(380, fz));
+        b.flank = { x: fx, z: fz, until: now + 120000 };
+      }
+      if (Math.hypot(b.x - b.flank.x, b.z - b.flank.z) < 25) b.flankDone = true; else return [b.flank.x, b.flank.z];
+    }
+    return [theirs.x + (Math.random() - 0.5) * 6, theirs.z + (Math.random() - 0.5) * 6];
+  }
+  if (b.ctfRole === 'defend') {                                    // bakhold: et skjult sted i krattet rundt flagget
+    if (!b.ambushSpot || now > b.ambushSpot.until) {
+      let spot = null;
+      for (let i = 0; i < 16 && !spot; i++) { const a = Math.random() * Math.PI * 2, d = 10 + Math.random() * 22, x = home.x + Math.cos(a) * d, z = home.z + Math.sin(a) * d; if (jgInPlants(x, z)) spot = { x, z }; }
+      if (!spot) { const a = Math.random() * Math.PI * 2; spot = { x: home.x + Math.cos(a) * 18, z: home.z + Math.sin(a) * 18 }; }
+      b.ambushSpot = { x: spot.x, z: spot.z, until: now + 60000 + Math.random() * 40000 };
+    }
+    return [b.ambushSpot.x, b.ambushSpot.z];
+  }
+  return undefined;                                              // resten: som før
+}
+if (process.env.BOT_SNEAK_DEBUG) setInterval(() => {               // test: hvor mange gjør hva
+  const bots = Object.values(players).filter(b => b.isBot && b.alive), c = k => bots.filter(k).length;
+  console.log('LURE:', JSON.stringify({ bots: bots.length, attack: c(b => b.ctfRole === 'attack'), defend: c(b => b.ctfRole === 'defend'), flanking: c(b => b.flank && !b.flankDone), sneaking: c(b => b.sneaking), ambush: c(b => b.ambush), ambushSpot: c(b => b.ambushSpot), squadLed: c(b => squadOf && squadOf(b) && squadOf(b).leader === b.id) }));
+}, 15000);
+// sniking og bakhold mens roboten går (kalles fra botFollow)
+function botSneakStep(b, now) {
+  if (!BOT_SNEAKY || mapName !== 'jungle' || !ctfOn() || !ctf.bunny) return false;
+  const theirs = ctf[ctfOther(b.team)];
+  b.ctfRole = botCtfRole(b) || b.ctfRole;
+  const q = squadOf(b), lead = q && q.leader !== b.id && players[q.leader];
+  if (lead && b.ctfRole === 'defend') {                           // følger i forsvarstroppen: legg deg ned nær lederen når han ligger i bakhold
+    const near = lead.ambush && Math.hypot(b.x - lead.x, b.z - lead.z) < 12;
+    if (near && !b.ambush) { b.ambush = true; b.crouch = 1; } else if (!near && b.ambush && !b.target) { b.ambush = false; b.crouch = 0; }
+    if (near) return true;
+  }
+  const sneak = b.ctfRole === 'attack' && theirs.state === 'home' && !b.target && Math.hypot(b.x - theirs.x, b.z - theirs.z) < 55;
+  if (sneak && !b.sneaking) { b.sneaking = true; b.crouch = 1; }
+  else if (!sneak && b.sneaking) { b.sneaking = false; b.crouch = 0; }
+  if (sneak && jgInPlants(b.x, b.z) && now > (b.pauseNext || 0)) { b.pauseNext = now + 9000 + Math.random() * 9000; b.pauseUntil = now + 2500 + Math.random() * 3000; }   // stopp litt i krattet og lytt
+  const at = b.ctfRole === 'defend' && b.ambushSpot && Math.hypot(b.x - b.ambushSpot.x, b.z - b.ambushSpot.z) < 2.5;
+  if (at && !b.ambush) { b.ambush = true; b.crouch = 1; } else if (!at && b.ambush && !b.target) { b.ambush = false; b.crouch = 0; }
+  return now < (b.pauseUntil || 0) || at;                        // står stille (lytter / ligger i bakhold)
+}
 function ctfBotGoalFar(b, r) {
   if (!ctfOn() || !ctf.bunny) return null;
   if (!b.ctfRole) b.ctfRole = Math.random() < 0.5 ? 'attack' : Math.random() < 0.6 ? 'defend' : 'roam';
   const mine = ctf[b.team], theirs = ctf[ctfOther(b.team)], home = ctfHome(b.team);
   if (theirs.carrier === b.id) return [home.x, home.z];                                    // har flagget: hjem!
+  if (BOT_SNEAKY) { b.ctfRole = botCtfRole(b) || b.ctfRole; const g = ctfSneakGoal(b, r, mine, theirs, home); if (g !== undefined) return g; }   // [NY] lure roboter (under)
   if (mine.state === 'carried' && r < 0.7) { const c = players[mine.carrier]; if (c) return [c.x, c.z]; }   // jakt på den som tok flagget vårt
   if (mine.state === 'dropped' && Math.hypot(mine.x - b.x, mine.z - b.z) < 140) return [mine.x, mine.z];   // send flagget vårt hjem
   if (b.ctfRole === 'attack') { if (theirs.state === 'carried') { const c = players[theirs.carrier]; if (c) return [c.x + (Math.random() - 0.5) * 16, c.z + (Math.random() - 0.5) * 16]; } return [theirs.x, theirs.z]; }
@@ -4063,12 +4166,15 @@ const squads = new Map(); let squadSeq = 0;
 const noises = [];                                               // { x, z, team, t, r }
 const SQUAD_MAPS = ['jungle', 'castle', 'medieval', 'room', 'temple', 'west', 'desert'];   // [NY] alle robot-baner (ikke Piratbukta – egen robot-kode på skipene)
 function squadsOn() { return JUNGLE_SQUADS && SQUAD_MAPS.includes(mapName); }
-function noiseAdd(x, z, team, r) { if (!squadsOn()) return; noises.push({ x, z, team, t: Date.now(), r }); if (noises.length > 200) noises.splice(0, noises.length - 200); }
+function noiseAdd(x, z, team, r, who) {
+  if (BOT_SNEAKY && who) for (const id in players) { const b = players[id]; if (b.isBot && b.alive && b.team !== team && Math.hypot(b.x - x, b.z - z) < r) { intelSet(b.team, who); break; } }   // [NY] en robot hørte det: laget vet
+  if (!squadsOn()) return; noises.push({ x, z, team, t: Date.now(), r }); if (noises.length > 200) noises.splice(0, noises.length - 200);
+}
 {
   const ioEmitSquad = io.emit.bind(io);                          // robotenes skudd lager lyd
-  io.emit = function (ev, d) { try { if (ev === 'shot' && d && players[d.id]) { const p = players[d.id]; noiseAdd(p.x, p.z, p.team, NOISE_SHOT); } } catch (e) {} return ioEmitSquad.apply(this, arguments); };
+  io.emit = function (ev, d) { try { if (ev === 'shot' && d && players[d.id]) { const p = players[d.id]; noiseAdd(p.x, p.z, p.team, NOISE_SHOT, p); } } catch (e) {} return ioEmitSquad.apply(this, arguments); };
 }
-io.on('connection', socket => { socket.on('shot', () => { const p = players[socket.id]; if (p && p.alive) noiseAdd(p.x, p.z, p.team, NOISE_SHOT); }); });   // menneskers skudd
+io.on('connection', socket => { socket.on('shot', () => { const p = players[socket.id]; if (p && p.alive) noiseAdd(p.x, p.z, p.team, NOISE_SHOT, p); }); });   // menneskers skudd
 function squadOf(b) { return b.squad && squads.get(b.squad); }
 function squadJoin(b) {                                          // bli med i nærmeste tropp med plass, ellers lag en ny
   let best = null, bd = 90;
@@ -4132,10 +4238,10 @@ setInterval(() => {                                              // hver halve s
     if (p._nx !== undefined) {
       const sp = Math.hypot(p.x - p._nx, p.z - p._nz) / 0.5;
       const jg = mapName === 'jungle', loud = jg ? !JGM.masked(p.x, p.z) && !JGM.inRiver(p.x, p.z) : true;   // andre baner: fottrinn høres overalt (litt kortere)
-      if (!p.crouch && sp > 0.8 && loud) noiseAdd(p.x, p.z, p.team, sp > 4.5 ? (jg ? NOISE_RUN : 14) : (jg ? NOISE_WALK : 5));
+      if (!p.crouch && sp > 0.8 && loud) noiseAdd(p.x, p.z, p.team, sp > 4.5 ? (jg ? NOISE_RUN : 14) : (jg ? NOISE_WALK : 5), p);
     }
     p._nx = p.x; p._nz = p.z;
-    if (p.isBot && p.target) { const q = squadOf(p), t = players[p.target]; if (q && t) q.contact = { x: t.x, z: t.z, t: now }; }   // kontakt: si fra til troppen
+    if (p.isBot && p.target) { const q = squadOf(p), t = players[p.target]; if (q && t) q.contact = { x: t.x, z: t.z, t: now }; if (t) intelSet(p.team, t); }   // kontakt: si fra til troppen ([NY] og laget)
   }
   while (noises.length && now - noises[0].t > 3000) noises.shift();
   for (const q of squads.values()) {
