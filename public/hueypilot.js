@@ -6,6 +6,7 @@
 //  Kuler mot hueyen: litt skade på den, og de inni kan treffes gjennom veggen. ANGRE: PLAYER_HUEY_C = false
 // ===================================================================
 const PLAYER_HUEY_C = true;
+const PH_UNSTICK = true;   // [FIKS] ikke stå fast mot muren ved plattformen (false = som før)
 const PHS = { fwd: 30, side: 12, up: 9, turn: 1.5, acc: 1.4, crash: 15, top: 110 };   // [NY] krasj først over 15 m/s (var 10)
 let phSeatRow = null;
 let phl = null, phSendT = 0, phCamBack = true, phUi = null, phInBtn = null, phUpBtn = null, phDnBtn = null, phUpHeld = false, phDnHeld = false, phNearId = null;
@@ -57,6 +58,9 @@ function phStep1(h, dt) {
   let soft = false;
   for (const [lx, ly, lz] of pts) { const wx = nx + lx * Math.cos(phl.yaw) + lz * Math.sin(phl.yaw), wz = nz - lx * Math.sin(phl.yaw) + lz * Math.cos(phl.yaw), c = phCell(wx, ny + ly, wz); if (!c) continue; const J = JUNGLE.T; if (c === J.LEAF || c === J.LEAF2 || c === J.PALM) soft = true; else { hit = true; break; } }   // [NY] løv: bare bremser (ikke krasj)
   if (!hit && soft) { phl.vx *= 1 - Math.min(1, dt * 3); phl.vz *= 1 - Math.min(1, dt * 3); }
+  const phHitAt = (x, y, z) => { for (const [lx, ly, lz] of pts) { const c = phCell(x + lx * Math.cos(phl.yaw) + lz * Math.sin(phl.yaw), y + ly, z - lx * Math.sin(phl.yaw) + lz * Math.cos(phl.yaw)); if (c && c !== JUNGLE.T.LEAF && c !== JUNGLE.T.LEAF2 && c !== JUNGLE.T.PALM) return true; } return false; };
+  if (hit && PH_UNSTICK && phHitAt(phl.x, phl.y, phl.z)) hit = false;   // [FIKS] står allerede borti noe (f.eks. rotortupp i muren ved plattformen): la den komme seg løs i stedet for å stå fast og hakke
+  else if (hit && PH_UNSTICK && spd <= PHS.crash && !phHitAt(phl.x, ny, phl.z)) { nx = phl.x; nz = phl.z; phl.vx *= 0.3; phl.vz *= 0.3; hit = false; }   // [FIKS] sidelengs stopper, men opp/ned går fortsatt
   if (hit) {
     if (spd > PHS.crash) { socket.emit('phCrash', { id: phl && phl.id }); phl = null; return; }
     nx = phl.x; ny = phl.y; nz = phl.z; phl.vx *= -0.2; phl.vz *= -0.2; phl.vy = Math.max(0, phl.vy);   // sakte: bare dult

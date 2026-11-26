@@ -16,7 +16,8 @@ const PH_G_RAG = (0x0002 << 16) | 0x0001;       // filledukke-deler treffer bare
 const PH_G_DEBRIS = (0x0004 << 16) | 0x0005;    // rusk treffer verden og annet rusk
 const PH_G_NADE = (0x0008 << 16) | 0x0001;      // granater treffer bare verden
 
-let RAP = null, phWorld = null, phMap = '', phStatic = new Map(), phAcc = 0, phLast = 0;
+let RAP = null, phWorld = null, phMap = '', phStatic = new Map(), phAcc = 0, phLast = 0, phFixed = null;
+const PH_NEAR = 50, PH_RAG_MAX = 8, PH_STATIC_MAX = 1500;   // [FIKS] lett: fysikk bare nær deg, maks 8 filledukker, rydd vegger langt unna
 function phReady() { return !!(RAP && phWorld); }
 function phLoad() {
   if (!RAPIER_ON || RAP || phLoad.busy) return;
@@ -32,15 +33,15 @@ function phReset() {
   phWorld = new RAP.World({ x: 0, y: -9.81, z: 0 });
   phStatic = new Map(); phMap = typeof currentMap !== 'undefined' ? currentMap : '';
   // bakken (y = 0) overalt
-  const g = phWorld.createRigidBody(RAP.RigidBodyDesc.fixed().setTranslation(0, -0.5, 0));
-  phWorld.createCollider(RAP.ColliderDesc.cuboid(2000, 0.5, 2000).setFriction(0.9).setCollisionGroups(PH_G_WORLD), g);
+  phFixed = phWorld.createRigidBody(RAP.RigidBodyDesc.fixed());   // [FIKS] én felles fast kropp for alle vegger/klosser (var én per kloss)
+  phWorld.createCollider(RAP.ColliderDesc.cuboid(2000, 0.5, 2000).setTranslation(0, -0.5, 0).setFriction(0.9).setCollisionGroups(PH_G_WORLD), phFixed);
   phRags.forEach(rg => rg.dead = true); phRags.length = 0;
   if (typeof phDebrisReset === 'function') phDebrisReset();
 }
 // legg inn faste vegger/gulv/klosser innenfor r meter fra (x, y, z) – bare én gang hver
 function phArea(x, y, z, r) {
   if (!phReady()) return;
-  const body = () => phWorld.createRigidBody(RAP.RigidBodyDesc.fixed());
+  const body = () => phFixed;
   if (typeof colliders !== 'undefined') for (const b of colliders) {
     if (b.maxX < x - r || b.minX > x + r || b.maxZ < z - r || b.minZ > z + r || b.maxY < y - r - 2 || b.minY > y + r) continue;
     if (phStatic.has(b)) continue;
@@ -65,8 +66,20 @@ function phArea(x, y, z, r) {
 function phRemoveCell(i) {
   if (!phReady()) return;
   const key = 'v' + i, c = phStatic.get(key); if (!c) return;
-  try { const b = c.parent(); phWorld.removeCollider(c, false); if (b) phWorld.removeRigidBody(b); } catch (e) {}
+  try { phWorld.removeCollider(c, false); } catch (e) {}
   phStatic.delete(key);
+}
+
+// [FIKS] rydd bort vegger/klosser langt unna når det blir mange (jungelen med 40 roboter fylte opp fysikken)
+let phPruneT = 2;
+function phPrune() {
+  if (!phReady() || phStatic.size < PH_STATIC_MAX) return;
+  const cx = camera.position.x, cz = camera.position.z, far = PH_NEAR * PH_NEAR;
+  for (const [k, c] of phStatic) {
+    let t; try { t = c.translation(); } catch (e) { phStatic.delete(k); continue; }
+    if ((t.x - cx) * (t.x - cx) + (t.z - cz) * (t.z - cz) > far) { try { phWorld.removeCollider(c, false); } catch (e) {} phStatic.delete(k); }
+  }
+  phAreaDone.clear();
 }
 
 // ---------------- filledukker ----------------
@@ -82,6 +95,8 @@ function phLimbList(g) {
 }
 function phStartRag(r, wx, wz) {
   if (!RAPIER_RAGDOLL || !phReady() || !r || !r.body || !r.body.userData.rig) return false;
+  if (Math.hypot(r.cur.x - camera.position.x, r.cur.z - camera.position.z) > PH_NEAR) return false;   // [FIKS] langt unna: den enkle fallanimasjonen holder
+  while (phRags.length >= PH_RAG_MAX) { const old = phRags.find(x => !x.dead); if (!old) break; const ro = Object.values(others).find(o => o.rd === old); if (ro) phEndRag(ro); else { old.dead = true; try { old.limbs.forEach(l => phWorld.removeRigidBody(l.b)); phWorld.removeRigidBody(old.torso); } catch (e) {} phRags.splice(phRags.indexOf(old), 1); } }
   if (r.rd) phEndRag(r);
   const g = r.body;
   r.root.updateMatrixWorld(true);
@@ -118,7 +133,7 @@ function phStartRag(r, wx, wz) {
 }
 function phEndRag(r) {
   const rd = r.rd; if (!rd) return;
-  rd.dead = true;
+  rd.dead = true; const ix = phRags.indexOf(rd); if (ix >= 0) phRags.splice(ix, 1);
   if (phReady()) { try { rd.limbs.forEach(l => phWorld.removeRigidBody(l.b)); phWorld.removeRigidBody(rd.torso); } catch (e) {} }
   rd.limbs.forEach(l => l.j.quaternion.copy(l.q0));
   r.body.position.set(0, 0, 0); r.body.rotation.set(0, 0, 0);
@@ -153,7 +168,7 @@ function phDebrisFrame() {
   if (!RAPIER_DEBRIS || !phReady() || typeof debris === 'undefined') return;
   for (const d of debris) {
     if (!d.m.visible) { if (d.phB) { try { phWorld.removeRigidBody(d.phB); } catch (e) {} d.phB = null; } d.phLast = 0; continue; }
-    if (d.life > (d.phLast || 0) + 0.01) {           // ny bit (bassenget gjenbruker dem)
+    if (d.life > (d.phLast || 0) + 0.01 && Math.hypot(d.m.position.x - camera.position.x, d.m.position.z - camera.position.z) < PH_NEAR) {   // ny bit nær deg (bassenget gjenbruker dem)
       if (d.phB) { try { phWorld.removeRigidBody(d.phB); } catch (e) {} }
       const p = d.m.position; phAreaOnce(p.x, p.y, p.z);
       const b = phWorld.createRigidBody(RAP.RigidBodyDesc.dynamic().setTranslation(p.x, p.y, p.z).setLinvel(d.vx, d.vy, d.vz)
@@ -328,6 +343,7 @@ if (RAPIER_ON) {
       while (phAcc >= 1 / 60 && n < 4) { phWorld.step(); phAcc -= 1 / 60; n++; }
       if (n === 4) phAcc = 0;
       phRags.forEach(rd => rd.t += dt);
+      phPruneT -= dt; if (phPruneT <= 0) { phPruneT = 2; phPrune(); }
       if (phCar && (typeof myDv === 'undefined' || myDv === null || myDvSeat !== 'drive' || !alive)) phCarEnd();   // gikk ut / døde
     }
     requestAnimationFrame(phLoop);
