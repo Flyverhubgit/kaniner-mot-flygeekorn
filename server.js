@@ -1193,7 +1193,7 @@ function applyDamage(p, t, dmg, head, weapon) {
   if (p !== t) questAddDmg(p, Math.min(dmg, Math.max(0, t.hp)));   // [NY] fotball-oppdraget
   if (t.isBot && p !== t) { t.hurtBy = p.id; t.hurtAt = Date.now(); t.hurtX = p.x; t.hurtZ = p.z; }   // [NY] smarte roboter: hvem skjøt meg?
   t.hp -= dmg;
-  io.to(p.id).emit('hitConfirm', { head, kill: t.hp <= 0, d: Math.round(dmg), x: +t.x.toFixed(1), y: +((t.y || 0) + 1.9).toFixed(1), z: +t.z.toFixed(1) });   // [NY] skadetall vises der du traff
+  io.to(p.id).emit('hitConfirm', { head, kill: t.hp <= 0, d: Math.round(dmg), x: +t.x.toFixed(1), y: +((t.y || 0) + 1.9).toFixed(1), z: +t.z.toFixed(1), team: t.team });   // [NY] team: fyllfarge (fx2.js)   // [NY] skadetall vises der du traff
   io.to(t.id).emit('damaged', { hp: Math.max(0, t.hp), fromX: p.x, fromZ: p.z });
 
   if (t.hp <= 0) {

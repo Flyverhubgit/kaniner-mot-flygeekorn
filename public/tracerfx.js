@@ -35,7 +35,8 @@ function tracerShot(from, to, w, who) {
   if (!TRACER_FX || !TRACER_W[w]) return false;
   const k = who + ':' + w;
   trCount[k] = (trCount[k] || 0) + 1;
-  if (trCount[k] % TRACER_EVERY === 1) trLaunch(from, to);   // første skuddet i hver salve er også et lysspor
+  const every = (typeof FX2 !== 'undefined' && FX2) ? FX2_TRACER_EVERY : TRACER_EVERY;   // [NY] fx2.js: flere lysspor
+  if (trCount[k] % every === 1) trLaunch(from, to);   // første skuddet i hver salve er også et lysspor
   return true;
 }
 let trLast = performance.now();

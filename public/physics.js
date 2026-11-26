@@ -7,6 +7,7 @@
 //     arm og ører henger i ledd) og lander på trapper, kanter og bakker
 //  RAPIER_ON = false: ingen fysikk lastes, alt er som før.
 // =====================================================================
+const RAPIER_SHATTER = !(typeof kmfOff === 'function' && kmfOff('shatter'));   // [NY] klosser knuses i mange små biter (27 nær deg)
 const RAPIER_ON = !(typeof kmfOff === 'function' && kmfOff('physics')),   // [NY] ?off=physics (debugflags.js)
      RAPIER_ON_X = true, RAPIER_RAGDOLL = true, RAPIER_DEBRIS = true, RAPIER_NADES = true, RAPIER_VEHICLES = true;
 const PH_DEBRIS_LIFE = 6;                        // sekunder bitene blir liggende
@@ -163,7 +164,7 @@ function phAreaOnce(x, y, z) {                      // én gang per 3 m-rute (ra
   const k = Math.floor(x / 3) + ',' + Math.floor(y / 3) + ',' + Math.floor(z / 3);
   if (phAreaDone.has(k)) return; phAreaDone.add(k); phArea(x, y, z, 4);
 }
-function phDebrisReset() { phAreaDone.clear(); if (typeof phNades !== "undefined") phNades.clear(); if (typeof debris !== 'undefined') debris.forEach(d => { d.phB = null; d.phLast = 0; }); }
+function phDebrisReset() { if (typeof phShards !== 'undefined') phShards.forEach(o => { if (o) { o.b = null; o.m.visible = false; } }); phAreaDone.clear(); if (typeof phNades !== "undefined") phNades.clear(); if (typeof debris !== 'undefined') debris.forEach(d => { d.phB = null; d.phLast = 0; }); }
 function phDebrisFrame() {
   if (!RAPIER_DEBRIS || !phReady() || typeof debris === 'undefined') return;
   for (const d of debris) {
@@ -330,6 +331,54 @@ function phTiltApply(dt) {
   });
 }
 
+// ---------------- knusing: én kloss blir mange små biter ----------------
+const PH_SHARD_POOL = 420, PH_SHARD_BUDGET = 360;               // maks biter samtidig / per sekund
+const phShards = []; let phShardI = 0, phShardBudget = PH_SHARD_BUDGET, phShardBudgetT = 0;
+const phShardGeo = new THREE.BoxGeometry(1, 1, 1), phShardMats = {};
+function phShardMat(color, v) {                                  // v: 0–3 litt ulike nyanser, litt mørkere (veggene har tekstur og skygge)
+  const key = color + ':' + v; if (phShardMats[key]) return phShardMats[key];
+  const c = new THREE.Color(color).multiplyScalar(0.72 + v * 0.08);
+  return (phShardMats[key] = new THREE.MeshLambertMaterial({ color: c }));
+}
+function phShatter(i) {
+  if (!RAPIER_SHATTER || !phReady() || typeof voxWorld !== 'function') return false;
+  const W = voxWorld(), [x, y, z] = W.cellPos(i), d = Math.hypot(x + 0.5 - camera.position.x, z + 0.5 - camera.position.z);
+  if (d > 45) return false;
+  const n = phShardBudget >= 27 && d < 25 ? 3 : phShardBudget >= 8 ? 2 : 0;   // 3×3×3 = 27 biter nær deg, ellers 2×2×2 = 8
+  if (!n) return false;
+  phShardBudget -= n * n * n;
+  const color = (W.LIB.INFO[W.pristine[i]] || W.LIB.INFO[BUILT_T] || { color: 0x888888 }).color, s = 1 / n;
+  phAreaOnce(x + 0.5, y + 0.5, z + 0.5);
+  if (typeof fx2Spawn === 'function' && typeof FX2 !== 'undefined' && FX2 && Math.random() < 0.6) {   // støvsky der klossen brakk
+    const cc = new THREE.Color(color).lerp(new THREE.Color(0xb0a898), 0.5).getHex();
+    fx2Spawn(fx2Dust, new THREE.Vector3(x + 0.5, y + 0.5, z + 0.5), new THREE.Vector3((Math.random() - 0.5) * 2, 0.6, (Math.random() - 0.5) * 2), 2.5 + Math.random() * 2, 0.9, 3.2, cc, 0xc8c0b0, 0.55, -0.1, 1.2);
+  }
+  for (let a = 0; a < n; a++) for (let b = 0; b < n; b++) for (let c = 0; c < n; c++) {
+    let o = phShards[phShardI];
+    if (!o) { const m = new THREE.Mesh(phShardGeo, phShardMat(color, 0)); m.castShadow = false; m.raycast = () => {}; scene.add(m); o = phShards[phShardI] = { m, b: null, t: 0 }; }
+    phShardI = (phShardI + 1) % PH_SHARD_POOL;
+    if (o.b) { try { phWorld.removeRigidBody(o.b); } catch (e) {} o.b = null; }
+    const k = s * (0.75 + Math.random() * 0.4), px = x + (a + 0.5) * s, py = y + (b + 0.5) * s, pz = z + (c + 0.5) * s;
+    o.m.material = phShardMat(color, Math.floor(Math.random() * 4)); o.m.scale.set(k, k * (0.7 + Math.random() * 0.5), k); o.m.position.set(px, py, pz); o.m.visible = true;
+    const out = { x: (px - x - 0.5) * 6 + (Math.random() - 0.5) * 3, y: 1.5 + Math.random() * 4 + (py - y - 0.5) * 4, z: (pz - z - 0.5) * 6 + (Math.random() - 0.5) * 3 };
+    o.b = phWorld.createRigidBody(RAP.RigidBodyDesc.dynamic().setTranslation(px, py, pz).setLinvel(out.x, out.y, out.z)
+      .setAngvel({ x: (Math.random() - 0.5) * 14, y: (Math.random() - 0.5) * 14, z: (Math.random() - 0.5) * 14 }).setLinearDamping(0.15).setAngularDamping(0.5));
+    phWorld.createCollider(RAP.ColliderDesc.cuboid(k / 2, k * 0.6 / 2 + 0.01, k / 2).setDensity(1.5).setFriction(0.9).setRestitution(0.2).setCollisionGroups(PH_G_DEBRIS), o.b);
+    o.t = 6 + Math.random() * 4;
+  }
+  return true;
+}
+function phShardFrame(dt) {
+  phShardBudgetT += dt; if (phShardBudgetT > 1) { phShardBudgetT = 0; phShardBudget = PH_SHARD_BUDGET; }
+  for (const o of phShards) {
+    if (!o || !o.m.visible) continue;
+    o.t -= dt;
+    if (o.t <= 0) { o.m.visible = false; if (o.b) { try { phWorld.removeRigidBody(o.b); } catch (e) {} o.b = null; } continue; }
+    if (o.b) { const t = o.b.translation(), q = o.b.rotation(); o.m.position.set(t.x, t.y, t.z); o.m.quaternion.set(q.x, q.y, q.z, q.w); }
+    if (o.t < 1) o.m.scale.multiplyScalar(1 - dt * 2);        // krymper bort til slutt
+  }
+}
+
 // ---------------- kobling til spillet ----------------
 if (RAPIER_ON) {
   // last fysikken når du blir med i et spill (ikke under lasteskjermen)
@@ -344,6 +393,7 @@ if (RAPIER_ON) {
       if (n === 4) phAcc = 0;
       phRags.forEach(rd => rd.t += dt);
       phPruneT -= dt; if (phPruneT <= 0) { phPruneT = 2; phPrune(); }
+      try { phShardFrame(dt); } catch (e) {}
       if (phCar && (typeof myDv === 'undefined' || myDv === null || myDvSeat !== 'drive' || !alive)) phCarEnd();   // gikk ut / døde
     }
     requestAnimationFrame(phLoop);
@@ -384,6 +434,10 @@ if (RAPIER_ON) {
     if (RAPIER_NADES && typeof updateNades === 'function') {
       const phNadesOld = updateNades;
       updateNades = function (dt) { try { phNadesBefore(); } catch (e) {} const res = phNadesOld.apply(this, arguments); try { phNadesAfter(); } catch (e) {} return res; };
+    }
+    if (RAPIER_SHATTER && typeof spawnDebris === 'function') {    // klosser nær deg knuses i mange biter i stedet for de vanlige få bitene
+      const phSpawnOld = spawnDebris;
+      spawnDebris = function (i, n) { try { if (phShatter(i)) return; } catch (e) {} return phSpawnOld.apply(this, arguments); };
     }
     if (RAPIER_DEBRIS && typeof updateCastle === 'function') {
       const phCastleOld = updateCastle;
