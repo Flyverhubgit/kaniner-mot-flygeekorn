@@ -342,7 +342,8 @@ function phTiltApply(dt) {
 
 // ---------------- knusing: én kloss blir mange små biter ----------------
 // Alle bitene tegnes som ÉN InstancedMesh (billig selv med 1000+ biter). De flyr ut fra midten av smellet.
-const PH_SHARD_POOL = 1200, PH_SHARD_BUDGET = 900;              // maks biter samtidig / per sekund
+const PH_SHATTER_BIG = !(typeof isTouch !== 'undefined' && isTouch);   // [NY] PC: store smell (GMLRS, kanon) knuser også – grovere biter, hele klosser når budsjettet er brukt opp, lenger unna. ANGRE: false
+const PH_SHARD_POOL = PH_SHATTER_BIG ? 2400 : 1200, PH_SHARD_BUDGET = PH_SHATTER_BIG ? 1800 : 900;              // maks biter samtidig / per sekund
 const PH_SHARD_N_NEAR = 4, PH_SHARD_N_MID = 3, PH_SHARD_N_FAR = 2;   // 4×4×4 = 64 biter helt nær, 27 litt unna, 8 langt unna
 let phShardIM = null, phShardI = 0, phShardBudget = PH_SHARD_BUDGET, phShardBudgetT = 0, phBlastCtx = null;
 const phShards = [];
@@ -358,10 +359,12 @@ function phShardInit() {
 function phShatter(i) {
   if (!RAPIER_SHATTER || !phReady() || typeof voxWorld !== 'function') return false;
   const W = voxWorld(), [x, y, z] = W.cellPos(i), d = Math.hypot(x + 0.5 - camera.position.x, z + 0.5 - camera.position.z);
-  if (d > 60) return false;
+  const big = PH_SHATTER_BIG && phBlastCtx && phBlastCtx.n > 40;   // [NY] stort smell: mange klosser på en gang
+  if (d > (big ? 110 : 60)) return false;
   let n = d < 18 ? PH_SHARD_N_NEAR : d < 35 ? PH_SHARD_N_MID : PH_SHARD_N_FAR;
+  if (big) n = Math.min(n, d < 25 ? 3 : 2);
   while (n > 1 && phShardBudget < n * n * n) n--;                 // tomt for biter dette sekundet: grovere biter
-  if (n < 2) return false;
+  if (n < 2 && !(big && phShardBudget > -400)) return false;      // [NY] stort smell: hele klossen flyr (litt over budsjettet)
   phShardInit();
   phShardBudget -= n * n * n;
   const color = (W.LIB.INFO[W.pristine[i]] || W.LIB.INFO[BUILT_T] || { color: 0x888888 }).color, s = 1 / n, base = new THREE.Color(color);
