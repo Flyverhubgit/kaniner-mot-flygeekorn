@@ -223,6 +223,7 @@ const PH_CAR = {
   tank: { mass: 1800, h: 0.6, wheels: [[-1.35, 2.1], [1.35, 2.1], [-1.35, 0], [1.35, 0], [-1.35, -2.1], [1.35, -2.1]], r: 0.45, rest: 0.4, k: 45, force: 7000, brake: 80, steer: 0, slip: 3.5 }
 };
 let phCar = null;
+const PH_TANK_CLIMB = true;   // [NY] stridsvogna klatrer opp 1 kloss (som en ekte stridsvogn ca. 1 m). 2 klosser stopper den. ANGRE: false
 const PH_ANTIROLL = true;   // [FIKS] jeep/stridsvogn velter ikke så lett (krengningsstag + mindre ratt i fart). ANGRE: false
 const phE = new THREE.Euler(0, 0, 0, 'YXZ');
 function phCarEnd() {
@@ -249,6 +250,22 @@ function phCarStart(v) {
   });
   phCar = { id: v.id, kind: v.kind, body, ctl, C, upsideT: 0 };
 }
+function phTankClimb(b, spec, thr, fwd, dt) {                 // [NY] er det en kant på 1 kloss rett foran beltene? løft vogna opp
+  const q = b.rotation(); phQ.set(q.x, q.y, q.z, q.w);
+  const dir = new THREE.Vector3(0, 0, -Math.sign(thr)).applyQuaternion(phQ).setY(0).normalize(), side = new THREE.Vector3(-dir.z, 0, dir.x);
+  const t = b.translation(), iy0 = Math.floor(dvl.y + 0.3);
+  let steps = 0;
+  for (const sOff of [-0.75, 0, 0.75]) for (const ahead of [spec.hl + 0.3, spec.hl + 0.9]) {
+    const px = t.x + dir.x * ahead + side.x * sOff * spec.hw, pz = t.z + dir.z * ahead + side.z * sOff * spec.hw, ix = Math.floor(px), iz = Math.floor(pz);
+    if (solidCell(ix, iy0, iz) && !solidCell(ix, iy0 + 1, iz) && !solidCell(ix, iy0 + 2, iz) && !solidCell(ix, iy0 + 3, iz)) steps++;
+    else if (solidCell(ix, iy0, iz) && solidCell(ix, iy0 + 1, iz)) return;   // for høyt: stopp som før
+  }
+  phCar.climbT = steps >= 2 ? (phCar.climbT || 0) + dt : 0;
+  if (steps >= 2 && phCar.climbT < 2.5 && Math.abs(fwd) < 4) {
+    const lv = b.linvel();
+    b.setLinvel({ x: lv.x + dir.x * 2 * dt * 10, y: Math.max(lv.y, 2.6), z: lv.z + dir.z * 2 * dt * 10 }, true);
+  }
+}
 function phCarDrive(dt) {
   const v = dvMine(); if (!v) return false;
   if (!phCar || phCar.id !== v.id) phCarStart(v);
@@ -274,6 +291,7 @@ function phCarDrive(dt) {
   if (tank) {                                                    // stridsvogna snur også på stedet
     const av = b.angvel(); if (turn) b.setAngvel({ x: av.x, y: -turn * spec.turn, z: av.z }, true);
   }
+  if (PH_TANK_CLIMB && tank && thr !== 0 && typeof solidCell === 'function') try { phTankClimb(b, spec, thr, fwd, dt); } catch (e) {}
   ctl.updateVehicle(Math.min(dt, 1 / 30), undefined, PH_G_CAR);
   if (PH_ANTIROLL) {                                             // [FIKS] krengningsstag: dempet rulling og myk dytt tilbake mot flatt (jeepen kjørte på to hjul)
     const rq = b.rotation(); phQ.set(rq.x, rq.y, rq.z, rq.w);
