@@ -134,7 +134,8 @@ function fx2Surface(p, n) {
     }
   }
   if (map === 'sea' || (map === 'pirate' && p.y < 3.1)) return 'water';
-  if (p.y < 0.25 || (n && n.y > 0.7 && p.y < 1)) return map === 'desert' || map === 'west' ? 'sand' : map === 'space' ? 'metal' : 'dirt';
+  const gH = typeof desertH === 'function' ? desertH(p.x, p.z) : 0;   // [NY] bakkene
+  if (p.y - gH < 0.25 || (n && n.y > 0.7 && p.y - gH < 1)) return map === 'desert' || map === 'west' ? 'sand' : map === 'space' ? 'metal' : 'dirt';
   return map === 'space' ? 'metal' : map === 'pirate' || map === 'medieval' ? 'wood' : 'stone';
 }
 function fx2Hit(p, n) {
@@ -174,7 +175,8 @@ let fx2Last = performance.now();
       const k = 1 - o.life / o.max;
       o.v.y -= o.g * dt; if (o.drag) o.v.multiplyScalar(Math.max(0, 1 - o.drag * dt));
       o.s.position.addScaledVector(o.v, dt);
-      if (o.s.position.y < 0.03 && o.g > 0) { o.s.position.y = 0.03; o.v.set(o.v.x * 0.4, Math.abs(o.v.y) * 0.2, o.v.z * 0.4); }
+      const fl = o.g > 0 && typeof desertH === 'function' ? desertH(o.s.position.x, o.s.position.z) + 0.03 : 0.03;   // [NY] lander på bakkene
+      if (o.s.position.y < fl && o.g > 0) { o.s.position.y = fl; o.v.set(o.v.x * 0.4, Math.abs(o.v.y) * 0.2, o.v.z * 0.4); }
       o.s.scale.setScalar(o.size * (1 + (o.grow - 1) * Math.sqrt(k)));
       o.s.material.rotation += o.rot * dt;
       o.s.material.color.copy(o.c0).lerp(o.c1, k);

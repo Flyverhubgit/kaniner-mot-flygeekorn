@@ -322,6 +322,7 @@ function groundAt(px, pz, fy) {
   }
   if (voxelOn()) g = Math.max(g, castleGround(px, pz, fy));   // [NY] stå på klosser
   if (typeof pirateGround === 'function') g = Math.max(g, pirateGround(px, pz, fy));   // [NY] dekket på piratskipene
+  if (typeof desertH === 'function') g = Math.max(g, desertH(px, pz));   // [NY] myke bakker i ørkenen (deserthills.js)
   return g;
 }
 
@@ -664,6 +665,7 @@ function updatePlayer(dt) {
 
   // Bakke / trinn
   const g = groundAt(player.x, player.z, oldFeet);
+  if (player.vy <= 0 && player.onGround && newFeet > g && newFeet - g < 0.45 && typeof desertH === 'function' && desertH(player.x, player.z) > 0.01) newFeet = g;   // [NY] følg bakken ned en bakke (ikke sveve)
   if (player.vy <= 0 && newFeet <= g) {
     // [FIKS] Gikk opp et trinn (inntil én kloss)? La kameraet gli opp i stedet for å hoppe 1 m på ett bilde.
     const up = g - oldFeet;
@@ -1169,7 +1171,7 @@ function buildPineappleNade() {
 
 // Treffer granaten noe? (gulv eller en boks)
 function nadeHits(x, y, z) {
-  if (y < NADE_R) return true;
+  if (y < NADE_R + (typeof desertH === 'function' ? desertH(x, z) : 0)) return true;   // [NY] + ørkenbakkene
   if (voxelOn() && castlePointSolid(x, y, z)) return true;   // [NY] klosser
   for (const b of colliders) {
     if (x + NADE_R > b.minX && x - NADE_R < b.maxX && y + NADE_R > b.minY && y - NADE_R < b.maxY &&

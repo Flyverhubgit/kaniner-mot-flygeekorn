@@ -223,7 +223,7 @@ socket.on('gmlrsBoom', d => {
   const hole = new THREE.Mesh(new THREE.CircleGeometry(8, 32), new THREE.MeshStandardMaterial({ color: 0x1e1812, roughness: 1 })); hole.rotation.x = -Math.PI / 2; hole.position.y = 0.025; crater.add(hole);
   const inner = new THREE.Mesh(new THREE.CircleGeometry(4.5, 24), new THREE.MeshStandardMaterial({ color: 0x0c0a08, roughness: 1 })); inner.rotation.x = -Math.PI / 2; inner.position.y = 0.03; crater.add(inner);
   const rim = new THREE.Mesh(new THREE.RingGeometry(8, 12.5, 40), new THREE.MeshStandardMaterial({ color: 0x5a4632, roughness: 1, transparent: true, opacity: 0.85 })); rim.rotation.x = -Math.PI / 2; rim.position.y = 0.02; crater.add(rim);
-  crater.position.set(d.x, 0, d.z); crater.traverse(o => { o.raycast = () => {}; o.receiveShadow = true; });
+  crater.position.set(d.x, typeof desertH === 'function' ? desertH(d.x, d.z) : 0, d.z);   // [NY] på bakken crater.traverse(o => { o.raycast = () => {}; o.receiveShadow = true; });
   gmGroup.add(crater); gmCraters.push(crater);
   if (gmCraters.length > 8) gmGroup.remove(gmCraters.shift());
   // ferdig med raketten

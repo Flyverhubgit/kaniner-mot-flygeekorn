@@ -42,6 +42,8 @@
   const RADIO = { x: 40, y: 12, z: 215 };                             // [NY] radioen på toppen av radiotårnet (kaninene; speilet for flygeekornene)
   const OASES = [{ x: -152, z: 10, r: 15 }, { x: 151, z: -11, r: 15 }];   // vann (tegnes av klienten), én på hver side
   const BOUND = 236;                                                  // usynlig kant rundt kartet
+  const HILLS = true;   // [NY] ekte myke bakker i stedet for trappete sanddyner (bakken får høyde). false = som før
+  let hillList = [];    // [NY] bakker samlet av build(): [x, z, radius, høyde]
 
   function build() {
     const g = new Uint8Array(NX * NY * NZ);
@@ -112,6 +114,7 @@
     }
     // Sanddyne: myk haug (maks ett trinn per rute, så man kan gå over den)
     function dune(cx, cz, rx, rz, h) {
+      if (HILLS) { const x = MIR ? -1 - cx : cx, z = MIR ? -1 - cz : cz; hillList.push([x + 0.5, z + 0.5, (rx + rz) * 1.25, 1.6 + h * 1.3]); return; }   // [NY] blir en ekte bakke
       for (let x = cx - rx; x <= cx + rx; x++) for (let z = cz - rz; z <= cz + rz; z++) {
         const q = ((x - cx) / rx) ** 2 + ((z - cz) / rz) ** 2;
         if (q >= 1) continue;
@@ -206,18 +209,88 @@
         if ((x - OASES[0].x) ** 2 + (z - OASES[0].z) ** 2 < 900) continue;
         dune(x, z, ri(5, 11), ri(4, 9), ri(1, 3));
       }
+      // --- [NY] Store slake bakker ute på slettene ---
+      if (HILLS) for (let k = 0; k < 26; k++) {
+        const x = ri(-220, 220), z = ri(62, 190), r = ri(16, 34), h = 2.5 + rnd() * 5;
+        if (Math.abs(x) < 70 && z < 70) continue;
+        hillList.push([MIR ? -0.5 - x : x + 0.5, MIR ? -0.5 - z : z + 0.5, r, h]);
+      }
       // --- Palmer ved oasen (vest) og i landsbyen ---
       [[-168, 8], [-160, 18], [-140, 16], [-130, 6], [-172, 2]].forEach(([x, z]) => palm(x, z, ri(6, 8)));
       [[-52, 4], [54, 4], [-6, 38]].forEach(([x, z]) => palm(x, z, 7));
     }
 
+    hillList = [];
     MIR = false; flag = T.RED; tent = T.TENT_R; half();
     MIR = true; flag = T.GREEN; tent = T.TENT_G; half();
     MIR = false;
     return g;
   }
 
-  const api = { NX, NY, NZ, X0, Z0, T, INFO, idx, build, SPAWNS, OASES, BOUND, RADIO, RUNWAY, HELIPAD };
+  // ---------- [NY] BAKKEHØYDE (myke bakker). Lages av build()-rutenettet, likt på server og klient. ----------
+  // Rutenett hver 2. meter. Bakkene flates ut mot hus, murer, fjell og andre klosser, og er flate i basene,
+  // på rullebanen, helikopterplassen og oasene. terrain(g).h(x, z) gir høyden i meter.
+  const TS = 2, TN = NX / TS + 1;                                    // 241 x 241 punkter
+  let terrCache = null, terrFor = null;
+  function terrain(g) {
+    if (terrFor === g && terrCache) return terrCache;   // [NY] lages bare én gang per rutenett
+    terrFor = g; terrCache = terrain2(g); return terrCache;
+  }
+  function terrain2(g) {
+    const H = new Float32Array(TN * TN);
+    if (!HILLS) return { H, TS, TN, h: () => 0, list: [] };
+    const occ = new Uint8Array(TN * TN);                            // punkter med en kloss (ikke dyne) på bakkenivå
+    for (let i = 0; i < TN; i++) for (let j = 0; j < TN; j++) {
+      const x = X0 + i * TS, z = Z0 + j * TS;
+      for (let dx = -1; dx <= 0 && !occ[i * TN + j]; dx++) for (let dz = -1; dz <= 0; dz++) {
+        const xx = x + dx, zz = z + dz;
+        if (xx < X0 || xx >= X0 + NX || zz < Z0 || zz >= Z0 + NZ) continue;
+        const t = g[idx(xx, 0, zz)];
+        if (t && t !== T.DUNE) { occ[i * TN + j] = 1; break; }
+      }
+    }
+    const dist = new Float32Array(TN * TN).fill(1e9);              // avstand (m) til nærmeste kloss, to-pass
+    for (let k = 0; k < TN * TN; k++) if (occ[k]) dist[k] = 0;
+    const D1 = TS, D2 = TS * Math.SQRT2;
+    for (let i = 0; i < TN; i++) for (let j = 0; j < TN; j++) { const k = i * TN + j; let d = dist[k];
+      if (i > 0) d = Math.min(d, dist[k - TN] + D1); if (j > 0) d = Math.min(d, dist[k - 1] + D1);
+      if (i > 0 && j > 0) d = Math.min(d, dist[k - TN - 1] + D2); if (i > 0 && j < TN - 1) d = Math.min(d, dist[k - TN + 1] + D2); dist[k] = d; }
+    for (let i = TN - 1; i >= 0; i--) for (let j = TN - 1; j >= 0; j--) { const k = i * TN + j; let d = dist[k];
+      if (i < TN - 1) d = Math.min(d, dist[k + TN] + D1); if (j < TN - 1) d = Math.min(d, dist[k + 1] + D1);
+      if (i < TN - 1 && j < TN - 1) d = Math.min(d, dist[k + TN + 1] + D2); if (i < TN - 1 && j > 0) d = Math.min(d, dist[k + TN - 1] + D2); dist[k] = d; }
+    const ss = (a, b, v) => { const t = Math.max(0, Math.min(1, (v - a) / (b - a))); return t * t * (3 - 2 * t); };
+    const flatZones = [];
+    [1, -1].forEach(s => {
+      flatZones.push([s * 0, s * 214, 64, 30]);                                          // basen (+ porter)
+      flatZones.push([s * (RUNWAY.x0 + RUNWAY.x1) / 2, s * (RUNWAY.z0 + RUNWAY.z1) / 2, (RUNWAY.x1 - RUNWAY.x0) / 2 + 10, (RUNWAY.z1 - RUNWAY.z0) / 2 + 10]);
+      flatZones.push([s * HELIPAD.x, s * HELIPAD.z, HELIPAD.r + 10, HELIPAD.r + 10]);
+    });
+    OASES.forEach(o => flatZones.push([o.x, o.z, o.r + 12, o.r + 12]));
+    for (let i = 0; i < TN; i++) for (let j = 0; j < TN; j++) {
+      const x = X0 + i * TS, z = Z0 + j * TS;
+      let h = 0;
+      for (const [hx, hz, r, hh] of hillList) { const q = ((x - hx) ** 2 + (z - hz) ** 2) / (r * r); if (q < 1) { const f = 1 - q; h = Math.max(h, hh * f * f * (3 - 2 * f)); } }
+      h += 0.35 * (Math.sin(x * 0.045 + 1.3) * Math.sin(z * 0.038 + 0.7) + 1);       // svak bølging overalt
+      let keep = ss(4, 24, dist[i * TN + j]);                                         // flat ved klosser
+      for (const [cx, cz, ax, az] of flatZones) { const q = Math.max(Math.abs(x - cx) / ax, Math.abs(z - cz) / az); keep = Math.min(keep, ss(1, 1.35, q)); }
+      keep = Math.min(keep, ss(0, 10, BOUND - Math.max(Math.abs(x), Math.abs(z))) + 0);
+      H[i * TN + j] = h * keep;
+    }
+    const MAXD = 0.62 * TS;                                            // maks ca. 32 grader: skrap toppen av for bratte bakker
+    for (let it = 0; it < 12; it++) for (let i = 1; i < TN - 1; i++) for (let j = 1; j < TN - 1; j++) {
+      const k = i * TN + j, m = Math.min(H[k - TN], H[k + TN], H[k - 1], H[k + 1]);
+      if (H[k] > m + MAXD) H[k] = m + MAXD;
+    }
+    function h(x, z) {                                                 // høyde i meter (bilineær)
+      const fx = (x - X0) / TS, fz = (z - Z0) / TS;
+      if (fx < 0 || fz < 0 || fx >= TN - 1 || fz >= TN - 1) return 0;
+      const i = Math.floor(fx), j = Math.floor(fz), a = fx - i, b = fz - j, k = i * TN + j;
+      return (H[k] * (1 - a) + H[k + TN] * a) * (1 - b) + (H[k + 1] * (1 - a) + H[k + TN + 1] * a) * b;
+    }
+    return { H, TS, TN, h, list: hillList.slice() };
+  }
+
+  const api = { NX, NY, NZ, X0, Z0, T, INFO, idx, build, SPAWNS, OASES, BOUND, RADIO, RUNWAY, HELIPAD, HILLS, terrain };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.DesertMap = api;
 })(this);

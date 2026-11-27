@@ -29,6 +29,7 @@ const desertTex = (w, h, draw) => { const c = document.createElement('canvas'); 
   sand.wrapS = sand.wrapT = THREE.RepeatWrapping; sand.repeat.set(120, 120);
   const g = new THREE.Mesh(new THREE.BoxGeometry(DESERT.NX, 0.2, DESERT.NZ), new THREE.MeshStandardMaterial({ map: sand, color: 0xc8b490, roughness: 1 }));   // litt dempet (ellers blendende)
   g.position.y = -0.1; g.receiveShadow = true; desertGroup.add(g);   // (treffes av skudd – det er bakken)
+  if (DESERT.HILLS) { g.visible = false; g.raycast = () => {}; }   // [NY] deserthills.js lager bakken med bakker i stedet
   // Sand langt utenfor kartet (så du ikke ser kanten)
   const far = new THREE.Mesh(new THREE.PlaneGeometry(2400, 2400), new THREE.MeshStandardMaterial({ color: 0xb89a6a, roughness: 1 }));
   far.rotation.x = -Math.PI / 2; far.position.y = -0.25; far.raycast = () => {}; desertGroup.add(far);

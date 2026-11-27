@@ -84,8 +84,9 @@ function buildHeli(team) {
 // ---------- Flyging (ditt eget fly) ----------
 function airCell(x, y, z) { return typeof dvCell === 'function' ? dvCell(x, y, z) : 0; }
 function airGroundTop(x, z, y) {                     // høyeste kloss under (x, z) som er lavere enn y
-  for (let iy = Math.min(DESERT.NY - 1, Math.floor(y + 0.5)); iy >= 0; iy--) if (airCell(x, iy + 0.5, z)) return iy + 1;
-  return 0;
+  const hill = typeof desertH === 'function' ? desertH(x, z) : 0;   // [NY] bakkene
+  for (let iy = Math.min(DESERT.NY - 1, Math.floor(y + 0.5)); iy >= 0; iy--) if (airCell(x, iy + 0.5, z)) return Math.max(hill, iy + 1);
+  return hill;
 }
 function airCrash() {
   if (myDv === null) return;
@@ -126,6 +127,7 @@ function dvFly(dt, v) {
     // Krasj? (kloss foran nesa / under deg)
     const hitAhead = airCell(nx + dx * 6, ny + 1.6 + dy * 6, nz + dz * 6) || airCell(nx, ny + 1.6, nz);
     if (!ground && hitAhead) { airCrash(); return true; }
+    if (!ground && typeof desertH === 'function') { const th = desertH(nx, nz); if (th > 0.3 && ny <= th + 0.4) { airCrash(); return true; } }   // [NY] inn i en bakke
     if (!ground && ny <= 0.05) {                                                    // landing: slakt og ikke for fort
       if (dvl.tp > -0.25 && dvl.spd < 52) { ny = 0; dvl.tp = 0; bannerMsg = '&#128747; Landet!'; bannerTime = 1; }
       else { airCrash(); return true; }

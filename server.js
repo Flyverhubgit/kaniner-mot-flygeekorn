@@ -131,7 +131,11 @@ function makeVox(LIB) {
   const pristine = LIB.build();
   return { LIB, pristine, grid: pristine.slice(), hp: new Uint8Array(pristine.length), gone: [], built: [] };
 }
+// [NY] Ørkenbakkene (myke bakker): samme høyde som klienten (DesertMap.terrain)
+let desertTerr = null;
+function terrH(x, z) { return desertTerr && mapName === 'desert' ? desertTerr.h(x, z) : 0; }
 const VOX = { castle: makeVox(CM), farm: makeVox(FM), sea: makeVox(SM), medieval: makeVox(MM), west: makeVox(WM), dragon: makeVox(JM), desert: makeVox(DM), pirate: makeVox(PM), jungle: makeVox(JGM) };
+if (DM.HILLS) desertTerr = DM.terrain(VOX.desert.pristine);   // [NY] bakkene (lages én gang)
 function resetVox(name) {
   const V = VOX[name];
   if (!V) return;
@@ -1951,17 +1955,17 @@ io.on('connection', socket => {
     setTimeout(() => {
       if (mapName !== 'desert' || intermission) return;
       io.emit('gmlrsBoom', { x, z, team });
-      const by = players[shooter] || null;
-      blastOwner = by; blastCells(x, 1, z, GM.blocks); blastOwner = null;
+      const by = players[shooter] || null, gy = terrH(x, z);         // [NY] nedslaget på bakkehøyden
+      blastOwner = by; blastCells(x, 1 + gy, z, GM.blocks); blastOwner = null;
       Object.values(players).forEach(t => {
         if (!t.alive || t.team === team) return;
-        const dist = Math.hypot(t.x - x, t.y - 0, t.z - z);
+        const dist = Math.hypot(t.x - x, t.y - gy, t.z - z);
         if (dist >= GM.r) return;
         if (t.vehicle === 'dv') return;                                 // kjøretøy: se under
         if (by) applyDamage(by, t, Math.round(GM.dmg * (1 - dist / GM.r)), false, 'gmlrs');
         else { const dmg = Math.round(GM.dmg * (1 - dist / GM.r)); if (dmg >= t.hp) killByWorld(t, '🚀 GMLRS', 'gmlrs'); else t.hp -= dmg; }
       });
-      dvArea([x, 1, z], GM.vr, GM.vdmg, by, team);
+      dvArea([x, 1 + gy, z], GM.vr, GM.vdmg, by, team);
     }, GM.flightMs);
   });
 
@@ -3023,10 +3027,11 @@ function groundBelow(x, y, z) {              // høyeste klosstopp under føtten
     for (const b of boxMap().boxes) if (b[4] <= y + 0.01 && b[4] > g && x + 0.25 > b[0] && x - 0.25 < b[3] && z + 0.25 > b[2] && z - 0.25 < b[5]) g = b[4];
     return g;
   }
+  const th = terrH(x, z);                                         // [NY] ørkenbakkene
   for (let iy = Math.floor(y + 0.01) - 1; iy >= 0; iy--) {
-    for (const ox of [-0.25, 0.25]) for (const oz of [-0.25, 0.25]) if (bSolid(x + ox, iy + 0.5, z + oz)) return iy + 1;
+    for (const ox of [-0.25, 0.25]) for (const oz of [-0.25, 0.25]) if (bSolid(x + ox, iy + 0.5, z + oz)) return Math.max(th, iy + 1);
   }
-  return 0;
+  return th;
 }
 function smokeBlocks(a, b) {                 // [NY] går sikten gjennom en røyksky?
   const now = Date.now();
@@ -3051,8 +3056,9 @@ function pirShipSolid(x, y, z) {               // [NY] Piratbukta: er punktet in
 function losClear(a, b) {                    // fri sikt mellom to punkter?
   if (mapName === 'desert' && smokes.length && smokeBlocks(a, b)) return false;
   const dx = b.x - a.x, dy = b.y - a.y, dz = b.z - a.z, d = Math.hypot(dx, dy, dz), n = Math.ceil(d / (mapName === 'desert' ? 0.8 : 0.4));   // [NY] ørkenen: grovere sjekk (mange roboter, lange avstander)
-  const pir = mapName === 'pirate';
+  const pir = mapName === 'pirate', hill = desertTerr && mapName === 'desert';
   for (let i = 1; i < n; i++) { const k = i / n; if (bSolid(a.x + dx * k, a.y + dy * k, a.z + dz * k) || (pir && pirShipSolid(a.x + dx * k, a.y + dy * k, a.z + dz * k))) return false; }   // [NY] skipssidene beskytter
+  if (hill) for (let i = 1; i < n; i++) { const k = i / n; if (a.y + dy * k < desertTerr.h(a.x + dx * k, a.z + dz * k) - 0.05) return false; }   // [NY] en bakke i veien
   if (mapName === 'desert' && DV_BOT_BLOCK && dvLineBlocked(a, b)) return false;   // [FIKS] stridsvogner og jeeper gir dekning
   return true;
 }
@@ -3175,6 +3181,7 @@ function botMove(b, dirX, dirZ, speed, dt) {
   });
   const g = groundBelow(b.x, b.y, b.z);   // tyngdekraft
   if (b.y > g) b.y = Math.max(g, b.y - 9 * dt);
+  else if (b.y < g && desertTerr && mapName === 'desert') b.y = g;   // [NY] gå opp bakken
   if (dirX || dirZ) b.yaw = Math.atan2(-dirX, -dirZ);
   return moved;
 }
@@ -3314,15 +3321,15 @@ function navBuild() {
   const x0 = bm ? -bm.xMax - 2 : L.X0 + 1, x1 = bm ? bm.xMax + 2 : L.X0 + L.NX - 1;
   const z0 = bm ? -bm.zMax - 2 : L.Z0 + 1, z1 = bm ? bm.zMax + 2 : L.Z0 + L.NZ - 1;
   const W = Math.floor((x1 - x0) / cs), H = Math.floor((z1 - z0) / cs);
-  const ok = new Uint8Array(W * H), hy = new Float32Array(W * H);
+  const ok = new Uint8Array(W * H), hy = new Float32Array(W * H), th2 = new Float32Array(W * H);
   for (let j = 0; j < H; j++) for (let i = 0; i < W; i++) {
     const x = x0 + (i + 0.5) * cs, z = z0 + (j + 0.5) * cs;
     let y = -1;
     if (bm) y = freeSpot(x, z);
-    else { const g = groundBelow(x, 4.5, z); if (g <= 3.5 && !bodyHits(x, g, z)) y = g; }   // gulv opp til 3,5 m (borggulv, trapper), ikke tak
+    else { const th = terrH(x, z), g = groundBelow(x, 4.5 + th, z); if (g - th <= 3.5 && !bodyHits(x, g, z)) y = g; th2[j * W + i] = th; }   // gulv opp til 3,5 m over bakken (borggulv, trapper), ikke tak. [NY] + bakkene
     ok[j * W + i] = y >= 0 ? 1 : 0; hy[j * W + i] = y;
   }
-  nav = { x0, z0, cs, W, H, ok, hy };
+  nav = { x0, z0, cs, W, H, ok, hy, th: th2 };
   navDirty = false; navAt = Date.now(); navMapName = mapName;
 }
 function navGet() {
@@ -3360,7 +3367,7 @@ function navPath(ax, az, bx, bz, maxNodes) {
       const ni = i + di, nj = j + dj;
       if (!navOk(N, ni, nj)) continue;
       if (di && dj && (!navOk(N, i + di, j) || !navOk(N, i, j + dj))) continue;   // ikke skjær hjørner
-      if (N.hy[nj * W + ni] - N.hy[n] > 1.05) continue;                           // for høyt trinn opp (ned går fint)
+      if (N.hy[nj * W + ni] - N.hy[n] - Math.max(0, N.th[nj * W + ni] - N.th[n]) > 1.05) continue;   // for høyt trinn opp (ned går fint). [NY] bakker teller ikke som trinn
       const m = nj * W + ni, c = gn + (di && dj ? 1.414 : 1);
       if (c < (gs.has(m) ? gs.get(m) : Infinity)) { gs.set(m, c); from.set(m, n); push(c + h(m), m); }
     }
@@ -3386,7 +3393,7 @@ function navStraight(N, a, b) {                  // er det gåbart hele veien i 
   for (let i = 0; i <= n; i++) {
     const k = i / n, c = navCell(N, a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k);
     if (!navOk(N, c[0], c[1])) return false;
-    const h = N.hy[c[1] * N.W + c[0]];
+    const h = N.hy[c[1] * N.W + c[0]] - N.th[c[1] * N.W + c[0]];   // [NY] høyde over bakken (bakker er ikke trinn)
     if (last !== null && h - last > 1.05) return false;
     last = h;
   }

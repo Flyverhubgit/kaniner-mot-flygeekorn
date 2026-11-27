@@ -59,7 +59,7 @@ function blastFx(p, scale) {
     b.life = glow ? 0.6 + Math.random() * 0.6 : 1.4; b.m.visible = true;
   }
   // svidd merke på bakken (blir liggende en stund)
-  if (p[1] < 3) {
+  if (p[1] - (typeof desertH === 'function' ? desertH(p[0], p[2]) : 0) < 3) {   // [NY] også på bakkene
     const m = new THREE.Mesh(new THREE.PlaneGeometry(4.5 * s, 4.5 * s), new THREE.MeshBasicMaterial({ map: bfxScorchTex, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 }));
     m.rotation.x = -Math.PI / 2; m.rotation.z = Math.random() * 6.28; m.position.set(p[0], ground + 0.03, p[2]); m.raycast = () => {}; bfxGroup.add(m);
     bfxScorch.push({ m, life: 25 });
@@ -85,7 +85,7 @@ function updateBlastFx() {
     if (r.life <= 0) { bfxGroup.remove(r.m); r.m.material.dispose(); bfxRings.splice(i, 1); }
   }
   bfxPuffs.forEach(q => { if (q.life <= 0) return; q.life -= dt; q.m.position.addScaledVector(q.v, dt); q.v.multiplyScalar(1 - 1.8 * dt); q.v.y += 0.5 * dt; const k = 1 - q.life / q.max; q.m.scale.setScalar(q.size * (0.6 + k * 2.2)); q.m.material.opacity = 0.6 * (1 - k); if (q.life <= 0) q.m.visible = false; });
-  bfxBits.forEach(b => { if (b.life <= 0) return; b.life -= dt; b.v.y -= 14 * dt; b.m.position.addScaledVector(b.v, dt); b.m.rotation.x += dt * 8; if (b.m.position.y < 0.05) { b.m.position.y = 0.05; b.v.set(b.v.x * 0.3, Math.abs(b.v.y) * 0.25, b.v.z * 0.3); } if (b.life <= 0) b.m.visible = false; });
+  bfxBits.forEach(b => { if (b.life <= 0) return; b.life -= dt; b.v.y -= 14 * dt; b.m.position.addScaledVector(b.v, dt); b.m.rotation.x += dt * 8; const fl = (typeof desertH === 'function' ? desertH(b.m.position.x, b.m.position.z) : 0) + 0.05; if (b.m.position.y < fl) { b.m.position.y = fl; b.v.set(b.v.x * 0.3, Math.abs(b.v.y) * 0.25, b.v.z * 0.3); } if (b.life <= 0) b.m.visible = false; });
   for (let i = bfxScorch.length - 1; i >= 0; i--) { const s = bfxScorch[i]; s.life -= dt; if (s.life < 5) s.m.material.opacity = s.life / 5; if (s.life <= 0) { bfxGroup.remove(s.m); s.m.material.dispose(); bfxScorch.splice(i, 1); } }
 }
 socket.on('map', () => { bfxScorch.forEach(s => { bfxGroup.remove(s.m); s.m.material.dispose(); }); bfxScorch.length = 0; });

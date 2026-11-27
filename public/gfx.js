@@ -325,7 +325,9 @@ function gfxDecor(W) {
     let top = -1;
     for (let y = LIB.NY - 1; y >= 0; y--) if (P[LIB.idx(x, y, z)]) { top = y; break; }
     if (top >= 0 && !kind.ground.includes(P[LIB.idx(x, top, z)])) continue;
-    spots.push([x + rnd(), top + 1, z + rnd(), rnd() * 6.28, 0.7 + rnd() * 0.6]);   // posisjon, vinkel, størrelse
+    const px = x + rnd(), pz = z + rnd();
+    const hillY = top < 0 && LIB.HILLS && LIB.terrain ? LIB.terrain(P).h(px, pz) : 0;   // [NY] gress på ørkenbakkene
+    spots.push([px, top + 1 + hillY, pz, rnd() * 6.28, 0.7 + rnd() * 0.6]);   // posisjon, vinkel, størrelse
   }
   const d = new THREE.Object3D();
   const addInst = (geo, mat, list, sc) => {

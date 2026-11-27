@@ -153,6 +153,7 @@ function dvFit(x, z, yaw, y, spec, tank) {
   }
   for (const [px, pz] of pts) {
     if (Math.abs(px) > DESERT.BOUND || Math.abs(pz) > DESERT.BOUND) return null;
+    if (typeof desertH === 'function') top = Math.max(top, desertH(px, pz));   // [NY] bakkene
     for (let iy = Math.floor(y + 1.05); iy >= 0; iy--) {     // bakken under dette punktet
       const t = dvCell(px, iy + 0.5, pz);
       if (t && !(tank && DV_SOFT.has(t))) { top = Math.max(top, iy + 1); break; }
@@ -283,7 +284,7 @@ socket.on('dvShell', d => {
 });
 socket.on('boom', d => { const i = dvShells.findIndex(s => s.id === d.id); if (i >= 0) { dvGroup.remove(dvShells[i].m); dvShells.splice(i, 1); } });
 function dvShellHits(p) {
-  if (p.y <= 0.05) return true;
+  if (p.y <= 0.05 + (typeof desertH === 'function' ? desertH(p.x, p.z) : 0)) return true;   // [NY] + bakkene
   if (dvCell(p.x, p.y, p.z)) return true;
   for (const v of dvInfo) if (v.alive && v.id !== myDv && dvInsideBox(v, p, 0.2)) return true;
   for (const id in others) { const o = others[id]; if (o.alive && o.team !== myTeam && !dvDriverIds.has(id) && Math.hypot(p.x - o.cur.x, p.y - o.cur.y - 0.9, p.z - o.cur.z) < 1) return true; }
