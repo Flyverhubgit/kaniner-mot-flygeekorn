@@ -253,17 +253,24 @@ function phCarStart(v) {
 function phTankClimb(b, spec, thr, fwd, dt) {                 // [NY] er det en kant på 1 kloss rett foran beltene? løft vogna opp
   const q = b.rotation(); phQ.set(q.x, q.y, q.z, q.w);
   const dir = new THREE.Vector3(0, 0, -Math.sign(thr)).applyQuaternion(phQ).setY(0).normalize(), side = new THREE.Vector3(-dir.z, 0, dir.x);
-  const t = b.translation(), iy0 = Math.floor(dvl.y + 0.3);
-  let steps = 0;
-  for (const sOff of [-0.75, 0, 0.75]) for (const ahead of [spec.hl + 0.3, spec.hl + 0.9]) {
-    const px = t.x + dir.x * ahead + side.x * sOff * spec.hw, pz = t.z + dir.z * ahead + side.z * sOff * spec.hw, ix = Math.floor(px), iz = Math.floor(pz);
-    if (solidCell(ix, iy0, iz) && !solidCell(ix, iy0 + 1, iz) && !solidCell(ix, iy0 + 2, iz) && !solidCell(ix, iy0 + 3, iz)) steps++;
-    else if (solidCell(ix, iy0, iz) && solidCell(ix, iy0 + 1, iz)) return;   // for høyt: stopp som før
+  const t = b.translation();
+  const colH = (x, z) => { const ix = Math.floor(x), iz = Math.floor(z); let y = 0; while (y < 30 && solidCell(ix, y, iz)) y++; return y; };   // høyden på bakken/klossene fra bunnen og opp
+  const at = (ahead, sOff) => [t.x + dir.x * ahead + side.x * sOff * spec.hw, t.z + dir.z * ahead + side.z * sOff * spec.hw];
+  let front = 0;                                                 // hva står fronten av beltene på nå?
+  for (const sOff of [-0.8, 0, 0.8]) for (const ahead of [spec.hl - 0.9, spec.hl - 0.3]) { const [x, z] = at(ahead, sOff); front = Math.max(front, colH(x, z)); }
+  let steps = 0, high = 0;
+  for (const sOff of [-0.9, -0.45, 0, 0.45, 0.9]) for (const ahead of [spec.hl + 0.35, spec.hl + 0.95]) {
+    const [x, z] = at(ahead, sOff), h = colH(x, z), d = h - front;
+    if (d === 1 && !solidCell(Math.floor(x), h + 1, Math.floor(z)) && !solidCell(Math.floor(x), h + 2, Math.floor(z))) steps++;
+    else if (d >= 2) high++;
   }
-  phCar.climbT = steps >= 2 ? (phCar.climbT || 0) + dt : 0;
-  if (steps >= 2 && phCar.climbT < 2.5 && Math.abs(fwd) < 4) {
+  const C = phCar.C, tip = new THREE.Vector3(0, -C.h * 0.6 - C.rest - C.r, -Math.sign(thr) * spec.hl * 0.9).applyQuaternion(phQ);
+  const tipY = t.y + tip.y;                                      // hvor høyt er fronten av beltene nå?
+  const go = steps >= 1 && high <= steps && tipY < front + 1.05;  // løft bare til fronten er oppe på kanten
+  phCar.climbT = go ? (phCar.climbT || 0) + dt : 0;
+  if (go && phCar.climbT < 3 && Math.abs(fwd) < 4) {
     const lv = b.linvel();
-    b.setLinvel({ x: lv.x + dir.x * 2 * dt * 10, y: Math.max(lv.y, 2.6), z: lv.z + dir.z * 2 * dt * 10 }, true);
+    b.setLinvel({ x: lv.x + dir.x * 20 * dt, y: Math.max(lv.y, 2.2), z: lv.z + dir.z * 20 * dt }, true);
   }
 }
 function phCarDrive(dt) {
