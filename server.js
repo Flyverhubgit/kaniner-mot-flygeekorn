@@ -3452,7 +3452,7 @@ function botSmart(b, best, bestD, now, dt) {
     b.crouch = 1;
     if (now > b.coverUntil || b.hp >= 80) { b.state = 'roam'; b.crouch = 0; if (b.lastSeenAt && now - b.lastSeenAt < 12000) { b.state = 'hunt'; b.huntX = b.lastSeenX; b.huntZ = b.lastSeenZ; b.huntUntil = now + 8000; botGo(b, b.huntX, b.huntZ); } }
     else { botFollow(b, now, dt, BOT_SPEED * 1.1); return true; }        // på vei til / i dekning (skyter fortsatt hvis den ser deg)
-  } else b.crouch = 0;
+  } else if (!b.ambush && !b.sneaking) b.crouch = 0;   // [FIKS] sniking/bakhold holder seg dukket (ble reist opp hver gang)
   if (best) {
     const near = desert ? (b.dw === 'sniper50' ? 70 : 30) : 14;
     // Flankerer: gå rundt på siden når fienden er et stykke unna
@@ -3553,7 +3553,7 @@ setInterval(() => {
       b.yaw = Math.atan2(-dx, -dz);                                   // se på fienden
       b.pitch = Math.atan2((best.y + 1.1) - (b.y + 1.4), bestD) ;
       // --- Skyt (etter reaksjonstid, sakte tempo, bommer ofte) ---
-      if (desert && now - b.seenAt > botReactMs() && now >= b.nextShot) {   // [NY] ørken-robot: eget våpen
+      if (desert && now - b.seenAt > botReactMs() && now >= b.nextShot && !(DESERT_SMART && b.ambush && bestD > 60)) {   // [NY] ørken-robot: eget våpen. [NY] bakhold: vent til fienden er innen 60 m
         const W = DESERT_W[b.dw], sn = b.dw === 'sniper50';
         b.nextShot = now + DESERT_BOT_MS[b.dw] + Math.random() * 150;
         b.protectedUntil = 0;
@@ -3972,6 +3972,7 @@ if (process.env.BOT_SNEAK_DEBUG) setInterval(() => {               // test: hvor
 }, 15000);
 // sniking og bakhold mens roboten går (kalles fra botFollow)
 function botSneakStep(b, now) {
+  if (DESERT_SMART && mapName === 'desert') return desertSneakStep(b, now);   // [NY] ørkenen
   if (!BOT_SNEAKY || mapName !== 'jungle' || !ctfOn() || !ctf.bunny) return false;
   const theirs = ctf[ctfOther(b.team)];
   b.ctfRole = botCtfRole(b) || b.ctfRole;
@@ -4232,6 +4233,7 @@ function squadGoal(b) {
   if (q.leader !== b.id) return b.squadGoal ? leg(b.squadGoal) : null;   // følger lederen
   if (q.contact && now - q.contact.t < 12000) return leg([q.contact.x, q.contact.z]);   // en i troppen så fienden: alle dit
   if (q.invest && now < q.invest.until) return leg([q.invest.x, q.invest.z]);           // hørte noe: gå og let
+  if (DESERT_SMART && mapName === 'desert') { const g = desertSquadGoal(b, q, now); if (g) return leg(g); }   // [NY] ørkenen: lure tropper (under)
   if (q.role === 'hunt') {                                       // jegerne leter i krattet midt på kartet
     if (mapName !== 'jungle') return leg(botField());           // andre baner: et tilfeldig sted på slagmarka
     const a = Math.random() * Math.PI * 2, d = 60 + Math.random() * 180; return leg([Math.cos(a) * d, Math.sin(a) * d]);
@@ -4494,3 +4496,65 @@ setInterval(() => {
     } else if (p.noGoAt) { p.noGoAt = 0; io.to(p.id).emit('noGo', { t: -1 }); }
   });
 }, 250);
+
+
+// ===================================================================
+//  [NY] LURE ROBOTER I ØRKENEN 🧠 (samme tenking som i jungelen, for lag-dødskamp)
+//  Angrep/jegere: går dit laget sist så/hørte en fiende (maks 20 s gammelt), via et flankepunkt ut til siden,
+//  sniker (dukket) de siste 50 m og stopper og lytter innimellom. Uten spor: mot landsbyen/utpostene på fiendens side.
+//  Forsvar: ligger i bakhold på en bakketopp på egen halvdel og venter med å skyte til fienden er innen 60 m.
+//  DESERT_SMART = false: som før.
+// ===================================================================
+const DESERT_SMART = true;
+function desertSquadGoal(b, q, now) {
+  const own = b.team === 'bunny' ? 1 : -1;
+  if (q.role === 'defend') {                                       // bakhold på en bakketopp på egen side
+    if (!q.amb || now > q.amb.until) {
+      const hills = desertTerr ? desertTerr.list.filter(h => h[1] * own > 45 && h[1] * own < 185 && h[3] > 2.5) : [];
+      const h = hills.length ? hills[Math.floor(Math.random() * hills.length)] : null;
+      q.amb = h ? { x: h[0], z: h[1], until: now + 70000 + Math.random() * 40000 } : { x: (Math.random() - 0.5) * 200, z: own * (90 + Math.random() * 80), until: now + 60000 };
+    }
+    return [q.amb.x, q.amb.z];
+  }
+  let best = null, bd = 1e9;                                       // ferskeste spor av en fiende
+  const I = teamIntel[b.team] || {};
+  for (const id in I) { const t = players[id], e = I[id]; if (!t || !t.alive || t.team === b.team || now - e.t > 20000) continue; const d = Math.hypot(e.x - b.x, e.z - b.z); if (d < bd) { bd = d; best = { id, x: e.x, z: e.z }; } }
+  if (best) {
+    if (!q.flank || q.flank.id !== best.id || now > q.flank.until) {   // nytt mål: et flankepunkt ut til siden
+      const dx = best.x - b.x, dz = best.z - b.z, d = Math.hypot(dx, dz) || 1, side = (Math.random() < 0.5 ? -1 : 1) * (30 + Math.random() * 35), k = 0.6;
+      q.flank = { id: best.id, x: b.x + dx * k - dz / d * side, z: b.z + dz * k + dx / d * side, done: d < 60, until: now + 45000 };
+    }
+    q.huntAt = { x: best.x, z: best.z, t: now };
+    if (!q.flank.done && Math.hypot(b.x - q.flank.x, b.z - q.flank.z) < 15) q.flank.done = true;
+    return q.flank.done ? [best.x + (Math.random() - 0.5) * 8, best.z + (Math.random() - 0.5) * 8] : [q.flank.x, q.flank.z];
+  }
+  q.huntAt = null;
+  if (q.role === 'attack') {                                       // ingen spor: mot et sted på fiendens side
+    if (!q.obj || now > q.obj.until || Math.hypot(b.x - q.obj.x, b.z - q.obj.z) < 12) {
+      const spots = [[0, 25], [-30, 40], [30, 40], [-110, 150], [110, 140], [0, 120], [-60, 90], [60, 100]];
+      const sp = spots[Math.floor(Math.random() * spots.length)];
+      q.obj = { x: -own * sp[0] + (Math.random() - 0.5) * 10, z: -own * sp[1] + (Math.random() - 0.5) * 10, until: now + 90000 };
+    }
+    return [q.obj.x, q.obj.z];
+  }
+  return null;                                                     // jegere uten spor: som før (tilfeldig på slagmarka)
+}
+function desertSneakStep(b, now) {
+  const q = squadOf(b); if (!q) return false;
+  if (q.role === 'defend' && q.amb) {                              // ligg i bakhold rundt bakketoppen
+    const at = Math.hypot(b.x - q.amb.x, b.z - q.amb.z) < 14;
+    if (at && !b.ambush) { b.ambush = true; b.crouch = 1; } else if (!at && b.ambush && !b.target) { b.ambush = false; b.crouch = 0; }
+    return at;
+  }
+  if (b.ambush) { b.ambush = false; b.crouch = 0; }
+  const sneak = q.huntAt && now - q.huntAt.t < 20000 && Math.hypot(b.x - q.huntAt.x, b.z - q.huntAt.z) < 50;
+  if (sneak && !b.sneaking) { b.sneaking = true; b.crouch = 1; } else if (!sneak && b.sneaking) { b.sneaking = false; b.crouch = 0; }
+  if (sneak && now > (b.pauseNext || 0)) { b.pauseNext = now + 10000 + Math.random() * 6000; b.pauseUntil = now + 2000 + Math.random() * 2000; }   // stopp og lytt
+  return sneak && now < (b.pauseUntil || 0);
+}
+if (process.env.DESERT_SMART_DEBUG) setInterval(() => {            // test: hva gjør robotene i ørkenen?
+  if (mapName !== 'desert') return;
+  const bots = Object.values(players).filter(b => b.isBot && b.alive), c = f => bots.filter(f).length;
+  const qs = [...squads.values()];
+  console.log('DSMART', JSON.stringify({ bots: bots.length, squads: qs.length, defendAmb: qs.filter(q => q.role === 'defend' && q.amb).length, hunting: qs.filter(q => q.huntAt).length, flanking: qs.filter(q => q.huntAt && q.flank && !q.flank.done).length, objective: qs.filter(q => !q.huntAt && q.obj).length, ambush: c(b => b.ambush), sneaking: c(b => b.sneaking), crouch: c(b => b.crouch) }));
+}, 15000);
