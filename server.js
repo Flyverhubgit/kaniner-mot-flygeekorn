@@ -3173,6 +3173,7 @@ function botMove(b, dirX, dirZ, speed, dt) {
   [[mx, 0], [0, mz]].forEach(([ax, az]) => {
     if (!ax && !az) return;
     const nx = b.x + ax, nz = b.z + az;
+    if (DESERT_NO_GO && mapName === 'desert' && inEnemyBase(b.team, nx, b.y, nz)) return;   // [NY] robotene går ikke inn i fiendens base
     if (!bodyHits(nx, b.y, nz)) { b.x = nx; b.z = nz; moved = true; }
     else {                                    // ett trinn opp: en kloss, eller en lav boks (maks 0,6 m)
       const up = boxMap() ? 0.6 : 1.05;
@@ -4462,3 +4463,34 @@ function rejoinGet(name) {
 }
 setInterval(() => { const now = Date.now(); for (const [n, b] of rejoinStash) if (now - b.at > REJOIN_MS) rejoinStash.delete(n); }, 60000);
 if (process.env.CRASH_TEST) setTimeout(() => { null.boom(); }, 3000);   // test: en feil med vilje
+
+
+// ===================================================================
+//  [NY] FORBUDT OMRÅDE ⛔ – fiendens base i ørkenen (base, radiotårn, rullebane, helikopterplass)
+//  Går du inn (på bakkenivå, under 20 m): rød advarsel med nedtelling på 5 sekunder, så dør du.
+//  Robotene går ikke inn. DESERT_NO_GO = false: som før.
+// ===================================================================
+const DESERT_NO_GO = true, NO_GO_SECONDS = 5;
+function inEnemyBase(team, x, y, z) {
+  if (team !== 'bunny' && team !== 'squirrel') return false;
+  if (y > 20) return false;
+  const ex = team === 'bunny' ? -1 - x : x, ez = team === 'bunny' ? -1 - z : z;   // over i kaninenes koordinater (fiendens base er speilet)
+  if (ex > -38 && ex < 46 && ez > 196 && ez < 237) return true;                    // basen + radiotårnet + rett utenfor porten
+  const R = DM.RUNWAY, H = DM.HELIPAD;
+  if (ex > R.x0 - 4 && ex < R.x1 + 4 && ez > R.z0 - 4 && ez < R.z1 + 4) return true;
+  return Math.hypot(ex - H.x, ez - H.z) < H.r + 5;
+}
+setInterval(() => {
+  if (!DESERT_NO_GO || mapName !== 'desert' || intermission) return;
+  const now = Date.now();
+  Object.values(players).forEach(p => {
+    if (p.isBot) return;
+    const inside = p.alive && inEnemyBase(p.team, p.x, p.y, p.z);
+    if (inside) {
+      if (!p.noGoAt) p.noGoAt = now;
+      const left = NO_GO_SECONDS - (now - p.noGoAt) / 1000;
+      if (left <= 0) { p.noGoAt = 0; io.to(p.id).emit('noGo', { t: -1 }); killByWorld(p, '⛔ Forbudt område', 'zone'); }
+      else io.to(p.id).emit('noGo', { t: Math.ceil(left) });
+    } else if (p.noGoAt) { p.noGoAt = 0; io.to(p.id).emit('noGo', { t: -1 }); }
+  });
+}, 250);

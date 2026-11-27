@@ -51,3 +51,22 @@ if (DesertMap.HILLS) (function hillGround() {
   };
   desertGroup.add(mesh);   // (treffes av skudd – det er bakken)
 })();
+
+// ---------- [NY] FORBUDT OMRÅDE ⛔: advarsel når du er i fiendens base (serveren teller ned og dreper etter 5 s) ----------
+(function noGoUi() {
+  const el = document.createElement('div');
+  el.style.cssText = 'position:fixed;left:0;top:0;right:0;bottom:0;pointer-events:none;display:none;z-index:40;box-shadow:inset 0 0 140px 40px rgba(200,0,0,0.55);font-family:Fredoka,sans-serif;text-align:center';
+  el.innerHTML = '<div style="position:absolute;left:50%;top:26%;transform:translateX(-50%);background:rgba(120,0,0,0.78);color:#fff;padding:10px 26px;border-radius:14px;border:2px solid #ff5050">'
+    + '<div style="font-size:24px;font-weight:700">⛔ FORBUDT OMRÅDE</div><div style="font-size:15px;opacity:.9">Gå ut av fiendens base!</div>'
+    + '<div class="ng-n" style="font-size:54px;font-weight:700;line-height:1.1">5</div></div>';
+  document.body.appendChild(el);
+  const n = el.querySelector('.ng-n');
+  let last = -1;
+  socket.on('noGo', d => {
+    if (!d || d.t < 0) { el.style.display = 'none'; last = -1; return; }
+    el.style.display = 'block'; n.textContent = d.t;
+    if (d.t !== last && typeof lobBeep === 'function') try { lobBeep(d.t <= 2 ? 880 : 660, 0.15, 0.12, 'square'); } catch (e) {}   // pip hvert sekund
+    last = d.t;
+  });
+  socket.on('map', () => { el.style.display = 'none'; });
+})();
