@@ -6,6 +6,7 @@
 //  ANGRE: PERF_MODE = false
 // ===================================================================
 const PERF_MODE = true;
+const PERF_PC_SHARP = true;   // [FIKS] på PC senkes aldri oppløsningen under 1,0 (ørkenen ble uskarp). ANGRE: false
 let perfLevel = 0, jgUnderR = 60, jgUnderPad = 36, perfMapWas = '';
 const PERF_STEPS = [
   { pr: null, under: 60, pad: 36, far: null },
@@ -16,7 +17,8 @@ const PERF_STEPS = [
 function perfApply() {
   const S = PERF_STEPS[perfLevel];
   jgUnderR = S.under; jgUnderPad = S.pad;
-  const pr = S.pr === null ? Math.min(window.devicePixelRatio, 1.5) : Math.min(S.pr, window.devicePixelRatio);
+  let pr = S.pr === null ? Math.min(window.devicePixelRatio, 1.5) : Math.min(S.pr, window.devicePixelRatio);
+  if (PERF_PC_SHARP && !isTouch) pr = Math.max(pr, Math.min(1, window.devicePixelRatio));   // [FIKS] PC: aldri uskarpt (bare kortere synsvidde)
   if (typeof pixelRatio !== 'undefined' && Math.abs(pr - pixelRatio) > 0.01) {
     pixelRatio = pr; renderer.setPixelRatio(pr);
     if (typeof gfxComposer !== 'undefined' && gfxComposer) { try { const sz = renderer.getSize(new THREE.Vector2()); gfxComposer.setPixelRatio(pr); gfxComposer.setSize(sz.x, sz.y); } catch (e) {} }

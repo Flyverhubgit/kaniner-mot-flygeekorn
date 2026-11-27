@@ -8,7 +8,8 @@ const HUEY_ON = true;
 const HUEY_SEATS = [[-0.55, -0.9], [0.35, -0.9], [-0.85, 0.2], [-0.2, 0.75], [0.35, -0.1], [-0.7, -0.35]];   // passasjerer (x, z lokalt)
 const HUEY_GUN_REAL = true;   // [NY] som en ekte Huey: skytterne sitter bakerst i lasterommet med geværet på en svingarm ut av døra. ANGRE: false
 const HUEY_GUN_SEAT = HUEY_GUN_REAL ? [0.8, -0.95] : [0.75, 0.35];                                    // dørskytteren, ved høyre dør
-const HUEY_GUN_EYE = HUEY_GUN_REAL ? [0.78, 1.98, -0.95] : [0.8, 1.95, 0.35];
+const HUEY_POST_HIDE = true;   // [NY] skjul egen M2-stolpe i dørskytter-siktet. ANGRE: false
+const HUEY_GUN_EYE =HUEY_GUN_REAL ? [0.78, 1.98, -0.95] : [0.8, 1.95, 0.35];
 const hueyMap = new Map(), chuteSet = new Set(), chuteMeshes = {};
 let hueySeat = null;                                           // [NY] 'pilot' | 'gl' | 'gr' | 'pass' (spiller-huey), 'gunner' | 'p' (robot-huey)
 let hueyMineId = null, hueyIsGunner = false, chuteMe = null, hueyLastT = 0, hueyUi = null, hueyBtn = null;
@@ -101,8 +102,9 @@ socket.on('hueys', list => {
   list.forEach(([id, t, x, y, z, yaw, hp, gunner, pax, phase, ejectIn, isPl, pilot, gl, gr, pass, pitch, roll]) => {
     seen.add(id);
     let h = hueyMap.get(id);
+    if (h) h.id = id;   // [FIKS] id manglet: pilotens lokale flytur ble nullstilt hver frame (hueyen nesten sto stille)
     if (!h) {
-      h = { g: buildHuey(t ? 'squirrel' : 'bunny'), cur: { x, y, z, yaw }, tgt: {}, team: t ? 'squirrel' : 'bunny' };
+      h = { id, g: buildHuey(t ? 'squirrel' : 'bunny'), cur: { x, y, z, yaw }, tgt: {}, team: t ? 'squirrel' : 'bunny' };
       h.g.position.set(x, y, z); h.g.rotation.y = yaw; scene.add(h.g); hueyMap.set(id, h);
     }
     const dx = x - (h.tgt.x === undefined ? x : h.tgt.x), dz = z - (h.tgt.z === undefined ? z : h.tgt.z);
@@ -301,6 +303,7 @@ function hueyFrame() {
     const myPivot = hueySeat === 'gl' ? h.g.userData.gunPivotL : h.g.userData.gunPivot;
     h.g.userData.gunPivot.visible = !(hueyIsGunner && hueySeat !== 'gl');   // du ser din egen M2 i hendene i stedet
     h.g.userData.gunPivotL.visible = hueySeat !== 'gl';
+    if (HUEY_POST_HIDE) { const sR = h.g.userData.stand, sL = h.g.userData.standL; if (sR && sR.userData.post) sR.userData.post.visible = !(hueyIsGunner && hueySeat !== 'gl'); if (sL && sL.userData.post) sL.userData.post.visible = !(hueyIsGunner && hueySeat === 'gl'); }   // [NY] egen stolpe skjult i siktet
     if (hueyIsGunner) {
       const dir = new THREE.Vector3(); camera.getWorldDirection(dir);
       myPivot.lookAt(camera.position.clone().addScaledVector(dir, 30));
@@ -403,6 +406,7 @@ function buildM2View() {
 }
 function m2Frame(dt) {
   const on = HUEY_M2_VIEW && hueyAboard() && hueyIsGunner;
+  if (HUEY_POST_HIDE && !on) for (const h of hueyMap.values()) [h.g.userData.stand, h.g.userData.standL].forEach(s => { if (s && s.userData.post && !s.userData.post.visible) s.userData.post.visible = true; });   // [NY] stolpene tilbake når du ikke er skytter
   if (on && !m2View) m2View = buildM2View();
   if (!m2View) return;
   m2View.visible = on;

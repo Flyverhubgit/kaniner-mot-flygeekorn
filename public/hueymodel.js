@@ -156,6 +156,7 @@ function buildHueyV2(team) {
     const seat = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.1, 0.45), soot); seat.position.set(s * 0.82, 1.32, GZ); m.add(seat);   // skyttersetet
     const back = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.5, 0.45), soot); back.position.set(s * 0.58, 1.6, GZ); m.add(back);
     m.traverse(o => { o.raycast = () => {}; o.castShadow = true; });
+    m.userData.post = post;   // [NY] skjules for egen dørskytter (sto midt i siktet)
     g.add(m); return m;
   };
   const stand = mount(1);
@@ -166,7 +167,7 @@ function buildHueyV2(team) {
     const fixed = g.children.filter(c => c.isMesh && !keep.has(c) && !c.userData.teamMark && !c.material.transparent);
     if (fixed.length > 10) { const tmp = new THREE.Group(); fixed.forEach(c => { g.remove(c); tmp.add(c); }); const merged = jgMergeGroup(tmp); merged.children.slice().forEach(c => { c.castShadow = true; g.add(c); }); }
   }
-  g.userData = { rotor, tail, gunPivot, gunPivotL, standL, beacon };
+  g.userData = { rotor, tail, gunPivot, gunPivotL, stand, standL, beacon };
   g.traverse(o => { if (o.isMesh) { o.castShadow = !o.material.transparent; o.raycast = () => {}; } });
   return g;
 }
