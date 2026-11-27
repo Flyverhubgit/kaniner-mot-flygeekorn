@@ -46,6 +46,7 @@ function fx2Pool(n, mat) {
   for (let i = 0; i < n; i++) { const s = new THREE.Sprite(mat.clone()); s.visible = false; s.layers.set(1); fx2Group.add(s); arr.push({ s, life: 0, max: 1, v: new THREE.Vector3(), size: 1, grow: 1, rot: 0, g: 0, c0: new THREE.Color(), c1: new THREE.Color(), a: 1, drag: 0 }); }
   arr.i = 0; return arr;
 }
+const fx2Extra = [];   // [NY] ekstra bassenger fra andre filer (f.eks. GMLRS-røykspor)
 let fx2Fire, fx2Smoke, fx2Dust, fx2Spark, fx2Flash, fx2MSmoke, fx2IDust, fx2Lights = [], fx2LightI = 0;   // MSmoke/IDust: egne bassenger for skudd og treff (stjeler ikke røyken fra smellene)
 if (FX2) {
   const fireT = fx2BlobTex(true, 7), smokeT = fx2BlobTex(false, 11), dot = fx2DotTex(), star = fx2StarTex();
@@ -167,7 +168,7 @@ let fx2Last = performance.now();
 (function fx2Loop() {
   const now = performance.now(), dt = Math.min(0.1, (now - fx2Last) / 1000); fx2Last = now;
   if (FX2) {
-    for (const pool of [fx2Fire, fx2Smoke, fx2Dust, fx2Spark, fx2Flash, fx2MSmoke, fx2IDust]) for (const o of pool) {
+    for (const pool of [fx2Fire, fx2Smoke, fx2Dust, fx2Spark, fx2Flash, fx2MSmoke, fx2IDust, ...fx2Extra]) for (const o of pool) {
       if (o.life <= 0) continue;
       o.life -= dt; if (o.life <= 0) { o.s.visible = false; continue; }
       const k = 1 - o.life / o.max;

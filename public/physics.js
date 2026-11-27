@@ -222,6 +222,7 @@ const PH_CAR = {
   tank: { mass: 1800, h: 0.6, wheels: [[-1.35, 2.1], [1.35, 2.1], [-1.35, 0], [1.35, 0], [-1.35, -2.1], [1.35, -2.1]], r: 0.45, rest: 0.4, k: 45, force: 7000, brake: 80, steer: 0, slip: 3.5 }
 };
 let phCar = null;
+const PH_ANTIROLL = true;   // [FIKS] jeep/stridsvogn velter ikke så lett (krengningsstag + mindre ratt i fart). ANGRE: false
 const phE = new THREE.Euler(0, 0, 0, 'YXZ');
 function phCarEnd() {
   if (!phCar) return;
@@ -267,12 +268,20 @@ function phCarDrive(dt) {
     if (tank) fi += (i % 2 === 0 ? -1 : 1) * turn * C.force * 0.6;   // belter: venstre/høyre side hver sin vei
     ctl.setWheelEngineForce(i, fi);
     ctl.setWheelBrake(i, thr === 0 ? C.brake * 0.15 : 0);
-    if (!tank) ctl.setWheelSteering(i, i < 2 ? turn * C.steer * Math.max(0.35, 1 - Math.abs(fwd) / 30) : 0);
+    if (!tank) ctl.setWheelSteering(i, i < 2 ? turn * C.steer * (PH_ANTIROLL ? Math.max(0.22, 1 - Math.abs(fwd) / 22) : Math.max(0.35, 1 - Math.abs(fwd) / 30)) : 0);   // [FIKS] mindre ratt i fart
   }
   if (tank) {                                                    // stridsvogna snur også på stedet
     const av = b.angvel(); if (turn) b.setAngvel({ x: av.x, y: -turn * spec.turn, z: av.z }, true);
   }
   ctl.updateVehicle(Math.min(dt, 1 / 30), undefined, PH_G_CAR);
+  if (PH_ANTIROLL) {                                             // [FIKS] krengningsstag: dempet rulling og myk dytt tilbake mot flatt (jeepen kjørte på to hjul)
+    const rq = b.rotation(); phQ.set(rq.x, rq.y, rq.z, rq.w);
+    const u = new THREE.Vector3(0, 1, 0).applyQuaternion(phQ), av = b.angvel(), tilt = Math.acos(Math.max(-1, Math.min(1, u.y)));
+    if (u.y > 0.35) {
+      const damp = Math.max(0, 1 - dt * (tank ? 3 : 5)), push = tilt > 0.12 ? (tank ? 3 : 7) * dt : 0;
+      b.setAngvel({ x: av.x * damp - u.z * push * 4, y: av.y, z: av.z * damp + u.x * push * 4 }, true);
+    }
+  }
   // ikke ut av kartet
   const t = b.translation(), lv = b.linvel(), B = DESERT.BOUND - 3;
   if (Math.abs(t.x) > B && Math.sign(lv.x) === Math.sign(t.x)) b.setLinvel({ x: -lv.x * 0.3, y: lv.y, z: lv.z }, true);

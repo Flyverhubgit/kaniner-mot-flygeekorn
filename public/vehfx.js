@@ -203,3 +203,60 @@ if (VEH_FX) {
   });
   (function vfxLoop() { try { vfxFrame(); } catch (e) {} requestAnimationFrame(vfxLoop); })();
 }
+
+// =====================================================================
+//  [NY] GMLRS SOM EN EKTE RAKETT 🚀💥 (samme løft som stridsvogn-skuddet)
+//  Utskyting: ildglimt, støvsky og dypt drønn ved lastebilen. Flukt: tykt røykspor med glødende motor.
+//  Nedslag: stor ildkule + mindre som ruller rundt, høy røyksøyle, støvbølge, dyp bass; nær deg: glimt,
+//  piping i ørene og et dytt. De gamle røyk-kulene er skjult. ?off=vehfx eller GM_FX2 = false: som før.
+// =====================================================================
+const GM_FX2 = VEH_FX && typeof gmPuff === 'function';
+let gmTrail = null;
+if (GM_FX2) {
+  gmTrail = fx2Pool(180, new THREE.SpriteMaterial({ map: fx2BlobTex(false, 23), transparent: true, depthWrite: false }));
+  fx2Extra.push(gmTrail);
+  gmPuff = function (p, s, life) {                         // gamle grå kuler -> myke røykskyer
+    fx2Spawn(gmTrail, p, new THREE.Vector3((Math.random() - 0.5) * 0.8, 0.6 + Math.random() * 0.6, (Math.random() - 0.5) * 0.8), life * 1.6, s * 1.8, 2.6, 0xe8e2d6, 0xb8b0a4, 0.55, -0.05, 0.4);
+  };
+  socket.on('gmlrs', d => {                                // utskyting ved lastebilen
+    if (typeof desertOn === 'function' && !desertOn()) return;
+    const P = new THREE.Vector3(d.from[0], 3.2, d.from[1]), sand = vfxSand();
+    for (let i = 0; i < 12; i++) { const V = fx2Rnd(5).clone(); V.y = Math.abs(V.y) + 3; fx2Spawn(fx2Fire, P.clone().add(fx2Rnd(1.2)), V, 0.35 + Math.random() * 0.3, 1.4 + Math.random(), 2, 0xfff2c8, 0xff6a18, 1, -1, 3); }
+    for (let i = 0; i < 26; i++) { const a = i / 26 * Math.PI * 2, sp = 9 + Math.random() * 6; fx2Spawn(fx2Dust, new THREE.Vector3(P.x + Math.cos(a) * 2, 0.5, P.z + Math.sin(a) * 2), new THREE.Vector3(Math.cos(a) * sp, 0.6 + Math.random(), Math.sin(a) * sp), 2.5 + Math.random() * 1.5, 1.6 + Math.random(), 2.8, sand[0], sand[1], 0.6, 0, 1.8); }
+    fx2Light(P.clone().setY(5), 10, 40, 0.5);
+    vfxDeep(P, 1.6);
+  });
+  socket.on('gmlrsBoom', d => {                            // nedslaget
+    if (typeof desertOn === 'function' && !desertOn()) return;
+    const P = new THREE.Vector3(d.x, 0.5, d.z), dist = P.distanceTo(camera.position), sand = vfxSand();
+    fx2Boom([d.x, 1.2, d.z], 2);
+    for (let k = 0; k < 4; k++) { const a = k / 4 * Math.PI * 2 + Math.random(), r = 6 + Math.random() * 4; setTimeout(() => fx2Boom([d.x + Math.cos(a) * r, 0.8 + Math.random() * 2, d.z + Math.sin(a) * r], 0.9), 120 + k * 110); }
+    for (let i = 0; i < 40; i++) {                         // høy røyksøyle
+      const q = new THREE.Vector3(d.x + (Math.random() - 0.5) * 6, 1 + Math.random() * 4, d.z + (Math.random() - 0.5) * 6), sh = 0x26 + Math.floor(Math.random() * 0x22);
+      fx2Spawn(fx2Smoke, q, new THREE.Vector3((Math.random() - 0.5) * 2, 6 + Math.random() * 9, (Math.random() - 0.5) * 2), 7 + Math.random() * 5, 3 + Math.random() * 2, 3.5, sh << 16 | sh << 8 | sh, 0x8a857e, 0.8, -0.6, 0.5);
+    }
+    for (let i = 0; i < 40; i++) {                         // støvbølge langs bakken
+      const a = i / 40 * Math.PI * 2, sp = 16 + Math.random() * 10;
+      fx2Spawn(fx2Dust, new THREE.Vector3(d.x + Math.cos(a) * 3, 0.6, d.z + Math.sin(a) * 3), new THREE.Vector3(Math.cos(a) * sp, 0.5 + Math.random() * 1.5, Math.sin(a) * sp), 3 + Math.random() * 2, 2.2 + Math.random(), 3.2, sand[0], sand[1], 0.65, 0, 1.5);
+    }
+    for (let i = 0; i < 60; i++) { const V = fx2Rnd(1).clone().normalize().multiplyScalar(10 + Math.random() * 22); V.y = Math.abs(V.y) * 1.5 + 4; fx2Spawn(fx2Spark, P.clone(), V, 1 + Math.random() * 1.8, 0.25 + Math.random() * 0.15, 0.4, 0xffe8a0, 0xff4a10, 1, 14, 0.4); }
+    fx2Light(P.clone().setY(4), 16, 90, 0.8);
+    vfxDeep(P, 2.5);
+    if (dist < 120) vfxFlash(0.75 * (1 - dist / 120));
+    if (dist < 45) { vfxRing(1 - dist / 45); const dir = vfxEye().sub(P).setY(0).normalize(); vfxShove(dir, 14 * (1 - dist / 45)); }
+    vfxShakeAdd(Math.max(0, 1 - dist / 90));
+  });
+  const updateGmlrsFx = updateGmlrs;
+  updateGmlrs = function (dt) {                            // motorglød og ild i røyksporet
+    const r = updateGmlrsFx.apply(this, arguments);
+    try {
+      if (typeof gmFlights !== 'undefined') for (const f of gmFlights) for (const m of [f.up, f.down]) {
+        if (!m) continue;
+        const tail = m.position.clone().add(new THREE.Vector3(0, m === f.down ? 2.4 : -2.4, 0));
+        fx2Spawn(fx2Fire, tail, new THREE.Vector3(0, m === f.down ? 4 : -6, 0), 0.15, 1.1 + Math.random() * 0.5, 0.6, 0xfff4d0, 0xff7020, 1, 0, 2);
+        fx2Spawn(gmTrail, tail.clone().add(fx2Rnd(0.6)), new THREE.Vector3((Math.random() - 0.5) * 0.6, 0.3, (Math.random() - 0.5) * 0.6), 4 + Math.random() * 2, 1.4 + Math.random() * 0.6, 3, 0xf4efe6, 0xc0b8aa, 0.6, -0.05, 0.3);
+      }
+    } catch (e) {}
+    return r;
+  };
+}

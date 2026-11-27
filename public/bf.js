@@ -11,6 +11,7 @@ const BF_GLINT = true, BF_SUPPRESS = true, BF_DISTANT = true, BF_LANDING = true;
 const BF_DISTANT_MAPS = { desert: 1, jungle: 1, west: 1, medieval: 1 };
 
 // ---------- kikkert-glimt ----------
+const BF_GLINT_THRU = false;   // [FIKS] true = glimtet synes gjennom vegger (som før)
 let bfGlintTex = null;
 const bfGlints = {};
 function bfGlintFor(id) {
@@ -21,7 +22,7 @@ function bfGlintFor(id) {
     x.fillStyle = g; x.fillRect(0, 0, 64, 64); x.fillStyle = 'rgba(255,255,255,0.8)'; x.fillRect(0, 30, 64, 4); x.fillRect(30, 0, 4, 64);
     bfGlintTex = new THREE.CanvasTexture(c);
   }
-  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: bfGlintTex, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, depthTest: false }));
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: bfGlintTex, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, depthTest: !BF_GLINT_THRU }));   // [FIKS] vegger skjuler glimtet
   s.visible = false; s.renderOrder = 10; s.layers.set(1); scene.add(s);
   return (bfGlints[id] = s);
 }

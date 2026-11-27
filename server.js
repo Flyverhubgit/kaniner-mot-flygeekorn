@@ -4378,14 +4378,15 @@ io.on('connection', socket => {
 //  ANGRE: FALLING_BLOCKS = false
 // ===================================================================
 const FALLING_BLOCKS = true, FALL_SEARCH_MAX = 5000;
+const STRUCT_WEAK = true, STRUCT_RATIO = 45, STRUCT_MAX = 3000;   // [NY] stor klump på for få klosser (mer enn 45 klosser per kloss mot bakken) raser sammen. ANGRE: STRUCT_WEAK = false
 function fallSettle(V, removed) {
   const L = V.LIB, NX = L.NX, NZ = L.NZ, A = NX * NZ, G = V.grid, N = G.length;
   const tree = mapName === 'jungle' && typeof jgTreeCell === 'function' ? jgTreeCell : () => false;
-  const supported = new Set(), floating = [];
+  const supported = new Set(), floating = [], weakFell = new Set();
   const nb = i => { const x = i % NX, z = Math.floor(i / NX) % NZ, out = []; if (i >= A) out.push(i - A); if (x > 0) out.push(i - 1); if (x < NX - 1) out.push(i + 1); if (z > 0) out.push(i - NX); if (z < NZ - 1) out.push(i + NX); if (i + A < N) out.push(i + A); return out; };
   const starts = new Set(); removed.forEach(i => nb(i).forEach(j => { if (G[j]) starts.add(j); }));
   for (const s of starts) {
-    if (supported.has(s) || !G[s]) continue;
+    if (supported.has(s) || !G[s] || weakFell.has(s)) continue;
     const seen = new Set([s]), stack = [s]; let ok = false;
     while (stack.length) {
       const i = stack.pop();
@@ -4394,6 +4395,18 @@ function fallSettle(V, removed) {
       if (seen.size > FALL_SEARCH_MAX) { ok = true; break; }   // stor klump: regn den som bærende
       const n = nb(i);
       for (let k = n.length - 1; k >= 0; k--) { const j = n[k]; if (G[j] && !seen.has(j)) { seen.add(j); stack.push(j); } }   // nedover først (første i lista = under)
+    }
+    if (ok && STRUCT_WEAK && !supported.has(s)) {                // [NY] bærer den for lite? hele klumpen og alt som står på bakken under den
+      const comp = new Set([s]), q = [s]; let feet = 0, strong = false;
+      while (q.length && !strong) {
+        const i = q.pop(), t = G[i];
+        if (L.INFO[t].hp === 0 || tree(t)) { strong = true; break; }
+        if (i < A) feet++;
+        if (comp.size > STRUCT_MAX) { strong = true; break; }
+        for (const j of nb(i)) if (G[j] && !comp.has(j)) { comp.add(j); q.push(j); }
+      }
+      if (!strong && comp.size >= 20 && comp.size > STRUCT_RATIO * Math.max(1, feet)) { comp.forEach(i => { floating.push(i); weakFell.add(i); }); continue; }
+      comp.forEach(i => supported.add(i));
     }
     if (ok) seen.forEach(i => supported.add(i)); else seen.forEach(i => floating.push(i));
   }
