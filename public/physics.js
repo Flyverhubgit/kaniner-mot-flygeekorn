@@ -16,6 +16,7 @@ const PH_G_WORLD = (0x0001 << 16) | 0xffff;     // kollisjonsgrupper: verden tre
 const PH_G_RAG = (0x0002 << 16) | 0x0001;       // filledukke-deler treffer bare verden (ikke hverandre)
 const PH_G_DEBRIS = (0x0004 << 16) | 0x0005;    // rusk treffer verden og annet rusk
 const PH_G_NADE = (0x0008 << 16) | 0x0001;      // granater treffer bare verden
+const PH_G_GMBIT = (0x0004 << 16) | 0x0001;     // [NY] GMLRS-biter: bare verden (ikke hverandre)
 
 let RAP = null, phWorld = null, phMap = '', phStatic = new Map(), phAcc = 0, phLast = 0, phFixed = null;
 const PH_NEAR = 50, PH_RAG_MAX = 8, PH_STATIC_MAX = 1500;   // [FIKS] lett: fysikk bare nær deg, maks 8 filledukker, rydd vegger langt unna
@@ -343,7 +344,10 @@ function phTiltApply(dt) {
 // ---------------- knusing: én kloss blir mange små biter ----------------
 // Alle bitene tegnes som ÉN InstancedMesh (billig selv med 1000+ biter). De flyr ut fra midten av smellet.
 const PH_SHATTER_BIG = !(typeof isTouch !== 'undefined' && isTouch);   // [NY] PC: store smell (GMLRS, kanon) knuser også – grovere biter, hele klosser når budsjettet er brukt opp, lenger unna. ANGRE: false
-const PH_SHARD_POOL = PH_SHATTER_BIG ? 2400 : 1200, PH_SHARD_BUDGET = PH_SHATTER_BIG ? 1800 : 900;              // maks biter samtidig / per sekund
+const PH_GM_SHARDS = PH_SHATTER_BIG ? 5000 : 0;   // [NY] GMLRS: så mange ekte fysikk-biter per nedslag (PC). 0 = som før
+let phGmAt = -1e9, phGmSide = 2;
+const phGmQueue = [], PH_GM_PER_FRAME = 450;   // [NY] maks nye GMLRS-biter per bilde
+const PH_SHARD_POOL = PH_SHATTER_BIG ? 2400 + PH_GM_SHARDS : 1200, PH_SHARD_BUDGET = PH_SHATTER_BIG ? 1800 : 900;              // maks biter samtidig / per sekund
 const PH_SHARD_N_NEAR = 4, PH_SHARD_N_MID = 3, PH_SHARD_N_FAR = 2;   // 4×4×4 = 64 biter helt nær, 27 litt unna, 8 langt unna
 let phShardIM = null, phShardI = 0, phShardBudget = PH_SHARD_BUDGET, phShardBudgetT = 0, phBlastCtx = null;
 const phShards = [];
@@ -359,14 +363,18 @@ function phShardInit() {
 function phShatter(i) {
   if (!RAPIER_SHATTER || !phReady() || typeof voxWorld !== 'function') return false;
   const W = voxWorld(), [x, y, z] = W.cellPos(i), d = Math.hypot(x + 0.5 - camera.position.x, z + 0.5 - camera.position.z);
+  const gm = PH_GM_SHARDS > 0 && performance.now() - phGmAt < 2500;   // [NY] GMLRS-nedslag: alle klossene i biter, eget budsjett
   const big = PH_SHATTER_BIG && phBlastCtx && phBlastCtx.n > 40;   // [NY] stort smell: mange klosser på en gang
-  if (d > (big ? 110 : 60)) return false;
+  if (d > (gm ? 180 : big ? 110 : 60)) return false;
   let n = d < 18 ? PH_SHARD_N_NEAR : d < 35 ? PH_SHARD_N_MID : PH_SHARD_N_FAR;
-  if (big) n = Math.min(n, d < 25 ? 3 : 2);
-  while (n > 1 && phShardBudget < n * n * n) n--;                 // tomt for biter dette sekundet: grovere biter
-  if (n < 2 && !(big && phShardBudget > -400)) return false;      // [NY] stort smell: hele klossen flyr (litt over budsjettet)
+  if (gm) n = d > 120 ? 2 : phGmSide;
+  else {
+    if (big) n = Math.min(n, d < 25 ? 3 : 2);
+    while (n > 1 && phShardBudget < n * n * n) n--;                 // tomt for biter dette sekundet: grovere biter
+    if (n < 2 && !(big && phShardBudget > -400)) return false;      // [NY] stort smell: hele klossen flyr (litt over budsjettet)
+  }
   phShardInit();
-  phShardBudget -= n * n * n;
+  if (!gm) phShardBudget -= n * n * n;
   const color = (W.LIB.INFO[W.pristine[i]] || W.LIB.INFO[BUILT_T] || { color: 0x888888 }).color, s = 1 / n, base = new THREE.Color(color);
   phAreaOnce(x + 0.5, y + 0.5, z + 0.5);
   if (typeof fx2Spawn === 'function' && typeof FX2 !== 'undefined' && FX2 && Math.random() < 0.5) {   // støvsky der klossen brakk
@@ -385,7 +393,7 @@ function phShatter(i) {
     o.b = phWorld.createRigidBody(RAP.RigidBodyDesc.dynamic().setTranslation(px, py, pz)
       .setLinvel(dx * v + (Math.random() - 0.5) * 2, Math.abs(dy) * v * 0.6 + 1 + Math.random() * 3, dz * v + (Math.random() - 0.5) * 2)
       .setAngvel({ x: (Math.random() - 0.5) * 16, y: (Math.random() - 0.5) * 16, z: (Math.random() - 0.5) * 16 }).setLinearDamping(0.12).setAngularDamping(0.5));
-    phWorld.createCollider(RAP.ColliderDesc.cuboid(o.sx / 2, o.sy / 2, o.sz / 2).setDensity(1.5).setFriction(0.9).setRestitution(0.18).setCollisionGroups(PH_G_DEBRIS), o.b);
+    phWorld.createCollider(RAP.ColliderDesc.cuboid(o.sx / 2, o.sy / 2, o.sz / 2).setDensity(1.5).setFriction(0.9).setRestitution(0.18).setCollisionGroups(gm ? PH_G_GMBIT : PH_G_DEBRIS), o.b);   // [NY] GMLRS-biter treffer bare verden (billigere)
     o.t = 7 + Math.random() * 5; o.on = true;
     phShardIM.setColorAt(k, phSC.copy(base).multiplyScalar(0.68 + Math.random() * 0.3));
   }
@@ -393,6 +401,11 @@ function phShatter(i) {
   return true;
 }
 function phShardFrame(dt) {
+  if (phGmQueue.length) {                                       // [NY] GMLRS: lag biter for noen klosser per bilde
+    let made = 0; const keepAt = phGmAt; phGmAt = performance.now();
+    while (phGmQueue.length && made < PH_GM_PER_FRAME) { const [i, C, n] = phGmQueue.shift(); phBlastCtx = C; phGmSide = n; const before = phShardI; try { phShatter(i); } catch (e) {} made += (phShardI - before + PH_SHARD_POOL) % PH_SHARD_POOL || 1; }
+    phBlastCtx = null; if (!phGmQueue.length) phGmAt = keepAt;
+  }
   phShardBudgetT += dt; if (phShardBudgetT > 1) { phShardBudgetT = 0; phShardBudget = PH_SHARD_BUDGET; }
   if (!phShardIM) return;
   let any = false;
@@ -477,10 +490,16 @@ if (RAPIER_ON) {
         try {                                                   // midten av alle klossene som forsvinner nå = der smellet var
           if (RAPIER_SHATTER && list && list.length && typeof voxWorld === 'function') { const W = voxWorld(); let sx = 0, sy = 0, sz = 0; list.forEach(i => { const p = W.cellPos(i); sx += p[0] + 0.5; sy += p[1] + 0.5; sz += p[2] + 0.5; }); phBlastCtx = { x: sx / list.length, y: sy / list.length, z: sz / list.length, n: list.length }; }
         } catch (e) { phBlastCtx = null; }
-        const res = phCellsOld.apply(this, arguments);
+        let gmRest = null;                                      // [NY] GMLRS: castle.js lager bare rusk for de 60 første klossene – resten knuses her
+        try { if (PH_GM_SHARDS > 0 && performance.now() - phGmAt < 2500 && list && typeof voxWorld === 'function') { const W = voxWorld(), full = list.filter(i => W.grid[i]); const C0 = phBlastCtx || { x: 0, y: 0, z: 0 }, dd = i => { const q = W.cellPos(i); return Math.hypot(q[0] + 0.5 - C0.x, q[1] + 0.5 - C0.y, q[2] + 0.5 - C0.z); }; full.sort((a, b) => dd(a) - dd(b)); const fine = Math.max(0, Math.floor((PH_GM_SHARDS - 8 * full.length) / 19)); gmRest = arguments[1] ? null : full.map((i, k) => [i, k < fine ? 3 : 2]); } } catch (e) {}
+        const res = gmRest ? phCellsOld.call(this, list, true) : phCellsOld.apply(this, arguments);   // [NY] GMLRS: alle klossene går i køen under
+        if (gmRest && gmRest.length) { const C = phBlastCtx; gmRest.forEach(([i, n]) => phGmQueue.push([i, C, n])); }   // [NY] knuses litt etter litt (ingen hakk)
         phBlastCtx = null;
         try { if (phReady() && list) list.forEach(phRemoveCell); } catch (e) {} return res;
       };
     }
   });
 }
+// [NY] GMLRS-nedslag: de neste klossene som forsvinner (samme smell) knuses i ekte fysikk-biter
+if (PH_GM_SHARDS > 0) socket.on('gmlrsBoom', () => { phGmAt = performance.now(); });
+if (PH_GM_SHARDS > 0) socket.on('map', () => { phGmQueue.length = 0; });
