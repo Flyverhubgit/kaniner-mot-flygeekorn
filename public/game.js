@@ -498,7 +498,7 @@ if (isTouch) {
       // [FIKS] Dra fingeren på SKYT-knappen for å sikte mens du skyter
       if (t.target === fireBtn) { fireId = t.identifier; touchFire = true; lastFire.x = t.clientX; lastFire.y = t.clientY; continue; }
       if (t.target === swapBtn) { switchWeapon(nextWeapon()); continue; }
-      if (t.target === scopeBtn) { if (canScope() && alive) scoped = !scoped; continue; }
+      if (t.target === scopeBtn) { if (canScope() && alive) scoped = !scoped; else if (typeof wfCanAds === 'function' && wfCanAds()) wfAdsToggle(); continue; }   // [NY] sikt med vanlige våpen også
       if (t.target === crouchBtn) {
         touchCrouch = !touchCrouch;
         crouchBtn.style.background = touchCrouch ? 'rgba(255,150,205,0.6)' : 'rgba(255,255,255,0.3)';
@@ -1886,17 +1886,17 @@ function updateWeapon(dt) {
   }
   // [NY] Kikkertsikte: zoom inn, skjul våpenet, vis sikte-ringen
   if (scoped && (!canScope() || !alive || reloading > 0)) scoped = false;
-  const fovTarget = scoped ? (weapon === sniperW ? 22 : bazScopeOk() ? BAZ_ZOOM_FOV : C7_ZOOM_FOV) : (typeof SET_FOV !== 'undefined' ? SET_FOV : 75);   // [NY] synsfelt fra innstillinger (settings.js)   // [NY] C7: 3x zoom
+  const fovTarget = scoped ? (weapon === sniperW ? 22 : bazScopeOk() ? BAZ_ZOOM_FOV : C7_ZOOM_FOV) : (typeof SET_FOV !== 'undefined' ? SET_FOV : 75) * (typeof wfAdsA !== 'undefined' ? 1 - 0.2 * wfAdsA : 1);   // [NY] synsfelt fra innstillinger (settings.js). [NY] sikting: litt zoom (weaponfeel.js)   // [NY] C7: 3x zoom
   if (Math.abs(camera.fov - fovTarget) > 0.05) {
     camera.fov += (fovTarget - camera.fov) * Math.min(1, dt * 18);
     camera.updateProjectionMatrix();
   }
   scopeEl.style.display = scoped && !bazScopeOk() ? 'block' : 'none';
   updateBazScope(scoped && bazScopeOk());   // [NY] bazooka-siktet
-  crosshairEl.style.display = scoped ? 'none' : 'block';
+  crosshairEl.style.display = scoped || (typeof wfAdsA !== 'undefined' && wfAdsA > 0.6) ? 'none' : 'block';   // [NY] sikter med våpenet: ikke trådkors
   crosshairEl.style.background = lookFire || touchFire || (typeof leftFireHeld !== 'undefined' && leftFireHeld) ? '#ff3b30' : '#fff';   // [NY] rødt sikte = du skyter
   if (window.__scopeBtn) {
-    window.__scopeBtn.style.display = canScope() && joined ? 'flex' : 'none';
+    window.__scopeBtn.style.display = (canScope() || (typeof wfCanAds === 'function' && wfCanAds())) && joined ? 'flex' : 'none';   // [NY] også sikting med vanlige våpen
     window.__scopeBtn.style.background = scoped ? 'rgba(255,150,205,0.6)' : 'rgba(255,255,255,0.3)';
   }
   gun.visible = alive && joined && !noWeapons() && !scoped && !(typeof inMortar !== 'undefined' && inMortar) && !(typeof spaceHideGun === 'function' && spaceHideGun()) && !(typeof farmHideGun === 'function' && farmHideGun()) && !(typeof dvHideGun === 'function' && dvHideGun()) && !(typeof gmHideGun === 'function' && gmHideGun()) && !(typeof pirHideGun === 'function' && pirHideGun());  // [NY] skjul våpenet i menyen, når du er død, i kikkerten og i morteren

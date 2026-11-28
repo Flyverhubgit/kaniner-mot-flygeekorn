@@ -84,3 +84,47 @@ if (WF_ON) {
     return r;
   };
 }
+
+// ===================================================================
+//  [NY] STEG 2: SIKT MED VÅPENET (høyre mus på alle vanlige våpen, SIKTE-knappen på mobil)
+//  Våpenet løftes opp foran øyet, litt zoom, mindre svai og spredning. Snikskytter/C7/bazooka har kikkert som før.
+//  Snikskytter i kikkerten: siktet svaier litt (pust) – dukk (Shift) for å holde det roligere.
+// ===================================================================
+const WF_ADS = {                                                  // hvor våpenet står når du sikter (finjustert med bilder)
+  ak: { y: -0.08, z: -0.42 }, c7: { y: -0.08, z: -0.42 }, minimi: { y: -0.084, z: -0.45 }, mg42: { y: -0.088, z: -0.45 },
+  pistol: { y: -0.058, z: -0.36 }, dart: { y: -0.08, z: -0.42 },
+};
+let wfAdsHeld = false, wfAdsA = 0, wfBreathT = 0, wfBreathY = 0, wfBreathX = 0;
+function wfCanAds() {
+  return WF_ON && joined && alive && !!WF_ADS[weapon && weapon.id] && !canScope() && !(typeof noWeapons === 'function' && noWeapons())
+    && !(typeof dvBusy === 'function' && dvBusy()) && !(typeof hueyAboard === 'function' && hueyAboard()) && !(typeof medWeaponsOn !== 'undefined' && medWeaponsOn);
+}
+function wfAdsToggle() { wfAdsHeld = !wfAdsHeld; }
+if (WF_ON) {
+  document.addEventListener('mousedown', e => { if (e.button === 2 && document.pointerLockElement === renderer.domElement) wfAdsHeld = true; });
+  document.addEventListener('mouseup', e => { if (e.button === 2) wfAdsHeld = false; });
+  const wfFeelOld2 = finGunFeel;
+  finGunFeel = function (dt) {
+    const r = wfFeelOld2.apply(this, arguments);
+    if (!joined || typeof gun === 'undefined') return r;
+    wfAds = wfAdsHeld && wfCanAds() && reloading <= 0;
+    if (!wfCanAds()) wfAdsHeld = wfAdsHeld && document.pointerLockElement === renderer.domElement;
+    wfAdsA += ((wfAds ? 1 : 0) - wfAdsA) * Math.min(1, dt * 11);
+    const A = WF_ADS[weapon && weapon.id];
+    if (A && wfAdsA > 0.001) {
+      const a = wfAdsA, sw = 0.25;                                 // litt svai igjen (føles levende)
+      gun.position.x += (0 - gun.position.x) * a + (gun.position.x - GUN_BASE.x) * sw * a * 0;
+      gun.position.y += (A.y - gun.position.y) * a * (1 - sw * 0.2);
+      gun.position.z += (A.z - gun.position.z) * a;
+      gun.rotation.x *= 1 - a * 0.85; gun.rotation.y *= 1 - a; gun.rotation.z *= 1 - a * 0.85;
+    }
+    // snikskytter i kikkerten: pust (dukket = roligere)
+    if (scoped && weapon === sniperW) {
+      wfBreathT += dt;
+      const amp = crouching ? 0.0012 : 0.0035;
+      const nx = Math.sin(wfBreathT * 0.9) * amp, ny = Math.sin(wfBreathT * 1.8) * amp * 0.6;
+      player.yaw += nx - wfBreathX; player.pitch += ny - wfBreathY; wfBreathX = nx; wfBreathY = ny;
+    } else if (wfBreathX || wfBreathY) { player.yaw -= wfBreathX; player.pitch -= wfBreathY; wfBreathX = wfBreathY = 0; }
+    return r;
+  };
+}
