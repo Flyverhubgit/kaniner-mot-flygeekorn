@@ -128,3 +128,101 @@ if (WF_ON) {
     return r;
   };
 }
+
+// ===================================================================
+//  [NY] STEG 3: EKTE OMLADING
+//  - Taktisk (det er skudd igjen): ~18 % raskere, ingen ladegrep. Tomt: ladegrep med et kraftig rykk, og "klikk" når du trykker på tomt våpen.
+//  - Det gamle magasinet faller ned og blir liggende på bakken (20 s).
+//  - Minimi/MG42: våpenet vippes og vris (boksen og beltet), pistol: sleiden smetter fram, bazooka/RPG: senkes for å lade.
+//  - Snikskytter: sylinderlås (bolt) etter hvert skudd – bevegelse og lyd.
+// ===================================================================
+const WF_STYLE = { minimi: 'box', mg42: 'box', pistol: 'pistol', bazooka: 'tube', sniper: 'bolt', sniper50: 'bolt' };
+let wfRlEmpty = false, wfRlDropped = false, wfBoltAt = -9;
+const wfMags = [];
+function wfDropMag() {                                            // kopier magasinet(e) og la dem falle
+  if (typeof gun === 'undefined') return;
+  gun.updateMatrixWorld(true);
+  const tops = [];
+  gun.traverse(o => { if (o.userData.mag && !(o.parent && o.parent.userData.mag)) { let vis = true; for (let q = o; q; q = q.parent) if (!q.visible) { vis = false; break; } if (vis) tops.push(o); } });   // hele magasinet (med ribber) som én del
+  tops.forEach(o => {
+    const m = o.clone(true);
+    o.matrixWorld.decompose(m.position, m.quaternion, m.scale);
+    m.traverse(c => { c.castShadow = true; c.raycast = () => {}; });
+    scene.add(m);
+    const v = new THREE.Vector3(-Math.sin(player.yaw) * 0.6, -1.2, -Math.cos(player.yaw) * 0.6);
+    wfMags.push({ m, v, spin: new THREE.Vector3((Math.random() - 0.5) * 8, (Math.random() - 0.5) * 6, (Math.random() - 0.5) * 8), t: 0, rest: false });
+    while (wfMags.length > 14) { const q = wfMags.shift(); scene.remove(q.m); }
+  });
+}
+function wfMagFrame(dt) {
+  for (let i = wfMags.length - 1; i >= 0; i--) {
+    const q = wfMags[i]; q.t += dt;
+    if (!q.rest) {
+      q.v.y -= 20 * dt; q.m.position.addScaledVector(q.v, dt);
+      q.m.rotation.x += q.spin.x * dt; q.m.rotation.y += q.spin.y * dt; q.m.rotation.z += q.spin.z * dt;
+      const g = (typeof groundAt === 'function' ? groundAt(q.m.position.x, q.m.position.z, q.m.position.y + 0.2) : 0) + 0.04;
+      if (q.m.position.y < g) {
+        q.m.position.y = g;
+        if (Math.abs(q.v.y) > 2.5) { q.v.y *= -0.3; q.v.x *= 0.5; q.v.z *= 0.5; q.spin.multiplyScalar(0.4); if (typeof rsPlay === 'function' && typeof rsOn === 'function' && rsOn()) try { rsSetPos(q.m.position); rsPlay('mag_in', 0.12, 1.6); } catch (e) {} }
+        else { q.rest = true; q.m.rotation.set(Math.PI / 2 * (Math.random() < 0.5 ? 1 : -1), q.m.rotation.y, 0); }
+      }
+    }
+    if (q.t > 20 || (typeof currentMap !== 'undefined' && q.map !== undefined && q.map !== currentMap)) { scene.remove(q.m); wfMags.splice(i, 1); }
+    else if (q.map === undefined) q.map = typeof currentMap !== 'undefined' ? currentMap : null;
+  }
+}
+if (WF_ON) {
+  const wfRlOld = startReload;
+  startReload = function () {
+    const w = weapon, wasReloading = reloading > 0;
+    if (!wasReloading && w && w.mag <= 0 && w.reserve > 0 && w !== bazW && typeof rsPlay === 'function' && typeof rsOn === 'function' && rsOn()) try { rsPlay('dry', 0.5); } catch (e) {}   // klikk: tomt
+    if (!wasReloading && w) {
+      if (w._rtBase === undefined) w._rtBase = w.reloadTime;
+      w._tactical = w.mag > 0 && w !== bazW;
+      w.reloadTime = w._rtBase * (w._tactical ? 0.82 : 1);
+    }
+    const r = wfRlOld.apply(this, arguments);
+    if (!wasReloading && reloading > 0) { wfRlEmpty = !w._tactical; wfRlDropped = false; }
+    return r;
+  };
+  const wfPoseOld = reloadPose;
+  reloadPose = function (p) {
+    const r = wfPoseOld.apply(this, arguments);
+    if (typeof gun === 'undefined') return r;
+    const st = WF_STYLE[weapon && weapon.id] || (weapon === bazW ? 'tube' : 'mag');
+    if (p >= 0) {
+      const bell = Math.sin(Math.PI * p), sm = (a, b) => Math.max(0, Math.min(1, (p - a) / (b - a)));
+      if (!wfRlDropped && p > 0.3 && st !== 'tube' && st !== 'bolt') { wfRlDropped = true; try { wfDropMag(); } catch (e) {} }
+      if (st === 'box') { gun.rotation.z += 0.3 * bell; gun.position.y += 0.03 * bell; gun.rotation.x += 0.12 * bell; }
+      if (st === 'tube') { gun.position.y -= 0.14 * bell; gun.rotation.x -= 0.25 * bell; }
+      if (wfRlEmpty && st !== 'tube') {                           // tomt: ladegrep / sleide
+        const k = sm(0.84, 0.9) * (1 - sm(0.9, 0.97));
+        if (st === 'pistol') { gun.position.y += 0.025 * k; gun.rotation.x += 0.12 * k; }
+        else { gun.position.z += 0.06 * k; gun.rotation.x -= 0.1 * k; gun.rotation.z -= 0.08 * k; }
+      }
+    }
+    return r;
+  };
+  const wfShootOld3 = shoot;
+  shoot = function () {
+    const before = weapon && weapon.mag, sn = weapon === sniperW;
+    const r = wfShootOld3.apply(this, arguments);
+    if (sn && weapon.mag < before) {                              // sylinderlås etter skuddet
+      wfBoltAt = wfT;
+      setTimeout(() => { if (weapon === sniperW && typeof rsPlay === 'function' && typeof rsOn === 'function' && rsOn()) try { rsPlay('bolt', 0.4, 1.35); } catch (e) {} }, 380);
+    }
+    return r;
+  };
+  const wfFeelOld3 = finGunFeel;
+  finGunFeel = function (dt) {
+    const r = wfFeelOld3.apply(this, arguments);
+    wfMagFrame(dt);
+    if (typeof gun === 'undefined') return r;
+    const bt = wfT - wfBoltAt;
+    if (weapon === sniperW && bt > 0.3 && bt < 0.95 && !scoped) {   // opp, bak, fram, ned
+      const k = Math.sin(Math.PI * (bt - 0.3) / 0.65);
+      gun.rotation.z -= 0.35 * k; gun.position.z += 0.035 * Math.sin(2 * Math.PI * (bt - 0.3) / 0.65) * 0.8; gun.position.y -= 0.02 * k;
+    }
+    return r;
+  };
+}

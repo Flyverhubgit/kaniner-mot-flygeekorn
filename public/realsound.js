@@ -171,7 +171,7 @@ if (typeof startReload === 'function') {
     const gun = w !== bazW;
     setTimeout(() => { if (weapon === w && reloading > 0) rsPlay(gun ? 'mag_out' : 'mag_in', 0.5); }, T * 0.15);
     if (gun) setTimeout(() => { if (weapon === w && reloading > 0) rsPlay('mag_in', 0.55); }, T * 0.55);
-    setTimeout(() => { if (weapon === w) rsPlay('bolt', 0.45, gun ? 1.15 : 0.9); }, T * 0.8);
+    if (!w._tactical) setTimeout(() => { if (weapon === w) rsPlay('bolt', 0.45, gun ? 1.15 : 0.9); }, T * 0.8);   // [NY] ladegrep bare når magasinet var tomt (weaponfeel.js)
   };
 }
 
