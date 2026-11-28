@@ -136,10 +136,50 @@ function vfxRig(g) {
       ud.vfxWheels.push({ m: c, r: P.radiusTop });
     }
     if (c.geometry.type === 'BoxGeometry' && P.width === 0.7 && P.height === 0.9 && P.depth === 6.0) {   // beltene på stridsvogna
-      const mat = vfxTreadMat.clone(); mat.map = vfxTreadMat.map.clone(); mat.map.needsUpdate = true; c.material = mat; ud.vfxTreads.push(c);
+      if (VFX_TRACKS) { c.visible = false; vfxTrackLoop(g, c.position.x); }   // [NY] ekte belte: runde ender og ledd som går rundt
+      else { const mat = vfxTreadMat.clone(); mat.map = vfxTreadMat.map.clone(); mat.map.needsUpdate = true; c.material = mat; ud.vfxTreads.push(c); }
     }
   });
   return g;
+}
+// ---------- [NY] EKTE BELTER: en løkke med runde ender, ~46 belteledd som går rundt, drivhjul og strammehjul ----------
+const VFX_TRACKS = true;   // false = den gamle firkantede beltet
+const VFX_TR = { L: 5.0, R: 0.41, yc: 0.475, n: 46 };
+let vfxLinkGeo = null, vfxLinkMat = null, vfxSprMat = null;
+function vfxTrackPos(s, o, q) {                                    // s = meter langs løkka → posisjon (z, y) og vinkel
+  const { L, R, yc } = VFX_TR, P = 2 * L + 2 * Math.PI * R;
+  s = ((s % P) + P) % P;
+  if (s < L) { o.z = L / 2 - s; o.y = yc + R; q.a = 0; return; }                        // oppe: mot fronten
+  s -= L; if (s < Math.PI * R) { const t = s / R; o.z = -L / 2 - R * Math.sin(t); o.y = yc + R * Math.cos(t); q.a = -t; return; }   // fronten: ned
+  s -= Math.PI * R; if (s < L) { o.z = -L / 2 + s; o.y = yc - R; q.a = 0; return; }       // nede: bakover (står stille mot bakken)
+  s -= L; const t = s / R; o.z = L / 2 + R * Math.sin(t); o.y = yc - R * Math.cos(t); q.a = -t;   // bak: opp
+}
+function vfxTrackLoop(g, x) {
+  if (!vfxLinkGeo) {
+    vfxLinkGeo = new THREE.BoxGeometry(0.72, 0.07, 0.24);
+    vfxLinkMat = new THREE.MeshStandardMaterial({ color: 0x2e2c2a, roughness: 0.7, metalness: 0.4 });
+    vfxSprMat = new THREE.MeshStandardMaterial({ color: 0x3a3836, roughness: 0.6, metalness: 0.5 });
+  }
+  const im = new THREE.InstancedMesh(vfxLinkGeo, vfxLinkMat, VFX_TR.n);
+  im.castShadow = true; im.receiveShadow = true; im.raycast = () => {}; im.frustumCulled = false;
+  g.add(im);
+  const ud = g.userData; (ud.vfxTracks = ud.vfxTracks || []).push({ im, x, s: 0, dirty: true });
+  [-1, 1].forEach(e => {                                           // drivhjul bak, strammehjul foran
+    const w = new THREE.Mesh(new THREE.CylinderGeometry(0.33, 0.33, 0.62, 12), vfxSprMat);
+    w.rotation.z = Math.PI / 2; w.rotation.order = 'ZYX'; w.position.set(x, VFX_TR.yc, e * VFX_TR.L / 2); w.castShadow = true;
+    w.material = [vfxSprMat, vfxHubMat, vfxHubMat]; g.add(w); ud.vfxWheels.push({ m: w, r: 0.33 });
+  });
+  vfxTrackSet(ud.vfxTracks[ud.vfxTracks.length - 1]);
+}
+const vfxTD = new THREE.Object3D(), vfxTO = { z: 0, y: 0 }, vfxTQ = { a: 0 };
+function vfxTrackSet(t) {
+  const P = 2 * VFX_TR.L + 2 * Math.PI * VFX_TR.R, step = P / VFX_TR.n;
+  for (let i = 0; i < VFX_TR.n; i++) {
+    vfxTrackPos(t.s + i * step, vfxTO, vfxTQ);
+    vfxTD.position.set(t.x, vfxTO.y, vfxTO.z); vfxTD.rotation.set(vfxTQ.a, 0, 0); vfxTD.updateMatrix();
+    t.im.setMatrixAt(i, vfxTD.matrix);
+  }
+  t.im.instanceMatrix.needsUpdate = true;
 }
 const vfxMarks = []; let vfxMarkI = 0;
 function vfxMark(x, y, z, yaw, w) {
@@ -164,6 +204,11 @@ function vfxFrame() {
     if (Math.abs(fwd) > 5) continue;                              // hopp (gjenoppstod): ikke tell
     ud.vfxWheels.forEach(w => { w.m.rotation.y -= fwd / w.r; });
     ud.vfxTreads.forEach(t => { t.material.map.offset.x += fwd / 0.65; });
+    if (ud.vfxTracks) {                                            // [NY] beltene går rundt (motsatt vei når den snur på stedet)
+      let dyaw = yaw - (ud.vfxYaw === undefined ? yaw : ud.vfxYaw); ud.vfxYaw = yaw; dyaw = Math.atan2(Math.sin(dyaw), Math.cos(dyaw));
+      const near = camera.position.distanceTo(p) < 160;
+      ud.vfxTracks.forEach(t => { const d = fwd + dyaw * t.x; if (Math.abs(d) > 1e-4) { t.s += d; if (near) vfxTrackSet(t); } });
+    }
     const sp = Math.abs(fwd) / Math.max(dt, 0.001), onGround = p.y < 3;
     ud.vfxAcc += Math.abs(fwd);
     if (ud.vfxAcc > 0.55 && onGround && camera.position.distanceTo(p) < 140) {   // spor i sanden
