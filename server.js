@@ -3725,8 +3725,9 @@ function jgGround(x, z) {                                   // bakken under (tre
   const ix = Math.floor(x) - JGM.X0, iz = Math.floor(z) - JGM.Z0;
   if (ix < 0 || iz < 0 || ix >= JGM.NX || iz >= JGM.NZ) return 0;
   const A = JGM.NX * JGM.NZ, T = JGM.T;
-  for (let y = JGM.NY - 1; y >= 0; y--) { const t = V.grid[y * A + iz * JGM.NX + ix]; if (t && t !== T.TRUNK && t !== T.LEAF && t !== T.LEAF2 && t !== T.PALM) return y + 1; }
-  return 0;
+  const th = mapName === 'jungle' ? terrH(x, z) : 0;              // [NY] myke bakker
+  for (let y = JGM.NY - 1; y >= 0; y--) { const t = V.grid[y * A + iz * JGM.NX + ix]; if (t && t !== T.TRUNK && t !== T.LEAF && t !== T.LEAF2 && t !== T.PALM) return Math.max(th, y + 1); }
+  return th;
 }
 function hueyPickDZ(team) {                                // et sted langt fra fiendene, på egen halvdel eller i midten
   const side = team === 'bunny' ? 1 : -1, foes = Object.values(players).filter(o => o.alive && o.team !== team && !o.huey);

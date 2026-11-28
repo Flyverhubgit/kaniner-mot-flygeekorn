@@ -240,8 +240,9 @@ function jgChuteGround(x, z) {                                // bakken under fa
   const ix = Math.floor(x) - J.X0, iz = Math.floor(z) - J.Z0;
   if (ix < 0 || iz < 0 || ix >= J.NX || iz >= J.NZ) return 0;
   const A = J.NX * J.NZ, T = J.T;
-  for (let y = J.NY - 1; y >= 0; y--) { const t = W.grid[y * A + iz * J.NX + ix]; if (t && t !== T.TRUNK && t !== T.LEAF && t !== T.LEAF2 && t !== T.PALM) return y + 1; }
-  return 0;
+  const th = typeof hillH === 'function' ? hillH(x, z) : 0;       // [NY] myke bakker
+  for (let y = J.NY - 1; y >= 0; y--) { const t = W.grid[y * A + iz * J.NX + ix]; if (t && t !== T.TRUNK && t !== T.LEAF && t !== T.LEAF2 && t !== T.PALM) return Math.max(th, y + 1); }
+  return th;
 }
 const HUEY_SMOOTH = true;   // [NY] jevn flyging mellom serverpakkene (false = som før)
 function hueyFrame() {

@@ -13,7 +13,7 @@
   function make(o) {
     const L = o.lib, g = o.g, TS = o.TS || 1, X0 = L.X0, Z0 = L.Z0;
     const TNX = Math.round(L.NX / TS) + 1, TNZ = Math.round(L.NZ / TS) + 1, N = TNX * TNZ;
-    const ground = new Set(o.ground || []);
+    const ground = new Set(o.ground || []), soft = new Set(o.soft || []);   // soft: trær o.l. – bakkene går under dem
     const cellOk = (x, z) => x >= X0 && x < X0 + L.NX && z >= Z0 && z < Z0 + L.NZ;
     // klossene i én kolonne: høyden på bakke-stabelen, typen på toppen, og laveste "byggede" kloss over den
     const stackOf = (x, z) => {
@@ -21,7 +21,7 @@
       let y = 0, top = 0;
       while (y < L.NY && ground.has(g[L.idx(x, y, z)])) { top = g[L.idx(x, y, z)]; y++; }
       let cap = 99;
-      for (let yy = y; yy < L.NY; yy++) { const t = g[L.idx(x, yy, z)]; if (t && !ground.has(t)) { cap = yy; break; } }
+      for (let yy = y; yy < L.NY; yy++) { const t = g[L.idx(x, yy, z)]; if (t && !ground.has(t) && !soft.has(t)) { cap = yy; break; } }
       return [y, top, cap];
     };
     const V = new Float32Array(N), CAP = new Float32Array(N).fill(99), TOP = new Uint8Array(N), occ = new Uint8Array(N);

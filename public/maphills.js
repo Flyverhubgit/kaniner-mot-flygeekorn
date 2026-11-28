@@ -9,7 +9,7 @@ const MAP_HILL_STYLE = {                                          // farge der f
   west: { base: 0xeedc94, lift: 0.01 },
   castle: { base: 0x5f9e3a, lift: 0.01 },
   medieval: { base: 0x4f6b34, lift: 0.01 },
-  jungle: { base: 0x3a5a2a, lift: 0.01 },
+  jungle: { base: 0xffffff, lift: 0.01, soil: true },   // bruker jungelens egen jord-tekstur
 };
 const hillMeshes = {};
 let hillMapNow = null, hillTerrNow = null;
@@ -52,7 +52,8 @@ function buildHillMesh(name) {
     tmp.setHex(t); tmp.lerp(base, 1 - Math.min(1, h / 0.9));          // nederst: banens egen bakkefarge
     const around = (H[Math.max(0, k - TNZ)] + H[Math.min(N - 1, k + TNZ)] + H[Math.max(0, k - 1)] + H[Math.min(N - 1, k + 1)]) / 4;
     const sh = 1 + Math.max(-0.1, Math.min(0.08, (h - around) * 0.3));
-    col[k * 3] = tmp.r * sh * 0.92; col[k * 3 + 1] = tmp.g * sh * 0.92; col[k * 3 + 2] = tmp.b * sh * 0.92;
+    const f = st.soil ? 1 : 0.92;
+    col[k * 3] = tmp.r * sh * f; col[k * 3 + 1] = tmp.g * sh * f; col[k * 3 + 2] = tmp.b * sh * f;
   }
   const idx = []; let n = 0;
   for (let i = 0; i < TNX - 1; i++) for (let j = 0; j < TNZ - 1; j++) {
@@ -66,7 +67,7 @@ function buildHillMesh(name) {
   geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
   geo.setIndex(N > 65535 ? new THREE.BufferAttribute(new Uint32Array(idx), 1) : new THREE.BufferAttribute(new Uint16Array(idx), 1));
   geo.computeVertexNormals(); geo.computeBoundingSphere(); geo.computeBoundingBox();
-  const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ map: tex, roughness: 1, vertexColors: true }));
+  const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ map: st.soil && W.groundMat && W.groundMat.map ? W.groundMat.map : tex, roughness: 1, vertexColors: true }));
   mesh.receiveShadow = true; mesh.name = 'mapHills';
   const ray = new THREE.Ray(), P = new THREE.Vector3();
   const nrm = (x, z) => new THREE.Vector3(T.h(x - 0.5, z) - T.h(x + 0.5, z), 1, T.h(x, z - 0.5) - T.h(x, z + 0.5)).normalize();

@@ -319,6 +319,30 @@
 
   function masked(x, z) { if (!mask) build(); x = Math.floor(x); z = Math.floor(z); return x < X0 || x >= X0 + NX || z < Z0 || z >= Z0 + NZ || mask[(z - Z0) * NX + (x - X0)] === 1; }
   const api = { NX, NY, NZ, X0, Z0, CHUNK, BOUND, T, INFO, PATTERNS, idx, build, undergrowth, SPAWNS, FIREBASE, HELIPAD, FLAG, TOWER, VILLAGES: ALL_VILLAGES, PADDIES: ALL_PADDIES, BRIDGES, RIVER, RIVER_W, RIVER_AXIS, LAYOUT2: JUNGLE_LAYOUT2, TOWN, ARCS, BIG_BRIDGE, inPaddy, inRiver, masked, SPARSE: true };
+  // [NY] MYKE BAKKER I JUNGELEN: slake skogsbakker (2–6 m), lave elvebredder, og firebase-høydene glattes.
+  //  Byen, risåkrene, elva og broene holdes flate. Trærne står i bakkene. HILLS = false: som før
+  api.HILLS = true; api.GROUND_T = [T.HILL];
+  const TK = typeof TerrainKit !== 'undefined' ? TerrainKit : require('./terrainkit.js');
+  api.terrain = TK.cached(g => {
+    let sd = 11; const r = () => { sd = (sd * 16807) % 2147483647; return sd / 2147483647; };
+    const nearArc = (x, z, m) => { const rr = Math.hypot(x, z); if (rr < ARCS[0].r0 - m || rr > ARCS[0].r1 + m) return false; return inArc(x * (ARCS[0].r0 + 1) / Math.max(1, rr), z * (ARCS[0].r0 + 1) / Math.max(1, rr)) || inArc(x, z); };
+    const river = (x, z) => JUNGLE_LAYOUT2 ? Math.abs(x - RIVER(z)) : Math.abs(z - RIVER(x));
+    const bad = (x, z) => Math.hypot(x, z) < TOWN.r + 30 || nearArc(x, z, 18) || river(x, z) < RIVER_W + 24 || Math.hypot(Math.abs(x) - FIREBASE.x, Math.abs(z) - FIREBASE.z) < FIREBASE.r + 30 || Math.abs(x) > BOUND - 20 || Math.abs(z) > BOUND - 20;
+    const bumps = [];
+    for (let k = 0; k < 90 && bumps.length < 110; k++) {
+      const x = (r() * 2 - 1) * (BOUND - 30), z = (r() * 2 - 1) * (BOUND - 30);
+      if (bad(x, z)) continue;
+      const rad = 20 + r() * 24, h = 2 + r() * 4;
+      bumps.push([x, z, rad, h]); bumps.push([-x, -z, rad, h]);          // speilet: like bakker for begge lag
+    }
+    if (JUNGLE_LAYOUT2) for (let z = -BOUND + 20; z <= BOUND - 20; z += 14) for (const sd2 of [-1, 1]) {   // lave elvebredder
+      const x = RIVER(z) + sd2 * (RIVER_W + 10);
+      if (Math.hypot(x, z) < TOWN.r + 20 || nearArc(x, z, 10)) continue;
+      bumps.push([x, z, 12, 1.5]);
+    }
+    return TK.make({ lib: api, g, ground: api.GROUND_T, soft: [T.TRUNK, T.LEAF, T.LEAF2, T.PALM, T.BAMBOO, T.ROCK], TS: 2, fill: 5, maxSlope: 0.5, bumps, bumpKeep: [5, 18],
+      keepLow: (x, z) => river(x, z) < RIVER_W + 2.5 || Math.hypot(x, z) < TOWN.r + 8 || nearArc(x, z, 4) });
+  });
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.JungleMap = api;
 })(this);

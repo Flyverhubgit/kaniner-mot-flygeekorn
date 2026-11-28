@@ -78,6 +78,7 @@ function jungleLush() {
   leaves.forEach(l => add(l[0], l[2], l[3] ? 'palm' : 'leaf', l));
   tall.forEach(t => add(t[0], t[1], ['banana', 'bush', 'sap'][t[2]], t));
   const d = new THREE.Object3D();
+  const lushT = J.HILLS && J.terrain ? J.terrain(W.pristine) : null, lushHillY = (x, z) => lushT ? lushT.h(x, z) : 0;   // [NY] myke bakker
   const tInst = W.lushTrunk = {}, lInst = W.lushLeaf = {};          // [NY] så vi kan skjule et tre som faller
   for (const cid in per) {
     const grp = jungleUnder[cid] || (() => { const g = new THREE.Group(); g.visible = false; g.userData.cx = J.X0 + (cid % NCX + 0.5) * CH; g.userData.cz = J.Z0 + (Math.floor(cid / NCX) + 0.5) * CH; jungleGroup.add(g); jungleUnder[cid] = g; return g; })();
@@ -91,7 +92,7 @@ function jungleLush() {
         if (k === 'bamboo') { d.position.set(u[0], 0, u[1]); d.rotation.set((r % 0.16) - 0.08, 0, (r % 0.12) - 0.06); d.scale.set(1, u[2], 1); }
         else if (k === 'trunk') { d.position.set(u[0], 0, u[1]); d.rotation.set((r % 0.1) - 0.05, r, (r % 0.07) - 0.035); d.scale.set(1, u[2] + 0.6, 1); }
         else if (k === 'leaf' || k === 'palm') { d.position.set(u[0], u[1] - 1.6, u[2]); d.rotation.set(0, r, 0); const s = k === 'palm' ? 5 : 4.4; d.scale.set(s, s * 0.85, s); }
-        else { const s = u[3]; d.position.set(u[0], 0, u[1]); d.rotation.set(0, r, 0); if (k === 'banana') d.scale.set(1.8 * s, 2.3 * s, 1.8 * s); else if (k === 'bush') d.scale.set(2 * s, 1.6 * s, 2 * s); else d.scale.set(1.6 * s, 3 * s, 1.6 * s); }
+        else { const s = u[3]; d.position.set(u[0], lushHillY(u[0], u[1]), u[1]); d.rotation.set(0, r, 0); if (k === 'banana') d.scale.set(1.8 * s, 2.3 * s, 1.8 * s); else if (k === 'bush') d.scale.set(2 * s, 1.6 * s, 2 * s); else d.scale.set(1.6 * s, 3 * s, 1.6 * s); }   // [NY] planter på bakkene
         d.updateMatrix(); m.setMatrixAt(i, d.matrix);
         if (k === 'trunk') tInst[(Math.floor(u[1]) - J.Z0) * J.NX + Math.floor(u[0]) - J.X0] = { m, i, mat: d.matrix.clone() };
         else if (k === 'leaf' || k === 'palm') { const key = lushLeafKey(Math.floor(u[0]) - J.X0, u[1], Math.floor(u[2]) - J.Z0); (lInst[key] = lInst[key] || []).push({ m, i, mat: d.matrix.clone() }); }

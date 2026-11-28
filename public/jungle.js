@@ -27,6 +27,7 @@ function jungleBuild() {
   }, 200);
   const g = new THREE.Mesh(new THREE.BoxGeometry(JUNGLE.NX, 0.2, JUNGLE.NZ), new THREE.MeshStandardMaterial({ map: soil, roughness: 1 }));
   g.position.y = -0.1; g.receiveShadow = true; jungleGroup.add(g);
+  jungleWorld.groundMat = g.material;   // [NY] bakkene (maphills.js) bruker samme jord
   const far = new THREE.Mesh(new THREE.PlaneGeometry(3000, 3000), new THREE.MeshStandardMaterial({ color: 0x2c4a22, roughness: 1 }));
   far.rotation.x = -Math.PI / 2; far.position.y = -0.3; far.raycast = () => {}; jungleGroup.add(far);
   // ---- elva: et bånd som følger midtlinja ----
