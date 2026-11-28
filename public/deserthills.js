@@ -5,7 +5,7 @@
 //  Slå av: HILLS = false i desertmap.js (da blir alt som før).
 // ===================================================================
 const DESERT_TERR = DesertMap.terrain(desertWorld.pristine);
-function desertH(x, z) { return DESERT_TERR && DesertMap.HILLS && desertOn() ? DESERT_TERR.h(x, z) : 0; }
+function desertH(x, z) { return typeof hillH === 'function' ? hillH(x, z) : (DESERT_TERR && DesertMap.HILLS && desertOn() ? DESERT_TERR.h(x, z) : 0); }   // [NY] alle baner med bakker (maphills.js)
 
 if (DesertMap.HILLS) (function hillGround() {
   const { H, TS, TN } = DESERT_TERR, X0 = DesertMap.X0, Z0 = DesertMap.Z0;

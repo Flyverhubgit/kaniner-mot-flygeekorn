@@ -69,6 +69,7 @@ function makeVoxelWorld(LIB, group) {
     if (hard(P[LIB.idx(x, y + 1, z)]) && (y === 0 || hard(P[LIB.idx(x, y - 1, z)])) && hard(P[LIB.idx(x + 1, y, z)]) && hard(P[LIB.idx(x - 1, y, z)]) &&
         hard(P[LIB.idx(x, y, z + 1)]) && hard(P[LIB.idx(x, y, z - 1)])) hidden[i] = 1;
   }
+  if (LIB.HILLS && LIB.GROUND_T) { const gt = new Set(LIB.GROUND_T); for (let i = 0; i < P.length; i++) if (gt.has(P[i])) hidden[i] = 1; }   // [NY] bakke-klossene dekkes av den myke flaten (maphills.js)
   const counts = {};
   for (let i = 0; i < P.length; i++) { const t = P[i]; if (t && !hidden[i]) { const k = W.keyOf(t, i); counts[k] = (counts[k] || 0) + 1; } }
   const typeMat = {};

@@ -341,7 +341,7 @@
       const i = Math.floor(fx), j = Math.floor(fz), a = fx - i, b = fz - j, k = i * TN + j;
       return (H[k] * (1 - a) + H[k + TN] * a) * (1 - b) + (H[k + 1] * (1 - a) + H[k + TN + 1] * a) * b;
     }
-    return { H, TS, TN, h, list: hillList.slice() };
+    return { H, TS, TN, TNX: TN, TNZ: TN, X0, Z0, h, list: hillList.slice() };
   }
 
   const api = { NX, NY, NZ, X0, Z0, T, INFO, idx, build, SPAWNS, OASES, BOUND, RADIO, RUNWAY, HELIPAD, HILLS, terrain };

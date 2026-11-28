@@ -133,7 +133,9 @@ function makeVox(LIB) {
 }
 // [NY] Ørkenbakkene (myke bakker): samme høyde som klienten (DesertMap.terrain)
 let desertTerr = null;
-function terrH(x, z) { return desertTerr && mapName === 'desert' ? desertTerr.h(x, z) : 0; }
+const TERR = {};                                                  // [NY] myke bakker per bane (terrainkit.js / desertmap.js)
+function terrOf(m) { if (m in TERR) return TERR[m]; const V = VOX[m]; TERR[m] = V && V.LIB && V.LIB.HILLS && typeof V.LIB.terrain === 'function' ? V.LIB.terrain(V.pristine) : null; return TERR[m]; }
+function terrH(x, z) { const T = terrOf(mapName); return T ? T.h(x, z) : 0; }
 const VOX = { castle: makeVox(CM), farm: makeVox(FM), sea: makeVox(SM), medieval: makeVox(MM), west: makeVox(WM), dragon: makeVox(JM), desert: makeVox(DM), pirate: makeVox(PM), jungle: makeVox(JGM) };
 if (DM.HILLS) desertTerr = DM.terrain(VOX.desert.pristine);   // [NY] bakkene (lages én gang)
 function resetVox(name) {
@@ -2914,6 +2916,7 @@ function shipHits(s, pose) {
     if (Math.abs(w.x) > PM.BOUND.x || Math.abs(w.z) > PM.BOUND.z) return true;
     const ix = Math.floor(w.x), iz = Math.floor(w.z);
     for (let y = 1; y < 4; y++) if (G[PM.idx(ix, y, iz)]) return true;
+    const PT = terrOf('pirate'); if (PT && PT.h(w.x, w.z) > 1.4) return true;   // [NY] for grunt: stranda
     for (const t in ships) {
       const o = ships[t];
       if (o === s || !o.alive) continue;
@@ -3056,9 +3059,9 @@ function pirShipSolid(x, y, z) {               // [NY] Piratbukta: er punktet in
 function losClear(a, b) {                    // fri sikt mellom to punkter?
   if (mapName === 'desert' && smokes.length && smokeBlocks(a, b)) return false;
   const dx = b.x - a.x, dy = b.y - a.y, dz = b.z - a.z, d = Math.hypot(dx, dy, dz), n = Math.ceil(d / (mapName === 'desert' ? 0.8 : 0.4));   // [NY] ørkenen: grovere sjekk (mange roboter, lange avstander)
-  const pir = mapName === 'pirate', hill = desertTerr && mapName === 'desert';
+  const pir = mapName === 'pirate', hillT = terrOf(mapName), hill = !!hillT;
   for (let i = 1; i < n; i++) { const k = i / n; if (bSolid(a.x + dx * k, a.y + dy * k, a.z + dz * k) || (pir && pirShipSolid(a.x + dx * k, a.y + dy * k, a.z + dz * k))) return false; }   // [NY] skipssidene beskytter
-  if (hill) for (let i = 1; i < n; i++) { const k = i / n; if (a.y + dy * k < desertTerr.h(a.x + dx * k, a.z + dz * k) - 0.05) return false; }   // [NY] en bakke i veien
+  if (hill) for (let i = 1; i < n; i++) { const k = i / n; if (a.y + dy * k < hillT.h(a.x + dx * k, a.z + dz * k) - 0.05) return false; }   // [NY] en bakke i veien
   if (mapName === 'desert' && DV_BOT_BLOCK && dvLineBlocked(a, b)) return false;   // [FIKS] stridsvogner og jeeper gir dekning
   return true;
 }
@@ -3182,7 +3185,7 @@ function botMove(b, dirX, dirZ, speed, dt) {
   });
   const g = groundBelow(b.x, b.y, b.z);   // tyngdekraft
   if (b.y > g) b.y = Math.max(g, b.y - 9 * dt);
-  else if (b.y < g && desertTerr && mapName === 'desert') b.y = g;   // [NY] gå opp bakken
+  else if (b.y < g && terrOf(mapName)) b.y = g;   // [NY] gå opp bakken
   if (dirX || dirZ) b.yaw = Math.atan2(-dirX, -dirZ);
   return moved;
 }

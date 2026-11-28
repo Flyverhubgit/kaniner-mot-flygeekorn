@@ -234,6 +234,11 @@
   }
 
   const api = { NX, NY, NZ, X0, Z0, T, INFO, idx, build, WATER, BOUND, SHIP, SHIP_START, HOME, shipToWorld, worldToShip };
+  // [NY] myke strender: sand/gress-trappene blir slake skråninger ned i vannet (terrainkit.js). HILLS = false: som før
+  api.HILLS = true; api.GROUND_T = [T.SAND, T.GRASS];
+  const TK = typeof TerrainKit !== 'undefined' ? TerrainKit : require('./terrainkit.js');
+  api.terrain = TK.cached(g => TK.make({ lib: api, g, ground: api.GROUND_T, TS: 1, fill: 4, maxSlope: 0.55,
+    keepLow: (x, z) => Math.abs(x) < 18 && Math.abs(Math.abs(z) - Math.abs(SHIP_START.bunny ? SHIP_START.bunny.z : 96)) < 20 }));   // havna ved skipenes startplass holdes dyp
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.PirateMap = api;
 })(this);

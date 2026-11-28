@@ -37,9 +37,10 @@ function phReset() {
   // bakken (y = 0) overalt
   phFixed = phWorld.createRigidBody(RAP.RigidBodyDesc.fixed());   // [FIKS] én felles fast kropp for alle vegger/klosser (var én per kloss)
   phWorld.createCollider(RAP.ColliderDesc.cuboid(2000, 0.5, 2000).setTranslation(0, -0.5, 0).setFriction(0.9).setCollisionGroups(PH_G_WORLD), phFixed);
-  if (phMap === 'desert' && typeof DESERT_TERR !== 'undefined' && DesertMap.HILLS) try {   // [NY] ørkenbakkene som høydefelt (kjøretøy, granater, biter)
-    const T = DESERT_TERR, n = T.TN - 1;
-    phWorld.createCollider(RAP.ColliderDesc.heightfield(n, n, T.H, { x: n * T.TS, y: 1, z: n * T.TS }).setTranslation(DesertMap.X0 + n * T.TS / 2, 0, DesertMap.Z0 + n * T.TS / 2).setFriction(0.9).setCollisionGroups(PH_G_WORLD), phFixed);
+  const HT = typeof hillTerr === 'function' ? hillTerr(phMap) : null;   // [NY] myke bakker som høydefelt (kjøretøy, granater, biter) – alle baner med bakker
+  if (HT) try {
+    const nx = HT.TNX - 1, nz = HT.TNZ - 1;
+    phWorld.createCollider(RAP.ColliderDesc.heightfield(nz, nx, HT.H, { x: nx * HT.TS, y: 1, z: nz * HT.TS }).setTranslation(HT.X0 + nx * HT.TS / 2, 0, HT.Z0 + nz * HT.TS / 2).setFriction(0.9).setCollisionGroups(PH_G_WORLD), phFixed);
   } catch (e) { console.warn('heightfield', e); }
   phRags.forEach(rg => rg.dead = true); phRags.length = 0;
   if (typeof phDebrisReset === 'function') phDebrisReset();
