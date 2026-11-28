@@ -1752,7 +1752,7 @@ function shoot() {
 
   // Skuddet går rett ut fra midten av skjermen
   // [NY] Snikskytter uten kikkert sprer mye – bruk siktet!
-  const spread = sn && !scoped ? 0.12 : 0;
+  const spread = typeof wfSpread === 'function' ? wfSpread(sn) : (sn && !scoped ? 0.12 : 0);   // [NY] spredning per våpen (weaponfeel.js)
   camera.updateMatrixWorld(true);
   raycaster.setFromCamera({ x: (Math.random() - 0.5) * spread, y: (Math.random() - 0.5) * spread }, camera);
   const hits = raycaster.intersectObject(activeWorldGroup(), true);   // [NY] bare verden (ikke spor/fyll), riktig bane
