@@ -6,7 +6,7 @@
 // ===================================================================
 const MAP_HILL_STYLE = {                                          // farge der flaten møter banens egen bakke
   pirate: { base: 0xd8c08a, lift: 0.015 },
-  west: { base: 0xd9b27a, lift: 0.01 },
+  west: { base: 0xeedc94, lift: 0.01 },
   castle: { base: 0x5f9e3a, lift: 0.01 },
   medieval: { base: 0x4f6b34, lift: 0.01 },
   jungle: { base: 0x3a5a2a, lift: 0.01 },
@@ -34,7 +34,7 @@ function buildHillMesh(name) {
   const { H, TS, TNX, TNZ, X0, Z0 } = T, N = TNX * TNZ, LIB = W.LIB;
   // farge: bakke-typen på toppen, spredd utover i skråningene; blandet mot banens bakkefarge nederst
   const top = new Uint8Array(T.TOP);
-  for (let it = 0; it < 12; it++) for (let i = 1; i < TNX - 1; i++) for (let j = 1; j < TNZ - 1; j++) {
+  for (let it = 0; it < 7; it++) for (let i = 1; i < TNX - 1; i++) for (let j = 1; j < TNZ - 1; j++) {
     const k = i * TNZ + j; if (top[k] || H[k] < 0.02) continue;
     const c = top[k - TNZ] || top[k + TNZ] || top[k - 1] || top[k + 1]; if (c) top[k] = c;
   }

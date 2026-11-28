@@ -157,6 +157,16 @@
   }
 
   const api = { NX, NY, NZ, X0, Z0, T, INFO, idx, build, SPAWNS, TRACK, STREET };
+  // [NY] myke bakker: de trappete røde fjellene blir glatte, og små sanddyner ute i ørkenen rundt byen. HILLS = false: som før
+  api.HILLS = true; api.GROUND_T = [T.ROCK];
+  const TK = typeof TerrainKit !== 'undefined' ? TerrainKit : require('./terrainkit.js');
+  api.terrain = TK.cached(g => {
+    let sd = 7; const r = () => { sd = (sd * 16807) % 2147483647; return sd / 2147483647; };
+    const bumps = [];
+    for (let k = 0; k < 40; k++) { const x = X0 + 4 + r() * (NX - 8), z = Z0 + 4 + r() * (NZ - 8); if (Math.abs(x) < 30) continue; bumps.push([x, z, 6 + r() * 7, 1.2 + r() * 2.2]); bumps.push([-1 - x, -1 - z, 6 + r() * 7, 1.2 + r() * 2.2]); }
+    return TK.make({ lib: api, g, ground: api.GROUND_T, TS: 1, fill: 3, maxSlope: 0.6, bumps, bumpKeep: [3, 12],
+      keepLow: (x, z) => Math.abs(x) < 26 || Math.abs(z) < 4 });   // gata, husene langs den og jernbanen holdes flate
+  });
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.WestMap = api;
 })(this);
