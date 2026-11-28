@@ -161,6 +161,11 @@
 
   const SPAWNS = { bunny: { x0: -18, x1: 16, z0: 31, z1: 40 } };   // borggården (speiles for flygeekornene)
   const api = { NX, NY, NZ, X0, Z0, T, INFO, idx, build, CATAPULT, KETTLE, MUD, MOAT, SPAWNS, B };
+  // [NY] myke borghauger (kantene blir slake), vollgraven holdes som den er. HILLS = false: som før
+  api.HILLS = true; api.GROUND_T = [T.HILL];
+  const TK = typeof TerrainKit !== 'undefined' ? TerrainKit : require('./terrainkit.js');
+  api.terrain = TK.cached(g => TK.make({ lib: api, g, ground: api.GROUND_T, TS: 1, fill: 3, maxSlope: 0.55,
+    keepLow: (x, z) => Math.abs(z + 0.5) >= MOAT.near - 1 && Math.abs(z + 0.5) <= MOAT.far + 0.6 }));
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.MedievalMap = api;
 })(this);

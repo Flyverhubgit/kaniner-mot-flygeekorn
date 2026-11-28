@@ -117,6 +117,10 @@
 
   const TOWER = { top: 22, ladderZ: 1, x0: -1, x1: 1 };   // [NY] tårnet (brukes av holybomb.js og serveren)
   const api = { NX, NY, NZ, X0, Z0, T, INFO, idx, build, TOWER };
+  // [NY] myk gressbakke under borgene (kantene blir slake). HILLS = false: som før
+  api.HILLS = true; api.GROUND_T = [T.HILL];
+  const TK = typeof TerrainKit !== 'undefined' ? TerrainKit : require('./terrainkit.js');
+  api.terrain = TK.cached(g => TK.make({ lib: api, g, ground: api.GROUND_T, TS: 1, fill: 3, maxSlope: 0.55 }));
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.CastleMap = api;
 })(this);
