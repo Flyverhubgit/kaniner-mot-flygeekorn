@@ -1732,6 +1732,7 @@ io.on('connection', socket => {
   // [NY] ØRKEN-KJØRETØY: inn, ut, kjør, skyt, treff, kjør over
   socket.on('dvIn', d => {
     const p = players[socket.id], v = d && dvList[d.id | 0];
+    if (BOT_DRIVE && p && v && !p.isBot && v.team === p.team) botYieldDv(v);   // [NY] en robot sitter der: den gir deg plassen
     if (!p || !p.alive || intermission || mapName !== 'desert' || p.vehicle || !v || !v.alive || v.team !== p.team) return;
     if (Math.hypot(p.x - v.x, p.z - v.z) > (v.kind === 'jet' ? 9 : v.kind === 'heli' ? 8 : 6)) return;   // [NY] F-16 og helikopteret er lange
     if (v.driver && ((v.kind !== 'tank' && !(DV_SEATS && v.kind === 'jeep')) || v.gunner || !DV_GUNNER)) return;   // [NY] stridsvogn og jeep har plass til en skytter
@@ -3519,6 +3520,7 @@ setInterval(() => {
     if (!b.isBot || !b.alive) continue;
     if (mapName === 'pirate') { pirBot(b, now, dt); continue; }   // [NY] Piratbukta: egen robot-kode
     if (b.huey || b.chute) continue;                    // [NY] sitter i Huey-en eller henger i fallskjermen
+    if (b.vehicle === 'dv') continue;                   // [NY] kjører / skyter fra et kjøretøy (ROBOT-SJÅFØRER under)
     // --- Se etter fiender (nærmeste med fri sikt) ---
     const eye = { x: b.x, y: b.y + 1.4, z: b.z }, desert = mapName === 'desert';
     let best = null, bestD = desert ? 85 : 42;
@@ -4562,3 +4564,171 @@ if (process.env.DESERT_SMART_DEBUG) setInterval(() => {            // test: hva 
   const qs = [...squads.values()];
   console.log('DSMART', JSON.stringify({ bots: bots.length, squads: qs.length, defendAmb: qs.filter(q => q.role === 'defend' && q.amb).length, hunting: qs.filter(q => q.huntAt).length, flanking: qs.filter(q => q.huntAt && q.flank && !q.flank.done).length, objective: qs.filter(q => !q.huntAt && q.obj).length, ambush: c(b => b.ambush), sneaking: c(b => b.sneaking), crouch: c(b => b.crouch) }));
 }, 15000);
+
+
+// ===================================================================
+//  [NY] ROBOT-SJÅFØRER 🚙🛡️ – robotene kjører jeeper og stridsvogner i ørkenen
+//  - En robot nær et ledig kjøretøy i basen setter seg inn (ikke hvis et menneske står ved det). En til blir skytter.
+//  - Kjører en rute som er bred nok for kjøretøyet (stifinningen med "smalere" kart), mot fiender laget vet om
+//    eller mot landsbyen/utpostene – aldri inn i fiendens base. Følger bakkene, rygger hvis den sitter fast.
+//  - Stridsvogna stopper, snur tårnet og skyter granater. Skytteren (eller jeep-sjåføren alene) skyter med maskingeværet.
+//  - Et menneske som vil inn: roboten flytter seg / går ut. BOT_DRIVE = false: som før.
+// ===================================================================
+const BOT_DRIVE = true;
+const BD = { tank: { v: 6.5, turn: 0.75, rev: 3, wide: 1, see: 130 }, jeep: { v: 13, turn: 1.5, rev: 6, wide: 1, see: 100 } };
+function dvNavPath(kind, ax, az, bx, bz) {
+  const N = navGet(); if (!N) return null;
+  const key = 'okWide' + BD[kind].wide;
+  if (!N[key]) {                                                    // ruter med plass til kjøretøyet: alle celler rundt må være fri
+    const r = BD[kind].wide, W = N.W, H = N.H, o = new Uint8Array(N.ok.length);
+    for (let j = r; j < H - r; j++) for (let i = r; i < W - r; i++) { let ok = 1; for (let dj = -r; dj <= r && ok; dj++) for (let di = -r; di <= r; di++) if (!N.ok[(j + dj) * W + i + di]) { ok = 0; break; } o[j * W + i] = ok; }
+    N[key] = o;
+  }
+  const keep = N.ok; N.ok = N[key];
+  try { return navPath(ax, az, bx, bz, 9000); } catch (e) { return null; } finally { N.ok = keep; }
+}
+function botYieldDv(v) {                                            // et menneske vil inn: roboten flytter seg
+  const d = v.driver && players[v.driver];
+  if (d && d.isBot) { if (!v.gunner && (v.kind === 'tank' || v.kind === 'jeep')) { v.gunner = d.id; v.driver = null; } else { dvLeave(d, true); } v.bot = null; }
+  const g = v.gunner && players[v.gunner];
+  if (!v.driver && g && g.isBot) { /* skytteren kan bli sittende */ }
+}
+function bdGoal(v, b) {                                             // hvor skal kjøretøyet? (fiendespor, ellers et mål på fiendens side)
+  const now = Date.now(), own = v.team === 'bunny' ? 1 : -1, I = teamIntel[v.team] || {};
+  let best = null, bd = 1e9;
+  for (const id in I) { const t = players[id], e = I[id]; if (!t || !t.alive || t.team === v.team || now - e.t > 25000) continue; const d = Math.hypot(e.x - v.x, e.z - v.z); if (d < bd) { bd = d; best = [e.x, e.z]; } }
+  if (best && !inEnemyBase(v.team, best[0], 0, best[1])) return best;
+  const spots = [[0, 25], [-30, 40], [30, 40], [-110, 150], [110, 140], [0, 120], [-60, 90], [60, 100], [-150, 60], [150, 60]];
+  const sp = spots[Math.floor(Math.random() * spots.length)];
+  return [-own * sp[0] + (Math.random() - 0.5) * 14, -own * sp[1] + (Math.random() - 0.5) * 14];
+}
+function bdTarget(v, from, range) {                                 // nærmeste fiende (folk og kjøretøy) med fri sikt
+  let best = null, bd = range;
+  for (const id in players) {
+    const t = players[id];
+    if (!t.alive || t.team === v.team || t.huey || t.chute || (t.vehicle === 'dv' && dvOf(t) && dvOf(t).gunner !== t.id)) continue;
+    const d = Math.hypot(t.x - v.x, t.z - v.z); if (d >= bd) continue;
+    if (!losClear(from, { x: t.x, y: t.y + 1.2, z: t.z })) continue;
+    bd = d; best = { x: t.x, y: t.y + 0.9, z: t.z, p: t, d };
+  }
+  for (const o of dvList) {
+    if (!o.alive || o.team === v.team || DV[o.kind].air) continue;
+    const d = Math.hypot(o.x - v.x, o.z - v.z); if (d >= bd) continue;
+    if (!losClear(from, { x: o.x, y: o.y + 1.5, z: o.z })) continue;
+    bd = d; best = { x: o.x, y: o.y + 1.2, z: o.z, veh: o, d };
+  }
+  return best;
+}
+function bdBoom(by, team, pos) {                                    // granaten smeller (samme som når et menneske skyter)
+  const X = DV_SHELL, id = 'bdb' + Date.now() + Math.random().toString(36).slice(2, 6);
+  io.emit('boom', { id, p: pos, big: X.big });
+  blastOwner = by; blastCells(pos[0], pos[1], pos[2], X.blocks); blastOwner = null;
+  if (intermission) return;
+  Object.values(players).forEach(t => {
+    if (!t.alive || t.team === team || t.vehicle === 'dv') return;
+    const dist = Math.hypot(t.x - pos[0], t.y + 0.9 - pos[1], t.z - pos[2]);
+    if (dist < X.r) applyDamage(by, t, Math.round(X.dmg * (1 - dist / X.r)), false, 'dvshell');
+  });
+  dvArea(pos, X.vr, X.vdmg, by, team);
+}
+function bdFireShell(v, b, T, now) {
+  v.shellAt = now + DV.tank.shellMs;
+  const S = 110, G = 5, tip = [v.x - Math.sin(v.ty) * 4.6, v.y + 2.15, v.z - Math.cos(v.ty) * 4.6];
+  const miss = Math.min(4, T.d * 0.025);
+  const aim = [T.x + (Math.random() - 0.5) * miss, T.y + (Math.random() - 0.5) * miss * 0.4, T.z + (Math.random() - 0.5) * miss];
+  const dx = aim[0] - tip[0], dy = aim[1] - tip[1], dz = aim[2] - tip[2], d = Math.hypot(dx, dy, dz) || 1, t = d / S;
+  const vel = [dx / t, dy / t + 0.5 * G * t, dz / t];
+  const id = 'bds' + v.id + '_' + now;
+  io.emit('dvShell', { id, p: tip.map(q => +q.toFixed(2)), v: vel.map(q => +q.toFixed(2)), k: 'dvshell' });
+  setTimeout(() => { if (mapName === 'desert') bdBoom(players[b.id] || null, v.team, aim); }, t * 1000);
+}
+function bdGun(v, sh, now, w) {                                     // maskingeværet (skytteren, eller jeep-sjåføren alene)
+  const W = DESERT_W[w]; if (!W || now < (v.mgAt || 0)) return;
+  const from = { x: v.x, y: v.y + 2.4, z: v.z };
+  if (!v.mgT || now > v.mgLook) { v.mgT = bdTarget(v, from, 95); v.mgLook = now + 400; }
+  const T = v.mgT; if (!T || (T.p && !T.p.alive) || (T.veh && !T.veh.alive)) return;
+  v.mgAt = now + W.ms * 1.6 + Math.random() * 60;
+  v.gy = Math.atan2(-(T.x - v.x), -(T.z - v.z)); v.gp = Math.atan2(T.y - from.y, T.d);
+  const hit = Math.random() < botAim(Math.max(0.05, 0.3 - T.d * 0.003)), miss = hit ? 0 : 0.8 + Math.random() * 2;
+  const to = [+(T.x + (Math.random() - 0.5) * miss).toFixed(2), +(T.y + 0.3 + (Math.random() - 0.5) * miss).toFixed(2), +(T.z + (Math.random() - 0.5) * miss).toFixed(2)];
+  io.emit('shot', { id: sh.id, to, w });
+  if (!hit) return;
+  if (T.veh) dvDamage(T.veh, dvBulletDmg(T.veh, w), sh);
+  else if (T.p) applyDamage(sh, T.p, Math.random() < 0.08 ? W.head : W.dmg, false, 'gun');
+}
+function bdDrive(v, b, now, dt) {
+  const S = BD[v.kind], B = v.bot || (v.bot = { path: null, i: 0, replanAt: 0, chkAt: now + 3000, chkX: v.x, chkZ: v.z, revUntil: 0, lookAt: 0, T: null });
+  if (now > B.lookAt) { B.T = bdTarget(v, { x: v.x, y: v.y + 2.2, z: v.z }, S.see); B.lookAt = now + 500; }
+  const T = B.T && ((B.T.p && B.T.p.alive) || (B.T.veh && B.T.veh.alive)) ? B.T : null;
+  if (T && T.p) intelSet(v.team, T.p);
+  // rute
+  if (!B.path || B.i >= B.path.length || now > B.replanAt) {
+    const g = bdGoal(v, b); B.path = dvNavPath(v.kind, v.x, v.z, g[0], g[1]); B.i = 0; B.replanAt = now + 9000 + Math.random() * 4000;
+  }
+  let speed = 0, want = v.yaw;
+  if (now < B.revUntil) speed = -S.rev;
+  else if (B.path && B.i < B.path.length) {
+    const wp = B.path[B.i], dx = wp[0] - v.x, dz = wp[1] - v.z, dd = Math.hypot(dx, dz);
+    if (dd < (v.kind === 'tank' ? 4 : 5)) B.i++;
+    want = Math.atan2(-dx, -dz);
+    let dy = want - v.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
+    speed = S.v * Math.max(0, Math.cos(dy));                     // svinger skarpt: sakte (stridsvogna snur på stedet)
+    if (v.kind === 'jeep' && Math.abs(dy) > 1.1) speed = S.v * 0.3;
+    if (v.kind === 'tank' && T && T.d < 100) speed = 0;          // stridsvogna stopper for å skyte
+    if (v.kind === 'jeep' && T && T.d < 35) speed *= 0.5;
+  }
+  // sving
+  let dyaw = want - v.yaw; dyaw = Math.atan2(Math.sin(dyaw), Math.cos(dyaw));
+  if (now >= B.revUntil) v.yaw += Math.max(-S.turn * dt, Math.min(S.turn * dt, dyaw));
+  // flytt (sjekk vei, høyde, fiendens base)
+  if (speed !== 0) {
+    const fx = -Math.sin(v.yaw), fz = -Math.cos(v.yaw), nx = v.x + fx * speed * dt, nz = v.z + fz * speed * dt;
+    const g = groundBelow(nx, v.y + 1.3, nz), N = navGet(), c = N && navCell(N, nx, nz), okc = !c || navOk(N, c[0], c[1]);
+    if (g <= v.y + 1.15 && okc && !inEnemyBase(v.team, nx, v.y, nz) && Math.abs(nx) < 236 && Math.abs(nz) < 236) { v.x = nx; v.z = nz; v.y += (g - v.y) * Math.min(1, dt * 8); }
+    else { B.replanAt = 0; if (now >= B.revUntil) B.revUntil = now + 1200; }
+  } else { const g = groundBelow(v.x, v.y + 1.3, v.z); v.y += (g - v.y) * Math.min(1, dt * 8); }
+  // fast? rygg og finn ny vei
+  if (now > B.chkAt) { if (Math.hypot(v.x - B.chkX, v.z - B.chkZ) < 1 && speed !== 0) { B.revUntil = now + 1500; B.replanAt = 0; } B.chkAt = now + 3000; B.chkX = v.x; B.chkZ = v.z; }
+  // helning etter bakken
+  const L = v.kind === 'tank' ? 2.6 : 1.6, Wd = v.kind === 'tank' ? 1.5 : 0.9, fx2 = -Math.sin(v.yaw), fz2 = -Math.cos(v.yaw), rx = Math.cos(v.yaw), rz = -Math.sin(v.yaw);
+  const hF = groundBelow(v.x + fx2 * L, v.y + 1.3, v.z + fz2 * L), hB = groundBelow(v.x - fx2 * L, v.y + 1.3, v.z - fz2 * L), hR = groundBelow(v.x + rx * Wd, v.y + 1.3, v.z + rz * Wd), hL = groundBelow(v.x - rx * Wd, v.y + 1.3, v.z - rz * Wd);
+  v.cp += (Math.atan2(hF - hB, 2 * L) - (v.cp || 0)) * Math.min(1, dt * 5); v.cr += (Math.atan2(hL - hR, 2 * Wd) - (v.cr || 0)) * Math.min(1, dt * 5);
+  // tårnet og kanonen
+  if (v.kind === 'tank') {
+    const aimYaw = T ? Math.atan2(-(T.x - v.x), -(T.z - v.z)) : v.yaw;
+    let dt2 = aimYaw - v.ty; dt2 = Math.atan2(Math.sin(dt2), Math.cos(dt2));
+    v.ty += Math.max(-1.3 * dt, Math.min(1.3 * dt, dt2));
+    if (T && Math.abs(dt2) < 0.05 && now >= v.shellAt && T.d > 12) bdFireShell(v, b, T, now);
+  } else v.ty = v.yaw;
+  v.at = now;
+  b.x = v.x; b.y = v.y; b.z = v.z; b.yaw = v.yaw;
+}
+setInterval(() => {                                                 // sett robotene inn i ledige kjøretøy (hvert sekund)
+  if (!BOT_DRIVE || mapName !== 'desert' || intermission || !dvList.length) return;
+  const now = Date.now();
+  for (const v of dvList) {
+    if (!v.alive || DV[v.kind].air) continue;
+    const humanNear = Object.values(players).some(h => !h.isBot && h.alive && h.team === v.team && Math.hypot(h.x - v.x, h.z - v.z) < 14);
+    const free = b => b && b.isBot && b.alive && !b.vehicle && !b.huey && !b.chute && b.team === v.team && Math.hypot(b.x - v.x, b.z - v.z) < 35;
+    if (!v.driver && !humanNear) {
+      const b = Object.values(players).find(free);
+      if (b) { v.driver = b.id; b.vehicle = 'dv'; b.dv = v.id; v.at = now; v.bot = null; b.target = null; }
+    } else if (v.driver && players[v.driver] && players[v.driver].isBot && !v.gunner && (v.kind === 'tank' || (DV_SEATS && v.kind === 'jeep'))) {
+      const b = Object.values(players).find(free);
+      if (b) { v.gunner = b.id; b.vehicle = 'dv'; b.dv = v.id; v.gy = v.ty; v.gp = 0; }
+    }
+  }
+}, 1000);
+setInterval(() => {                                                 // kjør og skyt (10 ganger i sekundet)
+  if (!BOT_DRIVE || mapName !== 'desert' || intermission || !dvList.length) return;
+  const now = Date.now(), dt = 0.1;
+  for (const v of dvList) {
+    if (!v.alive || DV[v.kind].air) continue;
+    const d = v.driver && players[v.driver], g = v.gunner && players[v.gunner];
+    if (d && d.isBot && (!d.alive || d.vehicle !== 'dv' || d.dv !== v.id)) { v.driver = null; v.bot = null; continue; }
+    if (g && g.isBot && (!g.alive || g.vehicle !== 'dv' || g.dv !== v.id)) { v.gunner = null; continue; }
+    if (d && d.isBot) bdDrive(v, d, now, dt);
+    if (g && g.isBot) bdGun(v, g, now, v.kind === 'tank' ? 'tankmg' : 'jeepmg');
+    else if (!g && d && d.isBot && v.kind === 'jeep') bdGun(v, d, now, 'jeepmg');
+  }
+}, 100);
