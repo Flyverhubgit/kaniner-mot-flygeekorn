@@ -1755,6 +1755,7 @@ function shoot() {
   const spread = typeof wfSpread === 'function' ? wfSpread(sn) : (sn && !scoped ? 0.12 : 0);   // [NY] spredning per våpen (weaponfeel.js)
   camera.updateMatrixWorld(true);
   raycaster.setFromCamera({ x: (Math.random() - 0.5) * spread, y: (Math.random() - 0.5) * spread }, camera);
+  if (typeof wfBallistic === 'function') wfBallistic(raycaster, sn);   // [NY] snikskytter: kula faller med avstanden (weaponfeel.js)
   const hits = raycaster.intersectObject(activeWorldGroup(), true);   // [NY] bare verden (ikke spor/fyll), riktig bane
   if (currentMap === 'lobby' && hits[0] && typeof lobbyShot === 'function') lobbyShot(hits[0].object);   // [NY] skyteskivene i loungen
   const o = raycaster.ray.origin, d = raycaster.ray.direction;

@@ -226,3 +226,98 @@ if (WF_ON) {
     return r;
   };
 }
+
+// ===================================================================
+//  [NY] STEG 4: EKTE AMMUNISJON + KULEFALL
+//  - Begrenset med ekstra magasiner per våpen. Fylles helt opp når du gjenoppstår, og når du står ved
+//    stedet du startet (basen). Alle som dør mister en ammo-boks: gå over den = +1 magasin til hvert våpen.
+//  - Uendelig som før på samarbeidsbanene, Ridderborgen (buer) og i loungen.
+//  - Snikskytter: kula faller med avstanden (kikkerten er innstilt på 100 m) – sikt litt over på 300–400 m.
+// ===================================================================
+const WF_AMMO_ON = WF_ON && !(typeof kmfOff === 'function' && kmfOff('ammo'));
+const WF_RESERVE = { ak: 300, c7: 120, minimi: 200, mg42: 200, pistol: 48, sniper: 20, sniper50: 15 };
+const WF_AMMO_MAPS = ['castle', 'room', 'temple', 'west', 'desert', 'jungle', 'pirate', 'space'];
+function wfGuns() { return [akW, sniperW, typeof minimiW !== 'undefined' ? minimiW : null, typeof mg42W !== 'undefined' ? mg42W : null, typeof pistolW !== 'undefined' ? pistolW : null].filter(Boolean); }
+function wfAmmoMap() { return WF_AMMO_ON && typeof currentMap !== 'undefined' && WF_AMMO_MAPS.includes(currentMap) && !(typeof medWeaponsOn !== 'undefined' && medWeaponsOn); }
+function wfFill(full) {                                           // full = helt opp, ellers +1 magasin
+  const lim = wfAmmoMap(); let got = false;
+  for (const w of wfGuns()) {
+    const max = WF_RESERVE[w.id];
+    if (!lim || max === undefined) { w.reserve = Infinity; continue; }
+    if (w.reserve === Infinity || w.reserve > max) w.reserve = max;
+    const n = full ? max : Math.min(max, w.reserve + w.magSize);
+    if (n > w.reserve) got = true;
+    w.reserve = n;
+  }
+  return got;
+}
+// ammo-bokser der noen døde
+const wfBoxes = [];
+let wfBoxGeo = null, wfBoxMat = null, wfBoxMat2 = null;
+function wfBoxAt(x, y, z) {
+  if (!wfAmmoMap()) return;
+  if (!wfBoxGeo) { wfBoxGeo = new THREE.BoxGeometry(0.5, 0.28, 0.32); wfBoxMat = new THREE.MeshStandardMaterial({ color: 0x4b5a2a, roughness: 0.8 }); wfBoxMat2 = new THREE.MeshStandardMaterial({ color: 0xe8c040, emissive: 0x3a2a00 }); }
+  const g = new THREE.Group(), b = new THREE.Mesh(wfBoxGeo, wfBoxMat), s = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.06, 0.34), wfBoxMat2);
+  s.position.y = 0.06; g.add(b); g.add(s);
+  const gy = typeof groundAt === 'function' ? groundAt(x, z, y + 1) : y;
+  g.position.set(x, gy + 0.16, z); g.traverse(c => { c.raycast = () => {}; c.castShadow = true; });
+  scene.add(g);
+  wfBoxes.push({ g, t: 0, map: currentMap });
+  while (wfBoxes.length > 25) scene.remove(wfBoxes.shift().g);
+}
+let wfSpawnAt = null, wfWasAlive = false, wfMapWas = null, wfBaseCool = 0;
+if (WF_AMMO_ON) {
+  socket.on('kill', d => {
+    try {
+      if (d.victim === myId) wfBoxAt(player.x, player.feetY, player.z);
+      else if (others[d.victim] && others[d.victim].cur) { const c = others[d.victim].cur; wfBoxAt(c.x, c.y, c.z); }
+    } catch (e) {}
+  });
+  const wfFeelOld4 = finGunFeel;
+  finGunFeel = function (dt) {
+    const r = wfFeelOld4.apply(this, arguments);
+    if (currentMap !== wfMapWas) { wfMapWas = currentMap; wfFill(true); for (const b of wfBoxes) scene.remove(b.g); wfBoxes.length = 0; }
+    if (alive && !wfWasAlive) { wfFill(true); wfSpawnAt = { x: player.x, z: player.z }; }   // nettopp gjenoppstått
+    wfWasAlive = alive;
+    if (!alive || !wfAmmoMap()) return r;
+    for (const w of wfGuns()) if (w.reserve === Infinity && WF_RESERVE[w.id] !== undefined) w.reserve = WF_RESERVE[w.id];   // noe satte uendelig (bytte av bane/våpen)
+    wfBaseCool -= dt;
+    if (wfSpawnAt && wfBaseCool <= 0 && Math.hypot(player.x - wfSpawnAt.x, player.z - wfSpawnAt.z) < 10) { wfBaseCool = 3; if (wfFill(true)) { bannerMsg = '🔫 Ammo fylt opp'; bannerTime = 1.2; } }
+    for (let i = wfBoxes.length - 1; i >= 0; i--) {
+      const b = wfBoxes[i]; b.t += dt; b.g.rotation.y += dt * 1.2;
+      if (b.t > 40 || b.map !== currentMap) { scene.remove(b.g); wfBoxes.splice(i, 1); continue; }
+      if (Math.hypot(player.x - b.g.position.x, player.z - b.g.position.z) < 1.6 && Math.abs(player.feetY + 0.2 - b.g.position.y) < 2) {
+        if (wfFill(false)) {
+          bannerMsg = '🔫 + ammo'; bannerTime = 1;
+          if (typeof rsPlay === 'function' && typeof rsOn === 'function' && rsOn()) try { rsPlay('mag_in', 0.5); } catch (e) {}
+          scene.remove(b.g); wfBoxes.splice(i, 1);
+        }
+      }
+    }
+    if (weapon && weapon.mag <= 0 && weapon.reserve <= 0 && WF_RESERVE[weapon.id] !== undefined && !(bannerTime > 0)) { bannerMsg = '❗ Tomt – plukk opp ammo-bokser eller bytt våpen'; bannerTime = 1.5; }
+    return r;
+  };
+}
+
+// --- kulefall for snikskytteren (kalles fra shoot() i game.js rett etter at strålen er laget) ---
+const WF_DROP_ON = WF_ON && !(typeof kmfOff === 'function' && kmfOff('drop'));
+function wfBallistic(rc, sn) {
+  if (!WF_DROP_ON || !sn || typeof currentMap === 'undefined' || currentMap === 'lobby') return;
+  const V = weapon && weapon.id === 'sniper50' ? 880 : 700, G = 9.81, o = rc.ray.origin, d = rc.ray.direction;
+  let dist = 420;                                                  // hvor langt unna er målet? (nærmeste fiende langs strålen, ellers veggen)
+  for (const id in others) {
+    const r = others[id]; if (!r.alive || r.team === myTeam || !r.cur) continue;
+    const vx = r.cur.x - o.x, vy = r.cur.y + 1 - o.y, vz = r.cur.z - o.z, t = vx * d.x + vy * d.y + vz * d.z;
+    if (t < 5) continue;
+    const px = vx - d.x * t, py = vy - d.y * t, pz = vz - d.z * t;
+    if (px * px + py * py + pz * pz < 3.5 * 3.5 * (1 + t / 150) && t < dist) dist = t;
+  }
+  if (typeof castleRay === 'function' && typeof voxelOn === 'function' && voxelOn()) { const w = castleRay(o, d, dist); if (w && w.dist < dist) dist = w.dist; }
+  if (dist < 100) return;
+  const drop = t => 0.5 * G * (t / V) * (t / V);
+  const ang = Math.atan(drop(dist) / dist) - Math.atan(drop(100) / 100);
+  if (ang <= 0) return;
+  const axis = new THREE.Vector3().crossVectors(d, new THREE.Vector3(0, 1, 0)).normalize();
+  if (axis.lengthSq() < 0.5) return;
+  d.applyAxisAngle(axis, -ang).normalize();
+}
